@@ -398,3 +398,4 @@
   logInfo('Active fetcher installed');
 
 })();
+

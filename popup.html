@@ -104,16 +104,18 @@
       </div>
     </div>
 
-    <!-- File Preview Section -->
-    <div id="filePreview" class="file-preview" style="display: none;" role="status" aria-live="polite">
-      <svg class="file-preview__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
-        xmlns="http://www.w3.org/2000/svg">
-        <path fill-rule="evenodd" clip-rule="evenodd"
-          d="M3 2a1 1 0 011-1h5.586a1 1 0 01.707.293l2.414 2.414A1 1 0 0113 4.414V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2zm2 2v1h6V4H9.5A.5.5 0 019 3.5V2H5v2zm0 3v6h6V7H5z"
-          fill="currentColor" />
-      </svg>
-      <span class="file-preview__label">Exporting:</span>
-      <span class="file-preview__name" id="fileName">conversation.csv</span>
+    <!-- File List Section -->
+    <div id="fileList" class="file-list" style="display: none;" role="status" aria-live="polite">
+      <div class="file-list__header">
+        <svg class="file-list__header-icon" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"
+          xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd" clip-rule="evenodd"
+            d="M3 2a1 1 0 011-1h5.586a1 1 0 01.707.293l2.414 2.414A1 1 0 0113 4.414V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2zm2 2v1h6V4H9.5A.5.5 0 019 3.5V2H5v2zm0 3v6h6V7H5z"
+            fill="currentColor" />
+        </svg>
+        <span class="file-list__heading" id="fileListHeading"></span>
+      </div>
+      <ul class="file-list__items" id="fileListItems" aria-label="Files that will be downloaded"></ul>
     </div>
 
     <!-- Primary Action Button -->

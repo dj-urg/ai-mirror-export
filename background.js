@@ -5,7 +5,7 @@
  * and manages CSV generation and downloads
  */
 
-import { extractChatGPTConversation } from './platforms/chatgpt/extractor.js';
+import { extractChatGPTConversation, generateMessageUrlsCSV, generateDonorContextCSV } from './platforms/chatgpt/extractor.js';
 import { EXTENSION_CONFIG } from './config/settings.js';
 import { escapeCSVField, generateCSV, createCSVBlob, generateFilename } from './utils/csv.js';
 
@@ -234,9 +234,26 @@ function validateConversationData(data, platform) {
 }
 
 /**
+ * Get or create a persistent donor ID stored in local extension storage.
+ * Returns { id, type } where type is "persistent" (storage worked) or
+ * "session" (storage failed — ID is not stable across exports).
+ */
+async function getOrCreateDonorId() {
+  try {
+    const stored = await browser.storage.local.get('donor_id');
+    if (stored.donor_id) return { id: stored.donor_id, type: 'persistent' };
+    const id = crypto.randomUUID();
+    await browser.storage.local.set({ donor_id: id });
+    return { id, type: 'persistent' };
+  } catch {
+    return { id: crypto.randomUUID(), type: 'session' };
+  }
+}
+
+/**
  * Handle conversation data from any platform
  */
-function handleConversationData(message) {
+async function handleConversationData(message) {
   const platform = message.platform || 'unknown';
   const conversationData = message.payload;
 
@@ -255,6 +272,9 @@ function handleConversationData(message) {
   console.log(`[${platform}] Processing conversation data (validated)`);
 
   try {
+    const { id: donorId, type: donorIdType } = await getOrCreateDonorId();
+    const downloadTime = new Date().toISOString();
+
     // Get platform-specific handler
     let rows;
     let csvFiles = []; // Array of { filename, content }
@@ -262,7 +282,7 @@ function handleConversationData(message) {
     if (platform === 'chatgpt') {
       // Use the new extractor which returns multiple CSVs
       if (typeof extractChatGPTConversation === 'function') {
-        const result = extractChatGPTConversation(conversationData);
+        const result = extractChatGPTConversation(conversationData, { donorId, donorIdType, downloadTime });
 
         const conversationId = conversationData.conversation_id || conversationData.id || 'unknown';
         const idShort = conversationId.substring(0, 8);
@@ -276,14 +296,46 @@ function handleConversationData(message) {
           filename: generateFilename(`chatgpt_messages`, idShort),
           content: result.messagesCSV
         });
+
+        if (result.searchResults && result.searchResults.length > 0) {
+          csvFiles.push({
+            filename: generateFilename(`chatgpt_sources`, idShort),
+            content: result.sourcesCSV
+          });
+        }
+
+        if (result.messageUrls && result.messageUrls.length > 0) {
+          csvFiles.push({
+            filename: generateFilename(`chatgpt_message_urls`, idShort),
+            content: result.messageUrlsCSV
+          });
+        }
+
+        if (result.donorContext &&
+            (result.donorContext.user_profile || result.donorContext.user_instructions)) {
+          csvFiles.push({
+            filename: generateFilename(`chatgpt_donor_context`, idShort),
+            content: result.donorContextCSV
+          });
+        }
       } else {
         console.error('[ChatGPT] Extractor function not found');
         return;
       }
     } else if (platform === 'claude' && ClaudeHandler) {
-      rows = ClaudeHandler.flattenConversationData(conversationData);
+      rows = ClaudeHandler.flattenConversationData(conversationData).map(row => ({
+        donor_id: donorId,
+        donor_id_type: donorIdType,
+        download_time: downloadTime,
+        ...row
+      }));
     } else if (platform === 'copilot' && CopilotHandler) {
-      rows = CopilotHandler.flattenConversationData(conversationData);
+      rows = CopilotHandler.flattenConversationData(conversationData).map(row => ({
+        donor_id: donorId,
+        donor_id_type: donorIdType,
+        download_time: downloadTime,
+        ...row
+      }));
     } else {
       console.error(`[${platform}] No handler found for platform`);
       return;
@@ -411,7 +463,9 @@ console.log('AI Chat Exporter: Main background script loaded at ' + new Date().t
 const criticalFunctions = {
   validateConversationData,
   escapeCSVField,
-  extractChatGPTConversation
+  extractChatGPTConversation,
+  generateMessageUrlsCSV,
+  generateDonorContextCSV
 };
 
 // Simple function fingerprinting for runtime integrity

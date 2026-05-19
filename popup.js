@@ -558,28 +558,101 @@ function updateExportButton(enabled, text = null, showSpinner = false) {
 }
 
 /**
- * Update file preview with filename
- * @param {string} title - Conversation title
+ * Build and show the file list panel.
+ * Renders one row per platform (3 for ChatGPT, 1 for others).
+ * @param {string} title - Conversation title (used for non-ChatGPT label)
  */
 function updateFilePreview(title) {
-  const filePreview = document.getElementById('filePreview');
-  const fileName = document.getElementById('fileName');
+  const fileList = document.getElementById('fileList');
+  const fileListHeading = document.getElementById('fileListHeading');
+  const fileListItems = document.getElementById('fileListItems');
 
-  // Sanitize title for filename
-  const sanitizedTitle = (title || 'conversation').replace(/[^a-z0-9\u00a0-\uffff_-]/gi, '_').trim();
-  const finalName = sanitizedTitle ? `${sanitizedTitle}.csv` : 'conversation.csv';
+  const platformId = state.platform.id;
+  const platformName = state.platform.name || platformId || 'conversation';
 
-  fileName.textContent = finalName;
-  filePreview.style.display = 'flex';
+  let files;
+  if (platformId === 'chatgpt') {
+    files = [
+      {
+        badge: 'Metadata',
+        badgeClass: 'metadata',
+        name: 'Conversation overview',
+        desc: 'Title, model, statistics, user profile'
+      },
+      {
+        badge: 'Messages',
+        badgeClass: 'messages',
+        name: 'Full message log',
+        desc: 'All turns with timestamps and model info'
+      },
+      {
+        badge: 'Sources',
+        badgeClass: 'sources',
+        name: 'Web search results',
+        desc: 'Cited sources \u2014 only if searches were made',
+        optional: true
+      }
+    ];
+  } else {
+    const sanitizedTitle = (title || 'conversation')
+      .replace(/[^a-z0-9\u00a0-\uffff_-]/gi, '_').trim();
+    files = [
+      {
+        badge: 'Export',
+        badgeClass: 'default',
+        name: sanitizedTitle || 'conversation',
+        desc: `${platformName} conversation`
+      }
+    ];
+  }
+
+  fileListHeading.textContent = files.length === 1
+    ? '1 file will be downloaded'
+    : `${files.length} files will be downloaded`;
+
+  // Rebuild the list using DOM methods (no innerHTML for security)
+  while (fileListItems.firstChild) {
+    fileListItems.removeChild(fileListItems.firstChild);
+  }
+
+  for (const file of files) {
+    const li = document.createElement('li');
+    li.className = 'file-list__item';
+
+    const badge = document.createElement('span');
+    badge.className = `file-list__badge file-list__badge--${file.badgeClass}`;
+    badge.textContent = file.badge;
+
+    const info = document.createElement('div');
+    info.className = 'file-list__info';
+
+    const name = document.createElement('span');
+    name.className = 'file-list__name';
+    name.textContent = file.name;
+
+    const desc = document.createElement('span');
+    desc.className = file.optional
+      ? 'file-list__desc file-list__desc--optional'
+      : 'file-list__desc';
+    desc.textContent = file.desc;
+
+    info.appendChild(name);
+    info.appendChild(desc);
+    li.appendChild(badge);
+    li.appendChild(info);
+    fileListItems.appendChild(li);
+  }
+
+  fileList.style.display = 'block';
 }
 
 /**
- * Hide file preview
+ * Hide the file list panel
  */
 function hideFilePreview() {
-  const filePreview = document.getElementById('filePreview');
-  if (filePreview) {
-    filePreview.style.display = 'none';
+  const fileList = document.getElementById('fileList');
+  if (fileList) {
+    fileList.style.display = 'none';
   }
 }
 

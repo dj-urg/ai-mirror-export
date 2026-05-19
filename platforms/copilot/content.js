@@ -337,3 +337,4 @@
   logInfo('Content script loaded');
 
 })();
+

@@ -341,3 +341,4 @@
   logInfo('Content script loaded');
 
 })();
+
