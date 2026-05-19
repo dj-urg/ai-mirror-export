@@ -577,7 +577,7 @@ function updateFilePreview(title) {
         badge: 'Metadata',
         badgeClass: 'metadata',
         name: 'Conversation overview',
-        desc: 'Title, model, statistics, user profile'
+        desc: 'Title, model, statistics'
       },
       {
         badge: 'Messages',
@@ -589,7 +589,21 @@ function updateFilePreview(title) {
         badge: 'Sources',
         badgeClass: 'sources',
         name: 'Web search results',
-        desc: 'Cited sources \u2014 only if searches were made',
+        desc: 'Cited sources \u2014 only if web searches were made',
+        optional: true
+      },
+      {
+        badge: 'URLs',
+        badgeClass: 'default',
+        name: 'In-message links',
+        desc: 'Links shared in messages \u2014 only if any were present',
+        optional: true
+      },
+      {
+        badge: 'Profile',
+        badgeClass: 'metadata',
+        name: 'User profile & instructions',
+        desc: 'Custom instructions or user profile \u2014 only if configured',
         optional: true
       }
     ];
@@ -644,6 +658,9 @@ function updateFilePreview(title) {
   }
 
   fileList.style.display = 'block';
+
+  const dataNotice = document.getElementById('dataNotice');
+  if (dataNotice) dataNotice.hidden = false;
 }
 
 /**
@@ -651,9 +668,10 @@ function updateFilePreview(title) {
  */
 function hideFilePreview() {
   const fileList = document.getElementById('fileList');
-  if (fileList) {
-    fileList.style.display = 'none';
-  }
+  if (fileList) fileList.style.display = 'none';
+
+  const dataNotice = document.getElementById('dataNotice');
+  if (dataNotice) dataNotice.hidden = true;
 }
 
 // ============================================================================
@@ -873,11 +891,11 @@ async function checkAndUpdateUI() {
           updateExportButton(true);
           updateFilePreview(title || 'conversation');
         } else {
-          // Waiting for conversation data to load
+          // Conversation not yet captured — passive interceptor requires a fresh page load
           updateStatus(
-            'loading',
-            `Loading ${platform.name} conversation data...`,
-            'Please wait while the conversation loads.'
+            'warning',
+            'Conversation not captured yet.',
+            'Please reload the page, then reopen this popup to export.'
           );
           updateExportButton(false);
           hideFilePreview();
@@ -1288,38 +1306,83 @@ function handleFocusDuringStateChange() {
 // ============================================================================
 
 /**
- * Initialize popup UI
+ * Check whether the user has previously given consent.
+ * @returns {Promise<boolean>}
  */
-async function init() {
-  // Configuration is now loaded via static import
-  // await loadConfigModule();
+async function checkConsent() {
+  try {
+    const stored = await browser.storage.local.get('consent_given');
+    return stored.consent_given === true;
+  } catch {
+    return false;
+  }
+}
 
-  // Set up event listeners
+/**
+ * Show the consent panel and hide main content until the user agrees.
+ * Wires up the checkbox → button enable logic and the accept handler.
+ */
+function showConsentPanel() {
+  const consentPanel = document.getElementById('consentPanel');
+  const mainContent = document.querySelector('.popup-main');
+  const footer = document.querySelector('.popup-footer');
+
+  consentPanel.hidden = false;
+  mainContent.hidden = true;
+  footer.hidden = true;
+
+  const checkbox = document.getElementById('consentCheckbox');
+  const consentBtn = document.getElementById('consentBtn');
+
+  checkbox.addEventListener('change', () => {
+    consentBtn.disabled = !checkbox.checked;
+  });
+
+  consentBtn.addEventListener('click', async () => {
+    if (!checkbox.checked) return;
+
+    try {
+      await browser.storage.local.set({ consent_given: true });
+    } catch {
+      // Storage failure is non-fatal — extension still works this session
+    }
+
+    consentPanel.hidden = true;
+    mainContent.hidden = false;
+    footer.hidden = false;
+
+    initMainUI();
+  });
+}
+
+/**
+ * Initialize popup UI (runs only after consent is confirmed).
+ */
+function initMainUI() {
   const exportBtn = document.getElementById('exportBtn');
   exportBtn.addEventListener('click', handleExportClick);
 
-  // Set up keyboard navigation
   document.addEventListener('keydown', handleKeyboardNavigation);
 
-  // Set up proper tab order
   setupTabOrder();
-
-  // Verify no keyboard traps
   verifyNoKeyboardTraps();
-
-  // Set up event-driven updates (primary mechanism)
   setupEventDrivenUpdates();
-
-  // Initial UI update
   checkAndUpdateUI();
 
-  // Start fallback polling with longer interval (10 seconds instead of 3)
-  // Event-driven updates are the primary mechanism, polling is just a fallback
-  // Polling will automatically stop when export button is enabled
   startPolling(10000);
-
-  // Runtime integrity verification
   verifyRuntimeIntegrity();
+}
+
+/**
+ * Entry point — gate the main UI behind first-run consent.
+ */
+async function init() {
+  const consentGiven = await checkConsent();
+  if (!consentGiven) {
+    showConsentPanel();
+    return;
+  }
+  initMainUI();
 }
 
 // ============================================================================
@@ -1363,8 +1426,7 @@ function verifyRuntimeIntegrity() {
   // Check critical functions exist
   const criticalFunctions = [
     'detectPlatform',
-    'sanitizeErrorMessage',
-    'checkRateLimit'
+    'sanitizeErrorMessage'
   ];
 
   for (const funcName of criticalFunctions) {

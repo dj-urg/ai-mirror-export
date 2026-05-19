@@ -54,6 +54,51 @@
     </div>
   </header>
 
+  <!-- Consent Panel (first-run gate) -->
+  <div class="consent-panel" id="consentPanel" hidden aria-labelledby="consentTitle">
+    <h2 class="consent-panel__title" id="consentTitle">Research Participation</h2>
+    <p class="consent-panel__intro">Before using this extension, please read the following information about your participation in the study.</p>
+
+    <div class="consent-panel__section">
+      <h3 class="consent-panel__section-heading">What data is collected</h3>
+      <ul class="consent-panel__list">
+        <li>Conversation messages (your questions and AI responses)</li>
+        <li>Web sources cited within conversations</li>
+        <li>Custom instructions or user profile, if you have set these</li>
+      </ul>
+    </div>
+
+    <div class="consent-panel__section">
+      <h3 class="consent-panel__section-heading">How it works</h3>
+      <ul class="consent-panel__list">
+        <li>All processing is done locally in your browser</li>
+        <li>Data is saved as CSV files to your computer only</li>
+        <li>Nothing is sent to any server automatically</li>
+      </ul>
+    </div>
+
+    <div class="consent-panel__section">
+      <h3 class="consent-panel__section-heading">Research use</h3>
+      <p class="consent-panel__text">Exported files are intended for academic research. You decide which files to share with the researcher. Your participation is voluntary.</p>
+    </div>
+
+    <div class="consent-panel__section">
+      <h3 class="consent-panel__section-heading">Withdrawal</h3>
+      <p class="consent-panel__text">You may stop participating at any time by uninstalling this extension. Delete any previously exported files if you no longer wish them to be used.</p>
+    </div>
+
+    <div class="consent-panel__agreement">
+      <label class="consent-panel__label">
+        <input type="checkbox" id="consentCheckbox" class="consent-panel__checkbox" aria-required="true">
+        <span class="consent-panel__label-text">I have read the above and agree to participate in this research study.</span>
+      </label>
+    </div>
+
+    <button class="btn btn--primary btn--large" id="consentBtn" type="button" disabled aria-label="I agree and want to continue to the extension">
+      <span class="btn__text">I Agree — Continue</span>
+    </button>
+  </div>
+
   <!-- Main Content -->
   <main class="popup-main" role="main">
     <!-- Status Card Component -->
@@ -116,6 +161,17 @@
         <span class="file-list__heading" id="fileListHeading"></span>
       </div>
       <ul class="file-list__items" id="fileListItems" aria-label="Files that will be downloaded"></ul>
+    </div>
+
+    <!-- Personal Data Notice (shown when file list is visible) -->
+    <div class="data-notice" id="dataNotice" hidden role="note">
+      <svg class="data-notice__icon" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"
+        xmlns="http://www.w3.org/2000/svg">
+        <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M8 1a2.5 2.5 0 00-2.5 2.5V5H4a1 1 0 00-1 1v7a1 1 0 001 1h8a1 1 0 001-1V6a1 1 0 00-1-1h-1.5V3.5A2.5 2.5 0 008 1zm1.5 4V3.5a1.5 1.5 0 00-3 0V5h3z"
+          fill="currentColor" />
+      </svg>
+      <p class="data-notice__text">These files contain personal data in plaintext. Store them securely and delete them when no longer needed.</p>
     </div>
 
     <!-- Primary Action Button -->
