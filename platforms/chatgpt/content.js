@@ -15,7 +15,8 @@
   const SOURCE_ID = 'chatgpt-exporter-inject';
 
   // Logging configuration
-  const DEBUG_MODE = false; // Set to true for development, false for production
+  const IS_PRODUCTION = true;
+  const DEBUG_MODE = false;
 
   // Memory management configuration
   const MAX_STORED_CONVERSATIONS = 50;
@@ -26,12 +27,29 @@
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
 
-  // Generate a cryptographic secret for message signing
-  let SECRET_KEY = null;
-  MessageSecurity.generateSecretKey().then(key => {
-    SECRET_KEY = key;
-    injectSecretIntoPage();
-  });
+  // Read the signing secret written by inject.js (MAIN world) to the dataset.
+  // Both scripts run at document_start before any page script executes.
+  // The spec does not guarantee MAIN-before-ISOLATED ordering, so we install a
+  // MutationObserver as a fallback: if inject.js hasn't written the attribute
+  // yet, the observer fires as a microtask after inject.js completes — still
+  // before the HTML parser resumes and before any page script runs.
+  let SECRET_KEY = document.documentElement.dataset.chatgptExporterSecret || null;
+  if (SECRET_KEY) {
+    delete document.documentElement.dataset.chatgptExporterSecret;
+  } else {
+    const _secretObserver = new MutationObserver(() => {
+      const s = document.documentElement.dataset.chatgptExporterSecret;
+      if (s) {
+        SECRET_KEY = s;
+        delete document.documentElement.dataset.chatgptExporterSecret;
+        _secretObserver.disconnect();
+      }
+    });
+    _secretObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-chatgpt-exporter-secret']
+    });
+  }
 
   /**
    * Redact sensitive information from log data
@@ -73,6 +91,7 @@
    * Log info message
    */
   function logInfo(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.log(`[${PLATFORM}]`, message, redactSensitiveData(data));
     } else {
@@ -84,6 +103,7 @@
    * Log warning message
    */
   function logWarn(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.warn(`[${PLATFORM}] [WARN]`, message, redactSensitiveData(data));
     } else {
@@ -95,6 +115,7 @@
    * Log error message
    */
   function logError(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.error(`[${PLATFORM}] [ERROR]`, message, redactSensitiveData(data));
     } else {
@@ -125,7 +146,7 @@
       if (oldestId) {
         capturedConversations.delete(oldestId);
         conversationTimestamps.delete(oldestId);
-        console.log(`[${PLATFORM}] Memory limit reached. Evicted oldest conversation:`, oldestId);
+        logDebug('Memory limit reached, evicted oldest conversation', { id: oldestId.substring(0, 8) + '...' });
       }
     }
 
@@ -158,20 +179,6 @@
   setInterval(cleanupOldConversations, CLEANUP_INTERVAL_MS);
 
 
-
-  /**
-   * Inject secret key into page for inject.js to use
-   */
-  function injectSecretIntoPage() {
-    if (!SECRET_KEY) return;
-    const secretElement = document.createElement('meta');
-    secretElement.name = 'chatgpt-exporter-secret';
-    secretElement.content = SECRET_KEY;
-    secretElement.style.display = 'none';
-    (document.head || document.documentElement).appendChild(secretElement);
-  }
-
-  // Inject secret as early as possible (will be called when key is ready)
 
   /**
    * Listen for messages from the injected page script

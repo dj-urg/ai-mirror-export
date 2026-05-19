@@ -8,6 +8,15 @@
  */
 
 // ============================================================================
+// PRODUCTION FLAG
+// ============================================================================
+
+// In production, suppress all console output to avoid leaking operational
+// details and internal state to the browser console.
+const IS_PRODUCTION = true;
+const _console = IS_PRODUCTION ? { log: () => {}, warn: () => {}, error: () => {} } : console;
+
+// ============================================================================
 // PLATFORM CONFIGURATION (UI-specific; core config in config/settings.js)
 // ============================================================================
 
@@ -134,7 +143,7 @@ function detectPlatform(url) {
     // Security: Only allow http and https schemes
     // Prevents exploitation via javascript:, data:, file:, chrome:, etc.
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      console.warn('[Security] Invalid URL scheme detected:', parsedUrl.protocol, 'for URL:', url);
+      _console.warn('[Security] Invalid URL scheme detected:', parsedUrl.protocol, 'for URL:', url);
       return null;
     }
 
@@ -142,12 +151,12 @@ function detectPlatform(url) {
 
     // Validate hostname is not empty
     if (!hostname || hostname.trim() === '') {
-      console.warn('[Security] Empty hostname detected in URL:', url);
+      _console.warn('[Security] Empty hostname detected in URL:', url);
       return null;
     }
 
     if (typeof getPlatformByUrl !== 'function') {
-      console.error('Configuration not loaded: getPlatformByUrl is not available');
+      _console.error('Configuration not loaded: getPlatformByUrl is not available');
       return null;
     }
 
@@ -165,7 +174,7 @@ function detectPlatform(url) {
       name: uiConfig.name || basePlatform.name
     };
   } catch (error) {
-    console.error('Error parsing URL:', error);
+    _console.error('Error parsing URL:', error);
     return null;
   }
 }
@@ -226,7 +235,7 @@ function popupLogError(context, error, additionalInfo = {}) {
   if (typeof logError === 'function') {
     logError('popup', errorMessage, logData);
   } else {
-    console.error('[popup] [ERROR]', errorMessage, logData);
+    _console.error('[popup] [ERROR]', errorMessage, logData);
   }
 }
 
@@ -253,7 +262,7 @@ function popupLogDebug(context, message, additionalInfo = {}) {
   if (typeof logDebug === 'function') {
     logDebug('popup', message, logData);
   } else {
-    console.log('[popup] [DEBUG]', message, logData);
+    _console.log('[popup] [DEBUG]', message, logData);
   }
 }
 
@@ -406,7 +415,7 @@ function updateStatus(type, message, detail = '') {
   // Validate status type
   const validTypes = ['success', 'warning', 'error', 'loading', 'info'];
   if (!validTypes.includes(type)) {
-    console.error(`Invalid status type: ${type}. Using 'info' as fallback.`);
+    _console.error(`Invalid status type: ${type}. Using 'info' as fallback.`);
     type = 'info';
   }
 
@@ -469,7 +478,7 @@ function updateStatus(type, message, detail = '') {
   }
 
   // Log status update for debugging
-  console.log(`Status updated: [${type}] ${message}${detail ? ' - ' + detail : ''}`);
+  _console.log(`Status updated: [${type}] ${message}${detail ? ' - ' + detail : ''}`);
 }
 
 /**
@@ -691,11 +700,11 @@ function setupEventDrivenUpdates() {
 
     // Validate sender is from our extension
     if (!sender || sender.id !== browser.runtime.id) {
-      console.warn('[Popup] Ignoring CONVERSATION_READY from unauthorized sender');
+      _console.warn('[Popup] Ignoring CONVERSATION_READY from unauthorized sender');
       return;
     }
 
-    console.log('[Popup] Conversation ready notification received', {
+    _console.log('[Popup] Conversation ready notification received', {
       platform: message.platform,
       conversationId: message.conversationId ? message.conversationId.substring(0, 8) + '...' : 'unknown'
     });
@@ -707,7 +716,7 @@ function setupEventDrivenUpdates() {
     // Polling will be stopped by updateExportButton when button becomes enabled
   });
 
-  console.log('[Popup] Event-driven updates enabled');
+  _console.log('[Popup] Event-driven updates enabled');
 }
 
 /**
@@ -733,7 +742,7 @@ function startPolling(interval = 10000) {
     debouncedCheckAndUpdateUI();
   }, interval);
 
-  console.log(`[Popup] Fallback polling started with ${interval}ms interval`);
+  _console.log(`[Popup] Fallback polling started with ${interval}ms interval`);
 }
 
 /**
@@ -757,7 +766,7 @@ function stopPolling() {
     state.polling.debounceTimeout = null;
   }
 
-  console.log('[Popup] Polling stopped');
+  _console.log('[Popup] Polling stopped');
 }
 
 /**
@@ -795,37 +804,32 @@ function debouncedCheckAndUpdateUI() {
  * @returns {Promise<Object>} Object with hasData boolean and optional title
  */
 async function checkConversationData(tab, platform, conversationId) {
-  try {
-    const response = await browser.tabs.sendMessage(tab.id, {
-      type: 'GET_CAPTURED_CONVERSATIONS'
-    });
+  // Let communication errors propagate — the caller's catch handles them with
+  // a CONTENT_SCRIPT_NOT_LOADED error. Never fail open here.
+  const response = await browser.tabs.sendMessage(tab.id, {
+    type: 'GET_CAPTURED_CONVERSATIONS'
+  });
 
-    if (response && response.success) {
-      // New format with conversations array
-      if (response.conversations) {
-        const conversation = response.conversations.find(c => c.id === conversationId);
-        return {
-          hasData: !!conversation,
-          title: conversation ? conversation.title : null
-        };
-      }
-
-      // Backward compatibility
-      if (response.conversationIds) {
-        return {
-          hasData: response.conversationIds.includes(conversationId),
-          title: null
-        };
-      }
+  if (response && response.success) {
+    // New format with conversations array
+    if (response.conversations) {
+      const conversation = response.conversations.find(c => c.id === conversationId);
+      return {
+        hasData: !!conversation,
+        title: conversation ? conversation.title : null
+      };
     }
 
-    // If no response or no conversation IDs, assume data is available but unknown title
-    return { hasData: true, title: null };
-  } catch (error) {
-    // If content script not responding, assume data is available
-    console.log('Content script not responding, assuming data available');
-    return { hasData: true, title: null };
+    // Backward compatibility
+    if (response.conversationIds) {
+      return {
+        hasData: response.conversationIds.includes(conversationId),
+        title: null
+      };
+    }
   }
+
+  return { hasData: false, title: null };
 }
 
 /**
@@ -1228,7 +1232,7 @@ function verifyNoKeyboardTraps() {
   );
 
   if (focusableElements.length === 0) {
-    console.warn('No focusable elements found');
+    _console.warn('No focusable elements found');
     return false;
   }
 
@@ -1244,12 +1248,12 @@ function verifyNoKeyboardTraps() {
     // Check if element has proper tabindex
     const tabindex = element.getAttribute('tabindex');
     if (tabindex && parseInt(tabindex) < 0) {
-      console.warn(`Element ${element.tagName} has negative tabindex:`, element);
+      _console.warn(`Element ${element.tagName} has negative tabindex:`, element);
       allReachable = false;
     }
   });
 
-  console.log(`Keyboard navigation check: ${focusableElements.length} focusable elements found`);
+  _console.log(`Keyboard navigation check: ${focusableElements.length} focusable elements found`);
   return allReachable;
 }
 
@@ -1277,7 +1281,7 @@ function setupTabOrder() {
     infoToggle.setAttribute('tabindex', '0');
   }
 
-  console.log('Tab order configured for keyboard navigation');
+  _console.log('Tab order configured for keyboard navigation');
 }
 
 /**
@@ -1439,9 +1443,9 @@ function verifyRuntimeIntegrity() {
 
   // Log results
   if (results.failed.length === 0) {
-    console.log('[Integrity] Runtime integrity verified:', results.passed.length, 'checks passed');
+    _console.log('[Integrity] Runtime integrity verified:', results.passed.length, 'checks passed');
   } else {
-    console.error('[Integrity] Runtime integrity check failed:', results.failed);
+    _console.error('[Integrity] Runtime integrity check failed:', results.failed);
   }
 
   return results.failed.length === 0;
@@ -1450,6 +1454,6 @@ function verifyRuntimeIntegrity() {
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   init().catch(error => {
-    console.error('[Popup] Unhandled error during init:', error);
+    _console.error('[Popup] Unhandled error during init:', error);
   });
 });

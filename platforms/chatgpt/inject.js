@@ -17,6 +17,7 @@
   const MESSAGE_TYPE = 'CHATGPT_CONVERSATION_DATA';
   const SOURCE_ID = 'chatgpt-exporter-inject';
 
+  const IS_PRODUCTION = true;
   const DEBUG_MODE = false;
   const MAX_RESPONSE_SIZE = 100 * 1024 * 1024; // 100MB
 
@@ -26,32 +27,20 @@
   const originalFetch = window.fetch;
 
   // ============================================================================
-  // SECRET CAPTURE AND DOM CLEANUP
+  // SECRET GENERATION
   // ============================================================================
 
-  // The secret is written to a <meta> tag by content.js (isolated world).
-  // We read it once, delete the tag immediately, and hold it only in this
-  // closure — so it is no longer readable from the DOM by other scripts.
-  let storedSecret = null;
-
-  function initializeSecret() {
-    function readAndDelete() {
-      const meta = document.querySelector('meta[name="chatgpt-exporter-secret"]');
-      if (!meta) return false;
-      storedSecret = meta.getAttribute('content');
-      meta.remove();
-      observer.disconnect();
-      logDebug('Signing secret captured and removed from DOM');
-      return true;
-    }
-
-    // Try immediately in case content.js already wrote the tag
-    if (readAndDelete()) return;
-
-    // Otherwise observe until it appears (content.js writes it asynchronously)
-    const observer = new MutationObserver(readAndDelete);
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
+  // Generate the signing secret here in the MAIN world at document_start,
+  // before any page scripts execute. Write it to a dataset attribute so
+  // content.js (isolated world) — which also runs at document_start — can
+  // read it once and immediately delete it. By the time any page script runs,
+  // the attribute is gone and the secret exists only in these two closures.
+  const storedSecret = (() => {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+  })();
+  document.documentElement.dataset.chatgptExporterSecret = storedSecret;
 
   // ============================================================================
   // LOGGING
@@ -80,6 +69,7 @@
   }
 
   function logWarn(message, data = null) {
+    if (IS_PRODUCTION) return;
     data
       ? console.warn(`[${PLATFORM}] [WARN]`, message, redactSensitiveData(data))
       : console.warn(`[${PLATFORM}] [WARN]`, message);
@@ -205,7 +195,6 @@
     return response;
   };
 
-  initializeSecret();
-  console.log(`[${PLATFORM}] Passive fetch interceptor installed`);
+  logDebug('Passive fetch interceptor installed');
 
 })();

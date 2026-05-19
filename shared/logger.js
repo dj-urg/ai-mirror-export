@@ -9,7 +9,8 @@
  */
 
 // Configuration
-const DEBUG_MODE = false; // Set to true for development, false for production
+const IS_PRODUCTION = true; // Set to false to enable all console output during development
+const DEBUG_MODE = false;   // Set to true (with IS_PRODUCTION=false) for verbose debug logs
 
 // Log levels
 const LogLevel = {
@@ -27,6 +28,12 @@ const LogLevel = {
 function redactSensitiveData(data) {
   if (!data || typeof data !== 'object') {
     return data;
+  }
+
+  // Error properties (message, name, stack) are non-enumerable and lost in spread.
+  // Convert to a plain object; drop stack to avoid leaking internal file paths.
+  if (data instanceof Error) {
+    return { name: data.name, message: data.message };
   }
 
   // Create shallow copy to avoid mutating original
@@ -97,7 +104,7 @@ function redactSensitiveData(data) {
  * @param {any} data - Optional data to log
  */
 function logDebug(platform, message, data = null) {
-  if (!DEBUG_MODE) return;
+  if (IS_PRODUCTION || !DEBUG_MODE) return;
 
   if (data) {
     const redacted = redactSensitiveData(data);
@@ -114,6 +121,7 @@ function logDebug(platform, message, data = null) {
  * @param {any} data - Optional data to log
  */
 function logInfo(platform, message, data = null) {
+  if (IS_PRODUCTION) return;
   if (data) {
     const redacted = redactSensitiveData(data);
     console.log(`[${platform}]`, message, redacted);
@@ -129,6 +137,7 @@ function logInfo(platform, message, data = null) {
  * @param {any} data - Optional data to log
  */
 function logWarn(platform, message, data = null) {
+  if (IS_PRODUCTION) return;
   if (data) {
     const redacted = redactSensitiveData(data);
     console.warn(`[${platform}] [WARN]`, message, redacted);
@@ -144,6 +153,7 @@ function logWarn(platform, message, data = null) {
  * @param {any} data - Optional data to log
  */
 function logError(platform, message, data = null) {
+  if (IS_PRODUCTION) return;
   if (data) {
     const redacted = redactSensitiveData(data);
     console.error(`[${platform}] [ERROR]`, message, redacted);

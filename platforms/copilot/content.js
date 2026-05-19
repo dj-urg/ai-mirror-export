@@ -15,7 +15,8 @@
   const SOURCE_ID = 'copilot-exporter-inject';
 
   // Logging configuration
-  const DEBUG_MODE = false; // Set to true for development, false for production
+  const IS_PRODUCTION = true;
+  const DEBUG_MODE = false;
 
   // Memory management configuration
   const MAX_STORED_CONVERSATIONS = 50;
@@ -26,8 +27,29 @@
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
 
-  // Generate a cryptographic secret for message signing
-  const SECRET_KEY = generateSecretKey();
+  // Read the signing secret written by inject.js (MAIN world) to the dataset.
+  // Both scripts run at document_start before any page script executes.
+  // The spec does not guarantee MAIN-before-ISOLATED ordering, so we install a
+  // MutationObserver as a fallback: if inject.js hasn't written the attribute
+  // yet, the observer fires as a microtask after inject.js completes — still
+  // before the HTML parser resumes and before any page script runs.
+  let SECRET_KEY = document.documentElement.dataset.copilotExporterSecret || null;
+  if (SECRET_KEY) {
+    delete document.documentElement.dataset.copilotExporterSecret;
+  } else {
+    const _secretObserver = new MutationObserver(() => {
+      const s = document.documentElement.dataset.copilotExporterSecret;
+      if (s) {
+        SECRET_KEY = s;
+        delete document.documentElement.dataset.copilotExporterSecret;
+        _secretObserver.disconnect();
+      }
+    });
+    _secretObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-copilot-exporter-secret']
+    });
+  }
 
   /**
    * Redact sensitive information from log data
@@ -62,6 +84,7 @@
   }
 
   function logInfo(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.log(`[${PLATFORM}]`, message, redactSensitiveData(data));
     } else {
@@ -70,6 +93,7 @@
   }
 
   function logWarn(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.warn(`[${PLATFORM}] [WARN]`, message, redactSensitiveData(data));
     } else {
@@ -78,20 +102,12 @@
   }
 
   function logError(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.error(`[${PLATFORM}] [ERROR]`, message, redactSensitiveData(data));
     } else {
       console.error(`[${PLATFORM}] [ERROR]`, message);
     }
-  }
-
-  /**
-   * Generate a cryptographic secret key
-   */
-  function generateSecretKey() {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
   /**
@@ -176,20 +192,6 @@
     }
     return result === 0;
   }
-
-  /**
-   * Inject secret key into page for inject.js to use
-   */
-  function injectSecretIntoPage() {
-    const secretElement = document.createElement('meta');
-    secretElement.name = 'copilot-exporter-secret';
-    secretElement.content = SECRET_KEY;
-    secretElement.style.display = 'none';
-    (document.head || document.documentElement).appendChild(secretElement);
-  }
-
-  // Inject secret as early as possible
-  injectSecretIntoPage();
 
   /**
    * Listen for messages from the injected page script

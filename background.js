@@ -9,6 +9,11 @@ import { extractChatGPTConversation, generateMessageUrlsCSV, generateDonorContex
 import { EXTENSION_CONFIG } from './config/settings.js';
 import { escapeCSVField, generateCSV, createCSVBlob, generateFilename } from './utils/csv.js';
 
+// In production, suppress all console output to avoid leaking operational
+// details and internal state to the browser console.
+const IS_PRODUCTION = true;
+const _console = IS_PRODUCTION ? { log: () => {}, warn: () => {}, error: () => {} } : console;
+
 
 
 
@@ -37,7 +42,7 @@ const ClaudeHandler = {
    */
   flattenConversationData(convJson) {
     if (!convJson || !Array.isArray(convJson.chat_messages)) {
-      console.warn('[Claude] Invalid conversation data: missing chat_messages');
+      _console.warn('[Claude] Invalid conversation data: missing chat_messages');
       return [];
     }
 
@@ -68,7 +73,7 @@ const ClaudeHandler = {
 
         rows.push(row);
       } catch (error) {
-        console.error('[Claude] Error processing message:', error);
+        _console.error('[Claude] Error processing message:', error);
         // Continue with next message
       }
     }
@@ -102,7 +107,7 @@ const CopilotHandler = {
    */
   flattenConversationData(convJson) {
     if (!convJson || !Array.isArray(convJson.results)) {
-      console.warn('[Copilot] Invalid conversation data: missing results');
+      _console.warn('[Copilot] Invalid conversation data: missing results');
       return [];
     }
 
@@ -142,7 +147,7 @@ const CopilotHandler = {
 
         rows.push(row);
       } catch (error) {
-        console.error('[Copilot] Error processing result:', error);
+        _console.error('[Copilot] Error processing result:', error);
         // Continue with next result
       }
     }
@@ -226,24 +231,31 @@ function validateConversationData(data, platform) {
 
     default:
       // For unknown platforms, just ensure it's an object
-      console.warn(`[${platform}] Unknown platform, skipping detailed validation`);
+      _console.warn(`[${platform}] Unknown platform, skipping detailed validation`);
       break;
   }
 
   return { isValid: true, error: null };
 }
 
+const DONOR_ID_EXPIRY_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
+
 /**
  * Get or create a persistent donor ID stored in local extension storage.
  * Returns { id, type } where type is "persistent" (storage worked) or
  * "session" (storage failed — ID is not stable across exports).
+ * IDs expire after 1 year and are regenerated on next export.
  */
 async function getOrCreateDonorId() {
   try {
-    const stored = await browser.storage.local.get('donor_id');
-    if (stored.donor_id) return { id: stored.donor_id, type: 'persistent' };
+    const stored = await browser.storage.local.get(['donor_id', 'donor_id_created']);
+    const { donor_id, donor_id_created } = stored;
+    if (donor_id && donor_id_created) {
+      const age = Date.now() - new Date(donor_id_created).getTime();
+      if (age < DONOR_ID_EXPIRY_MS) return { id: donor_id, type: 'persistent' };
+    }
     const id = crypto.randomUUID();
-    await browser.storage.local.set({ donor_id: id });
+    await browser.storage.local.set({ donor_id: id, donor_id_created: new Date().toISOString() });
     return { id, type: 'persistent' };
   } catch {
     return { id: crypto.randomUUID(), type: 'session' };
@@ -258,18 +270,18 @@ async function handleConversationData(message) {
   const conversationData = message.payload;
 
   if (!conversationData) {
-    console.error(`[${platform}] No conversation data in message`);
+    _console.error(`[${platform}] No conversation data in message`);
     return;
   }
 
   // Validate conversation data
   const validation = validateConversationData(conversationData, platform);
   if (!validation.isValid) {
-    console.error(`[${platform}] Invalid conversation data:`, validation.error);
+    _console.error(`[${platform}] Invalid conversation data:`, validation.error);
     return;
   }
 
-  console.log(`[${platform}] Processing conversation data (validated)`);
+  _console.log(`[${platform}] Processing conversation data (validated)`);
 
   try {
     const { id: donorId, type: donorIdType } = await getOrCreateDonorId();
@@ -319,7 +331,7 @@ async function handleConversationData(message) {
           });
         }
       } else {
-        console.error('[ChatGPT] Extractor function not found');
+        _console.error('[ChatGPT] Extractor function not found');
         return;
       }
     } else if (platform === 'claude' && ClaudeHandler) {
@@ -337,7 +349,7 @@ async function handleConversationData(message) {
         ...row
       }));
     } else {
-      console.error(`[${platform}] No handler found for platform`);
+      _console.error(`[${platform}] No handler found for platform`);
       return;
     }
 
@@ -353,7 +365,7 @@ async function handleConversationData(message) {
         content: csv
       });
     } else if (csvFiles.length === 0) {
-      console.warn(`[${platform}] No data extracted from conversation`);
+      _console.warn(`[${platform}] No data extracted from conversation`);
       return;
     }
 
@@ -370,7 +382,7 @@ async function handleConversationData(message) {
           filename: file.filename,
           saveAs: false
         }).then(() => {
-          console.log(`[${platform}] ✓ Download triggered`, {
+          _console.log(`[${platform}] ✓ Download triggered`, {
             filename: file.filename
           });
 
@@ -378,14 +390,14 @@ async function handleConversationData(message) {
             URL.revokeObjectURL(url);
           }, 1000);
         }).catch(error => {
-          console.error(`[${platform}] ✗ Download failed:`, error);
+          _console.error(`[${platform}] ✗ Download failed:`, error);
           URL.revokeObjectURL(url);
         });
       }, index * 500);
     });
 
   } catch (error) {
-    console.error(`[${platform}] Error processing conversation data:`, error);
+    _console.error(`[${platform}] Error processing conversation data:`, error);
   }
 }
 
@@ -395,7 +407,7 @@ async function handleConversationData(message) {
 browser.runtime.onMessage.addListener((message, sender) => {
   // Proper sender validation
   if (!sender || sender.id !== browser.runtime.id) {
-    console.warn('[Background] Message from unauthorized sender:', sender?.id);
+    _console.warn('[Background] Message from unauthorized sender:', sender?.id);
     return;
   }
 
@@ -407,46 +419,37 @@ browser.runtime.onMessage.addListener((message, sender) => {
         .filter(platform => platform.enabled)
         .reduce((acc, platform) => acc.concat(platform.domains || []), []);
 
-      if (!allowedDomains.some(domain => url.hostname.endsWith(domain))) {
-        console.warn('[Background] Message from unauthorized domain:', url.hostname);
+      if (!allowedDomains.some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`))) {
+        _console.warn('[Background] Message from unauthorized domain:', url.hostname);
         return;
       }
     } catch (error) {
-      console.warn('[Background] Invalid URL in sender tab:', error);
+      _console.warn('[Background] Invalid URL in sender tab:', error);
       return;
     }
   }
 
   // Validate message structure
   if (!message || typeof message.type !== 'string') {
-    console.warn('[Background] Invalid message structure:', message);
+    _console.warn('[Background] Invalid message structure:', message);
     return;
   }
 
   // Handle ChatGPT conversation data
   if (message.type === 'CHATGPT_CONVERSATION_DATA') {
-    handleConversationData({
-      platform: message.platform || 'chatgpt',
-      payload: message.payload
-    });
+    handleConversationData({ platform: 'chatgpt', payload: message.payload });
     return false;
   }
 
   // Handle Claude conversation data
   if (message.type === 'CLAUDE_CONVERSATION_DATA') {
-    handleConversationData({
-      platform: message.platform || 'claude',
-      payload: message.payload
-    });
+    handleConversationData({ platform: 'claude', payload: message.payload });
     return false;
   }
 
   // Handle Copilot conversation data
   if (message.type === 'COPILOT_CONVERSATION_DATA') {
-    handleConversationData({
-      platform: message.platform || 'copilot',
-      payload: message.payload
-    });
+    handleConversationData({ platform: 'copilot', payload: message.payload });
     return false;
   }
 
@@ -456,7 +459,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
   return false;
 });
 
-console.log('AI Chat Exporter: Main background script loaded at ' + new Date().toISOString());
+_console.log('AI Chat Exporter: Main background script loaded at ' + new Date().toISOString());
 
 // Runtime Integrity Monitoring
 // Register critical functions for integrity checking
@@ -483,7 +486,7 @@ function registerCriticalFunctions() {
       functionFingerprints.set(name, hash);
     }
   }
-  console.log('[Integrity] Registered', functionFingerprints.size, 'critical functions');
+  _console.log('[Integrity] Registered', functionFingerprints.size, 'critical functions');
 }
 
 function verifyIntegrity() {
@@ -492,7 +495,7 @@ function verifyIntegrity() {
   for (const [name, expectedHash] of functionFingerprints.entries()) {
     const func = criticalFunctions[name];
     if (!func) {
-      console.error('[Integrity] Critical function missing:', name);
+      _console.error('[Integrity] Critical function missing:', name);
       tamperedCount++;
       continue;
     }
@@ -505,15 +508,15 @@ function verifyIntegrity() {
     }
 
     if (actualHash !== expectedHash) {
-      console.error('[Integrity] Function tampering detected:', name);
+      _console.error('[Integrity] Function tampering detected:', name);
       tamperedCount++;
     }
   }
 
   if (tamperedCount === 0) {
-    console.log('[Integrity] All critical functions verified');
+    _console.log('[Integrity] All critical functions verified');
   } else {
-    console.error('[Integrity] Tampering detected in', tamperedCount, 'function(s)');
+    _console.error('[Integrity] Tampering detected in', tamperedCount, 'function(s)');
   }
 
   return tamperedCount === 0;
@@ -534,5 +537,5 @@ setTimeout(() => {
 
 // Global error handler
 self.addEventListener('unhandledrejection', event => {
-  console.error('[Background] Unhandled rejection:', event.reason);
+  _console.error('[Background] Unhandled rejection:', event.reason);
 });

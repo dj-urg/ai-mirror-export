@@ -13,7 +13,8 @@
   const SOURCE_ID = 'copilot-exporter-inject';
 
   // Logging configuration
-  const DEBUG_MODE = false; // Set to true for development, false for production
+  const IS_PRODUCTION = true;
+  const DEBUG_MODE = false;
 
   // Response validation configuration
   const MAX_RESPONSE_SIZE = 100 * 1024 * 1024; // 100MB
@@ -21,8 +22,17 @@
   // Store the original fetch function
   const originalFetch = window.fetch;
 
-  // Get secret key from content script
-  let SECRET_KEY = null;
+  // Generate the signing secret here in the MAIN world at document_start,
+  // before any page scripts execute. Write it to a dataset attribute so
+  // content.js (isolated world) — which also runs at document_start — can
+  // read it once and immediately delete it. By the time any page script runs,
+  // the attribute is gone and the secret exists only in these two closures.
+  const storedSecret = (() => {
+    const array = new Uint8Array(32);
+    crypto.getRandomValues(array);
+    return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
+  })();
+  document.documentElement.dataset.copilotExporterSecret = storedSecret;
 
   /**
    * Redact sensitive information from log data
@@ -64,6 +74,7 @@
    * Log info message
    */
   function logInfo(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.log(`[${PLATFORM}]`, message, redactSensitiveData(data));
     } else {
@@ -75,6 +86,7 @@
    * Log warning message
    */
   function logWarn(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.warn(`[${PLATFORM}] [WARN]`, message, redactSensitiveData(data));
     } else {
@@ -86,6 +98,7 @@
    * Log error message
    */
   function logError(message, data = null) {
+    if (IS_PRODUCTION) return;
     if (data) {
       console.error(`[${PLATFORM}] [ERROR]`, message, redactSensitiveData(data));
     } else {
@@ -125,21 +138,6 @@
     return { isValid: true };
   }
 
-  /**
-   * Get secret key from meta tag injected by content script
-   */
-  function getSecretKey() {
-    if (SECRET_KEY) return SECRET_KEY;
-
-    const meta = document.querySelector('meta[name="copilot-exporter-secret"]');
-    if (meta) {
-      SECRET_KEY = meta.content;
-      return SECRET_KEY;
-    }
-
-    // If not found, wait and try again
-    return null;
-  }
 
   /**
    * Sign a message using HMAC-SHA256
@@ -243,12 +241,11 @@
                 conversationId: conversationId
               };
 
-              // Get secret key
-              const secret = getSecretKey();
-              if (!secret) {
-                console.warn(`[${PLATFORM}] Secret key not available, cannot send message`);
+              if (!storedSecret) {
+                logWarn('Secret key not available, cannot send message');
                 return;
               }
+              const secret = storedSecret;
 
               // Create message with timestamp and nonce
               const timestamp = Date.now();
