@@ -1,0 +1,22 @@
+module.exports = {
+  ignoreFiles: [
+    'venv/**',
+    'data/**',
+    'testing/**',
+    'test/**',
+    'tests/**',
+    'node_modules/**',
+    'web-ext-artifacts/**',
+    '.git/**',
+    '*.zip',
+    '*.xpi',
+    '*.md',
+    '*.py',
+    '*.pyc',
+    '__pycache__/**',
+    'updates.json',
+    'submission.zip',
+    'nodes.md',
+    'web-ext-config.js',
+  ],
+};
