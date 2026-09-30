@@ -10,7 +10,7 @@
 export const EXTENSION_CONFIG = {
   // Extension metadata
   name: 'AI Chat Exporter',
-  version: '2.1.0',
+  version: '2.1.1',
   description:
     'Export conversations from ChatGPT, Claude, and Co-pilot to CSV. All processing happens locally in your browser.',
 
