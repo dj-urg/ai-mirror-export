@@ -23,24 +23,21 @@ export const EXTENSION_CONFIG = {
       domains: ['chatgpt.com', 'chat.openai.com'],
       enabled: true,
       contentScript: 'platforms/chatgpt/content.js',
-      injectScript: 'platforms/chatgpt/inject.js',
-      backgroundHandler: 'chatgpt'
+      injectScript: 'platforms/chatgpt/inject.js'
     },
     claude: {
       name: 'Claude',
       domains: ['claude.ai'],
       enabled: true,
       contentScript: 'platforms/claude/content.js',
-      injectScript: 'platforms/claude/inject.js',
-      backgroundHandler: 'ClaudeHandler'
+      injectScript: 'platforms/claude/inject.js'
     },
     copilot: {
       name: 'Co-pilot',
       domains: ['copilot.microsoft.com', 'copilotstudio.microsoft.com'],
       enabled: true,
       contentScript: 'platforms/copilot/content.js',
-      injectScript: 'platforms/copilot/inject.js',
-      backgroundHandler: 'copilot'
+      injectScript: 'platforms/copilot/inject.js'
     }
   },
 
@@ -66,7 +63,6 @@ export const EXTENSION_CONFIG = {
  * @property {boolean} enabled               Whether platform is enabled
  * @property {string} contentScript          Path to content script
  * @property {string} [injectScript]         Path to inject script (optional)
- * @property {string} backgroundHandler      Background handler identifier
  */
 
 /**

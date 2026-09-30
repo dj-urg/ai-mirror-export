@@ -32,7 +32,7 @@
     crypto.getRandomValues(array);
     return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
   })();
-  document.documentElement.dataset.copilotExporterSecret = storedSecret;
+  document.documentElement.setAttribute('data-copilot-exporter-secret', storedSecret);
 
   /**
    * Redact sensitive information from log data
@@ -71,18 +71,6 @@
   }
 
   /**
-   * Log info message
-   */
-  function logInfo(message, data = null) {
-    if (IS_PRODUCTION) return;
-    if (data) {
-      console.log(`[${PLATFORM}]`, message, redactSensitiveData(data));
-    } else {
-      console.log(`[${PLATFORM}]`, message);
-    }
-  }
-
-  /**
    * Log warning message
    */
   function logWarn(message, data = null) {
@@ -94,36 +82,10 @@
     }
   }
 
-  /**
-   * Log error message
-   */
-  function logError(message, data = null) {
-    if (IS_PRODUCTION) return;
-    if (data) {
-      console.error(`[${PLATFORM}] [ERROR]`, message, redactSensitiveData(data));
-    } else {
-      console.error(`[${PLATFORM}] [ERROR]`, message);
-    }
-  }
-
-  /**
-   * Validate response before processing
-   * @param {Response} response - The fetch response
-   * @returns {Object} Validation result with isValid and error properties
-   */
   function validateResponse(response) {
-    // Check if response is OK
     if (!response.ok) {
       return { isValid: false, error: `Response not OK: ${response.status}` };
     }
-
-    // Validate Content-Type
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      return { isValid: false, error: `Invalid content type: ${contentType}` };
-    }
-
-    // Check response size
     const contentLength = response.headers.get('content-length');
     if (contentLength) {
       const size = parseInt(contentLength, 10);
@@ -138,28 +100,6 @@
     return { isValid: true };
   }
 
-
-  /**
-   * Sign a message using HMAC-SHA256
-   */
-  async function signMessage(message, secret) {
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secret);
-    const messageData = encoder.encode(message);
-
-    const key = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
-
-    const signature = await crypto.subtle.sign('HMAC', key, messageData);
-    return Array.from(new Uint8Array(signature), byte =>
-      byte.toString(16).padStart(2, '0')
-    ).join('');
-  }
 
   /**
    * Extract conversation ID from Copilot API URL
@@ -245,33 +185,16 @@
                 logWarn('Secret key not available, cannot send message');
                 return;
               }
-              const secret = storedSecret;
 
-              // Create message with timestamp and nonce
-              const timestamp = Date.now();
-              const nonce = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
-
-              const messageData = {
-                type: MESSAGE_TYPE,
-                payload: payloadWithId,
-                source: SOURCE_ID,
-                platform: 'copilot',
-                timestamp: timestamp,
-                nonce: nonce
-              };
-
-              // Sign the message
-              const messageString = JSON.stringify(messageData);
-              const signature = await signMessage(messageString, secret);
-
-              // Send signed message to content script via postMessage
-              window.postMessage(
-                {
-                  ...messageData,
-                  signature: signature
-                },
-                window.location.origin
+              const signedMessage = await MessageSecurity.createSignedMessage(
+                payloadWithId,
+                MESSAGE_TYPE,
+                SOURCE_ID,
+                'copilot',
+                storedSecret
               );
+
+              window.postMessage(signedMessage, window.location.origin);
 
               logDebug('Captured conversation data (signed)', {
                 conversationId: conversationId,
@@ -295,6 +218,6 @@
     return response;
   };
 
-  logInfo('Fetch interceptor installed in page context');
+  logDebug('Passive fetch interceptor installed');
 
 })();

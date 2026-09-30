@@ -40,7 +40,7 @@
     crypto.getRandomValues(array);
     return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
   })();
-  document.documentElement.dataset.chatgptExporterSecret = storedSecret;
+  document.documentElement.setAttribute('data-chatgpt-exporter-secret', storedSecret);
 
   // ============================================================================
   // LOGGING
@@ -83,10 +83,6 @@
     if (!response.ok) {
       return { isValid: false, error: `Response not OK: ${response.status}` };
     }
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      return { isValid: false, error: `Invalid content type: ${contentType}` };
-    }
     const contentLength = response.headers.get('content-length');
     if (contentLength) {
       const size = parseInt(contentLength, 10);
@@ -103,7 +99,7 @@
   // ============================================================================
 
   async function sendDataToContentScript(data) {
-    if (!data || (!data.mapping && !data.conversation_id)) return;
+    if (!data || (!data.mapping && !data.conversation_id && !Array.isArray(data.messages))) return;
 
     const conversationId = data.conversation_id || data.id;
     if (conversationId) {
@@ -153,11 +149,10 @@
         url = String(request);
       }
 
-      const isConversationRequest = url && (
-        url.includes('/backend-api/conversation/') ||
-        url.includes('/api/conversation/') ||
-        url.match(/\/conversation\/[a-f0-9-]+/i)
-      );
+      // Match /backend-api/conversation/{uuid} or /backend-api/conversations/{uuid}
+      // The UUID must be the last path segment (no sub-resources like /text-docs, /init).
+      const isConversationRequest = url &&
+        /\/conversations?\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[?#].*)?$/i.test(url);
 
       if (isConversationRequest) {
         const validation = validateResponse(response);
@@ -180,7 +175,7 @@
               logWarn('Invalid data structure: not an object');
               return;
             }
-            if (data.mapping || data.conversation_id) {
+            if (data.mapping || data.conversation_id || Array.isArray(data.messages)) {
               await sendDataToContentScript(data);
             }
           })

@@ -39,7 +39,7 @@
     crypto.getRandomValues(array);
     return Array.from(array, b => b.toString(16).padStart(2, '0')).join('');
   })();
-  document.documentElement.dataset.claudeExporterSecret = storedSecret;
+  document.documentElement.setAttribute('data-claude-exporter-secret', storedSecret);
 
   // ============================================================================
   // LOGGING
@@ -82,10 +82,6 @@
     if (!response.ok) {
       return { isValid: false, error: `Response not OK: ${response.status}` };
     }
-    const contentType = response.headers.get('content-type');
-    if (!contentType || !contentType.includes('application/json')) {
-      return { isValid: false, error: `Invalid content type: ${contentType}` };
-    }
     const contentLength = response.headers.get('content-length');
     if (contentLength) {
       const size = parseInt(contentLength, 10);
@@ -113,33 +109,16 @@
       logWarn('Secret key not available, cannot send message');
       return;
     }
-    const secret = storedSecret;
 
-    const timestamp = Date.now();
-    const nonce = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
-
-    const messageData = {
-      type: MESSAGE_TYPE,
-      payload: data,
-      source: SOURCE_ID,
-      platform: 'claude',
-      timestamp,
-      nonce
-    };
-
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(secret);
-    const msgData = encoder.encode(JSON.stringify(messageData));
-
-    const key = await crypto.subtle.importKey(
-      'raw', keyData, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+    const signedMessage = await MessageSecurity.createSignedMessage(
+      data,
+      MESSAGE_TYPE,
+      SOURCE_ID,
+      'claude',
+      storedSecret
     );
-    const sigBuffer = await crypto.subtle.sign('HMAC', key, msgData);
-    const signature = Array.from(new Uint8Array(sigBuffer), b =>
-      b.toString(16).padStart(2, '0')
-    ).join('');
 
-    window.postMessage({ ...messageData, signature }, window.location.origin);
+    window.postMessage(signedMessage, window.location.origin);
 
     logDebug('Captured conversation data', {
       uuid: conversationId,

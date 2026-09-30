@@ -735,6 +735,27 @@ strong {
   opacity: 1; /* Removed opacity to maintain contrast */
 }
 
+/* Button Secondary Modifier — outlined, used for reload prompt */
+.btn--secondary {
+  background-color: transparent;
+  color: var(--color-primary);
+  border: 1.5px solid var(--color-primary);
+}
+
+.btn--secondary:hover:not(:disabled) {
+  background-color: rgba(0, 96, 223, 0.07);
+}
+
+.btn--secondary:active:not(:disabled) {
+  background-color: rgba(0, 96, 223, 0.14);
+  transform: translateY(1px);
+}
+
+.btn--secondary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
 /* Responsive button sizing for narrow viewports */
 @media (max-width: 360px) {
   .btn {

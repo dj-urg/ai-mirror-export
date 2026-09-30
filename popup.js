@@ -94,8 +94,17 @@ const state = {
     isPolling: false,
     lastUpdateTime: 0,
     debounceTimeout: null
+  },
+
+  // Capture wait state — tracks how long we've been waiting for a conversation
+  capture: {
+    waitingSince: null,   // timestamp when we first found no data for this ID
+    waitingForId: null    // which conversationId we're waiting for
   }
 };
+
+// How long to show "loading" before switching to the "not captured" warning.
+const CAPTURE_LOADING_TIMEOUT_MS = 15000;
 
 // ============================================================================
 // RATE LIMITING CONFIGURATION
@@ -621,10 +630,10 @@ function updateFilePreview(title) {
       .replace(/[^a-z0-9\u00a0-\uffff_-]/gi, '_').trim();
     files = [
       {
-        badge: 'Export',
+        badge: platformName,
         badgeClass: 'default',
         name: sanitizedTitle || 'conversation',
-        desc: `${platformName} conversation`
+        desc: `${platformName} conversation export`
       }
     ];
   }
@@ -681,6 +690,45 @@ function hideFilePreview() {
 
   const dataNotice = document.getElementById('dataNotice');
   if (dataNotice) dataNotice.hidden = true;
+}
+
+/**
+ * Show the reload-page prompt button
+ */
+function showReloadPrompt() {
+  const btn = document.getElementById('reloadBtn');
+  if (btn) btn.hidden = false;
+}
+
+/**
+ * Hide the reload-page prompt button
+ */
+function hideReloadPrompt() {
+  const btn = document.getElementById('reloadBtn');
+  if (btn) btn.hidden = true;
+}
+
+/**
+ * Reload the active tab and transition back to the loading state
+ */
+async function handleReloadClick() {
+  const tab = state.currentTab;
+  if (!tab) return;
+
+  // Reset the capture timer so the loading spinner shows after reload
+  state.capture.waitingSince = Date.now();
+  state.capture.waitingForId = state.platform.conversationId;
+
+  hideReloadPrompt();
+  updateStatus('loading', 'Reloading page...', 'Capturing conversation data — this takes a moment.');
+
+  try {
+    await browser.tabs.reload(tab.id);
+  } catch (e) {
+    // Reload failed — restore the prompt
+    showReloadPrompt();
+    updateStatus('warning', 'Could not reload the page.', 'Please reload manually, then reopen this popup.');
+  }
 }
 
 // ============================================================================
@@ -836,6 +884,7 @@ async function checkConversationData(tab, platform, conversationId) {
  * Update UI based on current tab and platform detection
  */
 async function checkAndUpdateUI() {
+  hideReloadPrompt(); // Reset on every check; shown explicitly when needed
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
@@ -863,6 +912,7 @@ async function checkAndUpdateUI() {
 
     if (!platform) {
       displayError('UNSUPPORTED_PLATFORM');
+      hideFilePreview();
       return;
     }
 
@@ -877,6 +927,7 @@ async function checkAndUpdateUI() {
         platformId: platform.id,
         customDetail: `Please open or start a conversation on ${platform.name}.`
       });
+      hideFilePreview();
       return;
     }
 
@@ -886,7 +937,9 @@ async function checkAndUpdateUI() {
         const { hasData, title } = await checkConversationData(tab, platform, conversationId);
 
         if (hasData) {
-          // Data is ready for export
+          // Data is ready for export — clear the loading timer
+          state.capture.waitingSince = null;
+          state.capture.waitingForId = null;
           updateStatus(
             'success',
             `Ready to export ${platform.name} conversation.`,
@@ -895,12 +948,30 @@ async function checkAndUpdateUI() {
           updateExportButton(true);
           updateFilePreview(title || 'conversation');
         } else {
-          // Conversation not yet captured — passive interceptor requires a fresh page load
-          updateStatus(
-            'warning',
-            'Conversation not captured yet.',
-            'Please reload the page, then reopen this popup to export.'
-          );
+          const now = Date.now();
+          // Reset timer when we move to a different conversation
+          if (state.capture.waitingForId !== conversationId) {
+            state.capture.waitingSince = now;
+            state.capture.waitingForId = conversationId;
+          }
+          const elapsed = now - (state.capture.waitingSince || now);
+
+          if (elapsed < CAPTURE_LOADING_TIMEOUT_MS) {
+            // Brief loading phase — data may arrive any second
+            updateStatus(
+              'loading',
+              'Capturing conversation data...',
+              'This usually takes a few seconds.'
+            );
+          } else {
+            // Timed out — prompt the user to reload the page
+            showReloadPrompt();
+            updateStatus(
+              'info',
+              'Reload the page to export this conversation.',
+              'The extension captures data as the page loads.'
+            );
+          }
           updateExportButton(false);
           hideFilePreview();
         }
@@ -950,6 +1021,7 @@ async function checkAndUpdateUI() {
       originalError: error,
       customDetail: 'Error accessing tab information. Please try closing and reopening the popup.'
     });
+    hideFilePreview();
   }
 }
 
@@ -1090,10 +1162,10 @@ async function handleExportClick() {
       // Reset button to normal state (no spinner)
       updateExportButton(false, 'Export to CSV', false);
 
-      // Auto-close after 2 seconds
+      // Auto-close after 3 seconds
       setTimeout(() => {
         window.close();
-      }, 2000);
+      }, 3000);
     } else {
       // Export failed with error from content script
       const errorMessage = response?.error || 'Unknown error occurred';
@@ -1366,6 +1438,9 @@ function initMainUI() {
   const exportBtn = document.getElementById('exportBtn');
   exportBtn.addEventListener('click', handleExportClick);
 
+  const reloadBtn = document.getElementById('reloadBtn');
+  if (reloadBtn) reloadBtn.addEventListener('click', handleReloadClick);
+
   document.addEventListener('keydown', handleKeyboardNavigation);
 
   setupTabOrder();
@@ -1373,7 +1448,7 @@ function initMainUI() {
   setupEventDrivenUpdates();
   checkAndUpdateUI();
 
-  startPolling(10000);
+  startPolling(2000);
   verifyRuntimeIntegrity();
 }
 

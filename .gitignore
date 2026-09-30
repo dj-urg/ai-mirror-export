@@ -198,8 +198,11 @@ yarn.lock
 # Testing and Coverage
 # ============================================================================
 
-# Test output files in root directory only (allow tests/*.csv)
-/testing
+# Test data and output folders
+testing/
+test/
+tests/
+**/*.csv
 /*.csv
 /conversation_*.csv
 /chatgpt_*.csv

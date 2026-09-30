@@ -52,7 +52,7 @@
     },
     {
       "matches": [
-        "https://claude.ai/chat/*"
+        "https://claude.ai/*"
       ],
       "js": [
         "shared/message-security.js",
@@ -63,7 +63,7 @@
     },
     {
       "matches": [
-        "https://claude.ai/chat/*"
+        "https://claude.ai/*"
       ],
       "js": [
         "shared/message-security.js",

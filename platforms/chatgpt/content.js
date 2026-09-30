@@ -27,27 +27,29 @@
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
 
-  // Read the signing secret written by inject.js (MAIN world) to the dataset.
-  // Both scripts run at document_start before any page script executes.
+  // Read the signing secret written by inject.js (MAIN world) via setAttribute.
+  // Using getAttribute/removeAttribute is XRay-wrapper-safe in Firefox content
+  // scripts. Both scripts run at document_start before any page script executes.
   // The spec does not guarantee MAIN-before-ISOLATED ordering, so we install a
   // MutationObserver as a fallback: if inject.js hasn't written the attribute
-  // yet, the observer fires as a microtask after inject.js completes — still
-  // before the HTML parser resumes and before any page script runs.
-  let SECRET_KEY = document.documentElement.dataset.chatgptExporterSecret || null;
+  // yet, the observer fires after inject.js completes — still before any page
+  // script runs.
+  const _ATTR = 'data-chatgpt-exporter-secret';
+  let SECRET_KEY = document.documentElement.getAttribute(_ATTR) || null;
   if (SECRET_KEY) {
-    delete document.documentElement.dataset.chatgptExporterSecret;
+    document.documentElement.removeAttribute(_ATTR);
   } else {
     const _secretObserver = new MutationObserver(() => {
-      const s = document.documentElement.dataset.chatgptExporterSecret;
+      const s = document.documentElement.getAttribute(_ATTR);
       if (s) {
         SECRET_KEY = s;
-        delete document.documentElement.dataset.chatgptExporterSecret;
+        document.documentElement.removeAttribute(_ATTR);
         _secretObserver.disconnect();
       }
     });
     _secretObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-chatgpt-exporter-secret']
+      attributeFilter: [_ATTR]
     });
   }
 
@@ -192,7 +194,7 @@
 
     // Verify source
     if (event.data.source !== SOURCE_ID) {
-      console.warn(`[${PLATFORM}] Message source mismatch:`, event.data.source);
+      logWarn('Message source mismatch', { source: event.data.source });
       return;
     }
 
@@ -223,22 +225,15 @@
       return;
     }
 
-    if (!conversationData.mapping) {
-      logWarn('Received conversation data without mapping');
+    // Extract conversation ID — require at least a conversation_id
+    const conversationId = conversationData.conversation_id || conversationData.id || null;
+    if (!conversationId) {
+      logWarn('Received conversation data without conversation_id');
       return;
     }
 
-    // Extract conversation ID
-    const conversationId = conversationData.conversation_id || conversationData.id || 'unknown';
-
     // Store in memory with memory management
     storeConversation(conversationId, conversationData);
-
-    logDebug('Stored conversation data', {
-      conversationId: conversationId,
-      nodeCount: Object.keys(conversationData.mapping || {}).length,
-      totalCaptured: capturedConversations.size
-    });
 
     // AUTOMATIC DOWNLOAD DISABLED FOR POLICY COMPLIANCE
     // Data is stored in memory (capturedConversations) and waits for manual export via popup
@@ -260,13 +255,13 @@
   browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Proper sender validation
     if (!sender || sender.id !== browser.runtime.id) {
-      console.warn(`[${PLATFORM}] Message from unauthorized sender:`, sender?.id);
+      logWarn('Message from unauthorized sender');
       return;
     }
 
     // Validate message structure
     if (!message || typeof message.type !== 'string') {
-      console.warn(`[${PLATFORM}] Invalid message structure:`, message);
+      logWarn('Invalid message structure');
       return;
     }
 

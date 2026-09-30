@@ -7,6 +7,10 @@
  *   CSV C: Sources                      (one row per source: search results + citations)
  *   CSV D: Message URLs                 (one row per URL from safe_urls)
  *   CSV E: Donor context                (user profile and model instructions)
+ *
+ * Supports two ChatGPT API formats:
+ *   Old format: { mapping: { nodeId: { id, message, parent, children } }, ... }
+ *   New format: { messages: [ { id, author, content, metadata } ], safe_urls, ... }
  */
 import { escapeCSVField } from '../../utils/csv.js';
 
@@ -80,6 +84,48 @@ function computeNodeDepths(mapping) {
 }
 
 /**
+ * Normalize a conversation into a unified flat array of node objects,
+ * regardless of whether the data uses the old mapping format or the new
+ * messages array format.
+ *
+ * Each returned object has the shape:
+ *   { nodeId: string, message: object, parent: string|null, depth: number|'' }
+ *
+ * Old mapping format: BFS from root to compute depth; parent from node.parent.
+ * New messages array: array index used as depth; parent from message.metadata.parent_id.
+ */
+function normalizeMessages(conversationData) {
+    // Old format: mapping object keyed by node ID
+    if (conversationData.mapping && typeof conversationData.mapping === 'object') {
+        const mapping = conversationData.mapping;
+        const nodeDepths = computeNodeDepths(mapping);
+        const nodes = [];
+        for (const nodeId in mapping) {
+            const node = mapping[nodeId];
+            nodes.push({
+                nodeId,
+                message: node.message || null,
+                parent: node.parent || null,
+                depth: nodeDepths.has(nodeId) ? nodeDepths.get(nodeId) : ''
+            });
+        }
+        return nodes;
+    }
+
+    // New format: flat messages array in chronological order
+    if (Array.isArray(conversationData.messages)) {
+        return conversationData.messages.map((message, index) => ({
+            nodeId: message.id || String(index),
+            message,
+            parent: message.metadata?.parent_id || null,
+            depth: index
+        }));
+    }
+
+    return [];
+}
+
+/**
  * Extract text content from message content object
  */
 function extractTextFromContent(content) {
@@ -97,7 +143,13 @@ function extractTextFromContent(content) {
             .join('\n');
     }
     if (contentType === 'thoughts' && Array.isArray(content.thoughts)) {
-        return content.thoughts.map(thought => thought.content || '').join('\n\n');
+        // Use summary (non-empty label) with fallback to content
+        return content.thoughts.map(thought => thought.summary || thought.content || '').join('\n\n');
+    }
+    if (contentType === 'reasoning_recap') {
+        // New format: content.content is a plain string; old format used content.parts
+        if (typeof content.content === 'string') return content.content;
+        if (Array.isArray(content.parts)) return content.parts.join('\n');
     }
     if (contentType === 'execution_output') return content.text || '';
     if (contentType === 'code') return content.text || '';
@@ -132,15 +184,14 @@ function extractImageIds(content) {
 }
 
 /**
- * Extract user profile from conversation (clean text only)
+ * Extract user profile from normalized nodes array (clean text only)
  */
-function extractUserProfile(mapping) {
-    for (const nodeId in mapping) {
-        const node = mapping[nodeId];
-        if (node.message?.content?.content_type === 'user_editable_context') {
-            const meta = node.message.metadata?.user_context_message_data;
+function extractUserProfile(nodes) {
+    for (const { message } of nodes) {
+        if (message?.content?.content_type === 'user_editable_context') {
+            const meta = message.metadata?.user_context_message_data;
             if (meta?.about_user_message) return meta.about_user_message.trim();
-            const profile = node.message.content.user_profile || '';
+            const profile = message.content.user_profile || '';
             const match = profile.match(/User profile:\s*```(.+?)```/s);
             return match ? match[1].trim() : '';
         }
@@ -149,15 +200,14 @@ function extractUserProfile(mapping) {
 }
 
 /**
- * Extract user instructions from conversation (clean text only)
+ * Extract user instructions from normalized nodes array (clean text only)
  */
-function extractUserInstructions(mapping) {
-    for (const nodeId in mapping) {
-        const node = mapping[nodeId];
-        if (node.message?.content?.content_type === 'user_editable_context') {
-            const meta = node.message.metadata?.user_context_message_data;
+function extractUserInstructions(nodes) {
+    for (const { message } of nodes) {
+        if (message?.content?.content_type === 'user_editable_context') {
+            const meta = message.metadata?.user_context_message_data;
             if (meta?.about_model_message) return meta.about_model_message.trim();
-            const instructions = node.message.content.user_instructions || '';
+            const instructions = message.content.user_instructions || '';
             const match = instructions.match(/```(.+?)```/s);
             return match ? match[1].trim() : '';
         }
@@ -166,25 +216,25 @@ function extractUserInstructions(mapping) {
 }
 
 /**
- * Count messages by role
+ * Count messages by role from normalized nodes array
  */
-function countMessagesByRole(mapping, role) {
+function countMessagesByRole(nodes, role) {
     let count = 0;
-    for (const nodeId in mapping) {
-        if (mapping[nodeId].message?.author?.role === role) count++;
+    for (const { message } of nodes) {
+        if (message?.author?.role === role) count++;
     }
     return count;
 }
 
 /**
  * Count all messages (excluding user_editable_context and model_editable_context)
+ * from normalized nodes array
  */
-function countAllMessages(mapping) {
+function countAllMessages(nodes) {
     let count = 0;
-    for (const nodeId in mapping) {
-        const node = mapping[nodeId];
-        if (node.message?.content) {
-            const ct = node.message.content.content_type;
+    for (const { message } of nodes) {
+        if (message?.content) {
+            const ct = message.content.content_type;
             if (ct !== 'user_editable_context' && ct !== 'model_editable_context') count++;
         }
     }
@@ -192,15 +242,13 @@ function countAllMessages(mapping) {
 }
 
 /**
- * Get default model slug from conversation
+ * Get default model slug from conversation data and normalized nodes array
  */
-function getDefaultModelSlug(conversationData) {
-    const mapping = conversationData.mapping || {};
-    for (const nodeId in mapping) {
-        const node = mapping[nodeId];
-        const slug = node.message?.metadata?.resolved_model_slug
-            || node.message?.metadata?.model_slug
-            || node.message?.metadata?.default_model_slug;
+function getDefaultModelSlug(conversationData, nodes) {
+    for (const { message } of nodes) {
+        const slug = message?.metadata?.resolved_model_slug
+            || message?.metadata?.model_slug
+            || message?.metadata?.default_model_slug;
         if (slug) return slug;
     }
     return '';
@@ -216,20 +264,20 @@ function getDefaultModelSlug(conversationData) {
  * user_profile and user_instructions are moved to CSV E (donor context).
  */
 function extractConversationMetadata(conversationData) {
-    const mapping = conversationData.mapping || {};
+    const nodes = normalizeMessages(conversationData);
 
     return {
         conversation_id: conversationData.conversation_id || conversationData.id || '',
         title: conversationData.title || '',
         create_time: unixToISO(conversationData.create_time),
         update_time: unixToISO(conversationData.update_time),
-        default_model_slug: conversationData.default_model_slug || getDefaultModelSlug(conversationData),
+        default_model_slug: conversationData.default_model_slug || getDefaultModelSlug(conversationData, nodes),
         memory_scope: conversationData.memory_scope || '',
         is_do_not_remember: Boolean(conversationData.is_do_not_remember),
-        num_messages: countAllMessages(mapping),
-        num_user_messages: countMessagesByRole(mapping, 'user'),
-        num_assistant_messages: countMessagesByRole(mapping, 'assistant'),
-        num_tool_messages: countMessagesByRole(mapping, 'tool')
+        num_messages: countAllMessages(nodes),
+        num_user_messages: countMessagesByRole(nodes, 'user'),
+        num_assistant_messages: countMessagesByRole(nodes, 'assistant'),
+        num_tool_messages: countMessagesByRole(nodes, 'tool')
     };
 }
 
@@ -265,20 +313,17 @@ function generateMetadataCSV(metadata) {
 
 /**
  * Extract all messages from conversation for CSV B.
- * Includes turn_number (BFS depth from root) and parent_id for ordering.
+ * Includes turn_number (BFS depth from root / array index) and parent_id.
  * safe_urls are moved to CSV D.
  */
 function extractConversationMessages(conversationData) {
     const messages = [];
-    const mapping = conversationData.mapping || {};
+    const nodes = normalizeMessages(conversationData);
     const conversationId = conversationData.conversation_id || conversationData.id || '';
-    const nodeDepths = computeNodeDepths(mapping);
 
-    for (const nodeId in mapping) {
-        const node = mapping[nodeId];
-        if (!node.message) continue;
+    for (const { nodeId, message, parent, depth } of nodes) {
+        if (!message) continue;
 
-        const message = node.message;
         const content = message.content;
         const contentType = content?.content_type || '';
 
@@ -289,8 +334,8 @@ function extractConversationMessages(conversationData) {
         messages.push({
             conversation_id: conversationId,
             node_id: message.id || nodeId,
-            parent_id: node.parent || '',
-            turn_number: nodeDepths.has(nodeId) ? nodeDepths.get(nodeId) : '',
+            parent_id: parent || '',
+            turn_number: depth,
             author_role: authorRole,
             content_type: contentType,
             text: extractTextFromContent(content),
@@ -322,6 +367,7 @@ function generateMessagesCSV(messages) {
         'parent_id',
         'turn_number',
         'author_role',
+        'tool_name',
         'content_type',
         'text',
         'create_time',
@@ -340,6 +386,7 @@ function generateMessagesCSV(messages) {
             parent_id: msg.parent_id,
             turn_number: msg.turn_number,
             author_role: msg.author_role,
+            tool_name: msg.tool_name,
             content_type: msg.content_type,
             text: msg.text,
             create_time: msg.create_time,
@@ -364,20 +411,22 @@ function generateMessagesCSV(messages) {
  *   grouped_webpages — ref.type value in content_references
  *
  * url_clean strips UTM tracking parameters for deduplication and analysis.
+ *
+ * Works with both old (mapping) and new (messages array) formats:
+ * - search_result_groups and content_references are in message.metadata in both formats
  */
 function extractSearchResults(conversationData) {
     const results = [];
-    const mapping = conversationData.mapping || {};
+    const nodes = normalizeMessages(conversationData);
     const conversationId = conversationData.conversation_id || conversationData.id || '';
 
-    for (const nodeId in mapping) {
-        const node = mapping[nodeId];
-        if (!node.message) continue;
+    for (const { nodeId, message } of nodes) {
+        if (!message) continue;
 
-        const messageId = node.message.id || nodeId;
+        const messageId = message.id || nodeId;
 
         // --- search_result_groups ---
-        const groups = node.message.metadata?.search_result_groups;
+        const groups = message.metadata?.search_result_groups;
         if (Array.isArray(groups)) {
             for (const group of groups) {
                 if (!Array.isArray(group.entries)) continue;
@@ -404,8 +453,8 @@ function extractSearchResults(conversationData) {
         // --- content_references (grouped_webpages) ---
         // Can appear in either the content object or metadata depending on message type
         const contentRefs =
-            node.message.content?.content_references ||
-            node.message.metadata?.content_references;
+            message.content?.content_references ||
+            message.metadata?.content_references;
 
         if (Array.isArray(contentRefs)) {
             for (const ref of contentRefs) {
@@ -479,29 +528,65 @@ function generateSearchResultsCSV(searchResults) {
 // ============================================================================
 
 /**
- * Normalize safe_urls from message metadata into one row per URL.
- * url_clean strips UTM parameters for deduplication.
+ * Normalize safe_urls from a conversation into one row per URL.
+ * url_clean strips UTM parameters and is used for deduplication, so the same
+ * article URL with and without ?utm_source=chatgpt.com produces only one row.
+ *
+ * URL sources (checked in priority order per message):
+ *   1. message.metadata.content_references[].safe_urls  (new format, per message)
+ *   2. message.metadata.safe_urls                        (old format, per message)
+ *
+ * Image CDN URLs (images.openai.com) are excluded — they are article thumbnails,
+ * not links shared in the conversation.
  */
 function extractMessageUrls(conversationData) {
     const urlRows = [];
-    const mapping = conversationData.mapping || {};
+    const seen = new Set();
+    const nodes = normalizeMessages(conversationData);
     const conversationId = conversationData.conversation_id || conversationData.id || '';
 
-    for (const nodeId in mapping) {
-        const node = mapping[nodeId];
-        if (!node.message) continue;
+    function isImageUrl(url) {
+        return url.includes('images.openai.com') ||
+            /\.(jpg|jpeg|png|gif|webp|svg|ico)(\?|$)/i.test(url);
+    }
 
-        const messageId = node.message.id || nodeId;
-        const urls = node.message.metadata?.safe_urls;
-        if (!Array.isArray(urls) || urls.length === 0) continue;
+    function addUrl(messageId, url) {
+        if (!url || isImageUrl(url)) return;
+        const clean = stripUtmParams(url);
+        const key = `${messageId}\x00${clean}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        urlRows.push({
+            conversation_id: conversationId,
+            message_id: messageId,
+            url,
+            url_clean: clean
+        });
+    }
 
-        for (const url of urls) {
-            urlRows.push({
-                conversation_id: conversationId,
-                message_id: messageId,
-                url: url,
-                url_clean: stripUtmParams(url)
-            });
+    for (const { nodeId, message } of nodes) {
+        if (!message) continue;
+
+        const messageId = message.id || nodeId;
+
+        // 1. New format: safe_urls inside content_references entries
+        const contentRefs = message.metadata?.content_references;
+        if (Array.isArray(contentRefs)) {
+            for (const ref of contentRefs) {
+                if (Array.isArray(ref.safe_urls)) {
+                    for (const url of ref.safe_urls) {
+                        addUrl(messageId, url);
+                    }
+                }
+            }
+        }
+
+        // 2. Old format: safe_urls directly on message metadata
+        const metaSafeUrls = message.metadata?.safe_urls;
+        if (Array.isArray(metaSafeUrls)) {
+            for (const url of metaSafeUrls) {
+                addUrl(messageId, url);
+            }
         }
     }
 
@@ -540,11 +625,11 @@ function generateMessageUrlsCSV(urlRows) {
  * conversation row and to make the donor-level scope explicit.
  */
 function extractDonorContext(conversationData) {
-    const mapping = conversationData.mapping || {};
+    const nodes = normalizeMessages(conversationData);
     return {
         conversation_id: conversationData.conversation_id || conversationData.id || '',
-        user_profile: extractUserProfile(mapping),
-        user_instructions: extractUserInstructions(mapping)
+        user_profile: extractUserProfile(nodes),
+        user_instructions: extractUserInstructions(nodes)
     };
 }
 
@@ -572,15 +657,19 @@ function generateDonorContextCSV(donorContext) {
 
 /**
  * Process a ChatGPT conversation JSON and generate all CSV files.
+ * Supports both the old mapping-based format and the new messages-array format.
  * @param {Object} conversationData - The full ChatGPT conversation JSON object
  * @param {Object} options - { donorId, donorIdType, downloadTime }
  * @returns {Object} metadataCSV, messagesCSV, sourcesCSV, messageUrlsCSV,
  *                   donorContextCSV, and the raw data arrays for each
  */
 function extractChatGPTConversation(conversationData, { donorId = '', donorIdType = '', downloadTime = '' } = {}) {
-    if (!conversationData || !conversationData.mapping) {
-        throw new Error('Invalid ChatGPT conversation data: missing mapping');
+    if (!conversationData) {
+        throw new Error('Invalid ChatGPT conversation data');
     }
+
+    // Both mapping (old API) and messages (new API) are optional;
+    // normalizeMessages() returns [] for unknown formats and CSVs will be empty rows.
 
     const metadata = extractConversationMetadata(conversationData);
     metadata.donor_id = donorId;

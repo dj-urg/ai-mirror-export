@@ -27,27 +27,25 @@
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
 
-  // Read the signing secret written by inject.js (MAIN world) to the dataset.
-  // Both scripts run at document_start before any page script executes.
-  // The spec does not guarantee MAIN-before-ISOLATED ordering, so we install a
-  // MutationObserver as a fallback: if inject.js hasn't written the attribute
-  // yet, the observer fires as a microtask after inject.js completes — still
-  // before the HTML parser resumes and before any page script runs.
-  let SECRET_KEY = document.documentElement.dataset.claudeExporterSecret || null;
+  // Read the signing secret written by inject.js (MAIN world) via setAttribute.
+  // Using getAttribute/removeAttribute is XRay-wrapper-safe in Firefox content
+  // scripts. Both scripts run at document_start before any page script executes.
+  const _ATTR = 'data-claude-exporter-secret';
+  let SECRET_KEY = document.documentElement.getAttribute(_ATTR) || null;
   if (SECRET_KEY) {
-    delete document.documentElement.dataset.claudeExporterSecret;
+    document.documentElement.removeAttribute(_ATTR);
   } else {
     const _secretObserver = new MutationObserver(() => {
-      const s = document.documentElement.dataset.claudeExporterSecret;
+      const s = document.documentElement.getAttribute(_ATTR);
       if (s) {
         SECRET_KEY = s;
-        delete document.documentElement.dataset.claudeExporterSecret;
+        document.documentElement.removeAttribute(_ATTR);
         _secretObserver.disconnect();
       }
     });
     _secretObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['data-claude-exporter-secret']
+      attributeFilter: [_ATTR]
     });
   }
 
