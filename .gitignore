@@ -213,8 +213,24 @@ yarn.lock
 # Testing and Coverage
 # ============================================================================
 
-# Test data and output folder
+# testing/ is default-ignored (fixtures, baselines, generated CSVs, visual
+# HTML harnesses). An explicit allowlist below tracks only the automated test
+# scripts that are fixture-free, so CI can actually run them. Every file under
+# testing/data/ stays ignored — the current fixtures are real-origin
+# conversations captured from the project owner's own accounts (see
+# testing/README.md "Test data may contain personal information"); they must
+# be replaced with synthetic equivalents before being tracked.
 testing/
+!testing/
+testing/*
+!testing/tests/
+testing/tests/*
+!testing/tests/run_all.js
+!testing/tests/test_pii.js
+!testing/tests/test_manifest.js
+!testing/tests/test_text_cleaner.js
+!testing/tests/test_validators.js
+!testing/tests/test_perplexity_extractor.js
 /*.csv
 /conversation_*.csv
 /chatgpt_*.csv
