@@ -72,7 +72,7 @@ const ERROR_TYPES = {
 function formatAuthFailureCopy(platformDisplayName) {
   return {
     message: `Please sign in to ${platformDisplayName} to continue.`,
-    detail: `The last request got a 401 — your session on ${platformDisplayName} looks signed out. Sign in on the ${platformDisplayName} tab, then reopen this popup.`
+    detail: `It looks like you are signed out of ${platformDisplayName}. Sign in on the ${platformDisplayName} tab, then reopen this popup.`
   };
 }
 

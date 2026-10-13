@@ -1126,7 +1126,7 @@ function renderAuthFailure(platformId, platformName) {
     ? formatAuthFailureCopy(platformName || platformDisplayName(platformId))
     : {
         message: `Please sign in to ${platformName || 'the platform'}.`,
-        detail: 'The last request returned 401. Sign in on the tab, then reopen this popup.'
+        detail: 'It looks like you are signed out. Sign in on the tab, then reopen this popup.'
       };
   updateStatus('error', copy.message, copy.detail);
   updateExportButton(false);
