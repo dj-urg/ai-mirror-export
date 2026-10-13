@@ -195,8 +195,9 @@
    * Listen for messages from the injected page script
    */
   window.addEventListener('message', async event => {
-    // Only accept messages from the same window
+    // Only accept messages from the same window and same origin.
     if (event.source !== window) return;
+    if (event.origin !== window.location.origin) return;
 
     // Only accept our specific message type
     if (!event.data || event.data.type !== MESSAGE_TYPE) return;
@@ -245,8 +246,14 @@
       return;
     }
 
-    // Extract conversation ID
-    const conversationId = conversationData.conversationId || 'unknown';
+    // Require a safely-formatted ID so it can be used as a Map key, logged,
+    // and later composed into a filename without any sanitization footguns.
+    const rawId = conversationData.conversationId;
+    if (typeof rawId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(rawId)) {
+      logWarn('Received conversation data with missing or malformed conversationId');
+      return;
+    }
+    const conversationId = rawId;
 
     // Store in memory with memory management
     storeConversation(conversationId, conversationData);

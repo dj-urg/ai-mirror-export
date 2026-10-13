@@ -13,11 +13,44 @@
  *   New format: { messages: [ { id, author, content, metadata } ], safe_urls, ... }
  */
 import { escapeCSVField } from '../../utils/csv.js';
+import {
+    SCHEMA_VERSIONS,
+    EXTRACTOR_VERSION,
+    canonicalHeaders,
+    toIsoUtc
+} from '../../utils/manifest.js';
+import { cleanText } from '../../utils/text_cleaner.js';
 
 
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Detect which ChatGPT API format produced the data.
+ * @returns {'mapping' | 'messages_array' | 'unknown'}
+ */
+function detectApiFormat(conversationData) {
+    if (conversationData.mapping && typeof conversationData.mapping === 'object') return 'mapping';
+    if (Array.isArray(conversationData.messages)) return 'messages_array';
+    return 'unknown';
+}
+
+/**
+ * Count nodes present in the mapping but not reachable from the root parent-null
+ * node (branched/regenerated/deleted threads). Always 0 for messages_array
+ * format. Surfaced in the manifest telemetry so researchers can detect silently
+ * dropped turns.
+ */
+function countOrphanedNodes(conversationData) {
+    if (!conversationData.mapping || typeof conversationData.mapping !== 'object') return 0;
+    const depths = computeNodeDepths(conversationData.mapping);
+    let orphans = 0;
+    for (const id in conversationData.mapping) {
+        if (!depths.has(id)) orphans++;
+    }
+    return orphans;
+}
 
 /**
  * Safely get nested property from object
@@ -286,6 +319,9 @@ function extractConversationMetadata(conversationData) {
  */
 function generateMetadataCSV(metadata) {
     const headers = [
+        'schema_version',
+        'extractor_version',
+        'api_format',
         'donor_id',
         'donor_id_type',
         'download_time',
@@ -299,10 +335,16 @@ function generateMetadataCSV(metadata) {
         'num_messages',
         'num_user_messages',
         'num_assistant_messages',
-        'num_tool_messages'
+        'num_tool_messages',
+        'num_orphaned_nodes'
     ];
 
-    const row = headers.map(h => escapeCSVField(metadata[h]));
+    const enriched = {
+        schema_version: SCHEMA_VERSIONS.chatgpt_metadata,
+        extractor_version: EXTRACTOR_VERSION,
+        ...metadata
+    };
+    const row = headers.map(h => escapeCSVField(enriched[h]));
     return [headers.join(','), row.join(',')].join('\n');
 }
 
@@ -331,6 +373,7 @@ function extractConversationMessages(conversationData) {
 
         const authorRole = message.author?.role || '';
 
+        const rawText = extractTextFromContent(content);
         messages.push({
             conversation_id: conversationId,
             node_id: message.id || nodeId,
@@ -338,7 +381,8 @@ function extractConversationMessages(conversationData) {
             turn_number: depth,
             author_role: authorRole,
             content_type: contentType,
-            text: extractTextFromContent(content),
+            text: rawText,
+            text_cleaned: cleanText(rawText),
             has_image: hasImages(content),
             image_ids: extractImageIds(content),
             create_time: unixToISO(message.create_time),
@@ -359,6 +403,8 @@ function extractConversationMessages(conversationData) {
  */
 function generateMessagesCSV(messages) {
     const headers = [
+        'schema_version',
+        'extractor_version',
         'donor_id',
         'donor_id_type',
         'download_time',
@@ -370,6 +416,7 @@ function generateMessagesCSV(messages) {
         'tool_name',
         'content_type',
         'text',
+        'text_cleaned',
         'create_time',
         'model_slug'
     ];
@@ -378,6 +425,8 @@ function generateMessagesCSV(messages) {
 
     for (const msg of messages) {
         const row = {
+            schema_version: SCHEMA_VERSIONS.chatgpt_messages,
+            extractor_version: EXTRACTOR_VERSION,
             donor_id: msg.donor_id,
             donor_id_type: msg.donor_id_type,
             download_time: msg.download_time,
@@ -389,13 +438,54 @@ function generateMessagesCSV(messages) {
             tool_name: msg.tool_name,
             content_type: msg.content_type,
             text: msg.text,
+            text_cleaned: msg.text_cleaned,
             create_time: msg.create_time,
             model_slug: msg.model_slug
         };
         rows.push(headers.map(h => escapeCSVField(row[h])).join(','));
     }
 
-    return rows.join('\n');
+    return rows.join('\r\n') + '\r\n';
+}
+
+/**
+ * Generate the cross-platform canonical messages CSV for ChatGPT. Mirrors
+ * `canonicalHeaders()` so analysts can concatenate rows from multiple platforms.
+ */
+function generateMessagesCanonicalCSV(messages, { donorId, donorIdType, downloadTime }) {
+    const headers = canonicalHeaders();
+    const rows = [headers.join(',')];
+    const schemaVersion = SCHEMA_VERSIONS.chatgpt_messages_canonical;
+    for (const msg of messages) {
+        const row = {
+            donor_id: donorId,
+            platform: 'chatgpt',
+            conversation_id: msg.conversation_id,
+            message_id: msg.node_id,
+            parent_message_id: msg.parent_id || '',
+            turn_index: msg.turn_number,
+            role: msg.author_role,
+            text: msg.text,
+            text_cleaned: msg.text_cleaned,
+            created_at_iso: msg.create_time,
+            model_identifier: msg.model_slug || '',
+            schema_version: schemaVersion,
+            extractor_version: EXTRACTOR_VERSION,
+            platform_specific_json: JSON.stringify({
+                donor_id_type: donorIdType,
+                download_time: downloadTime,
+                content_type: msg.content_type,
+                tool_name: msg.tool_name,
+                is_visually_hidden: msg.is_visually_hidden,
+                has_image: msg.has_image,
+                image_ids: msg.image_ids,
+                status: msg.status,
+                end_turn: msg.end_turn
+            })
+        };
+        rows.push(headers.map(h => escapeCSVField(row[h])).join(','));
+    }
+    return rows.join('\r\n') + '\r\n';
 }
 
 
@@ -497,6 +587,8 @@ function extractSearchResults(conversationData) {
  */
 function generateSearchResultsCSV(searchResults) {
     const headers = [
+        'schema_version',
+        'extractor_version',
         'donor_id',
         'donor_id_type',
         'download_time',
@@ -517,9 +609,14 @@ function generateSearchResultsCSV(searchResults) {
 
     const rows = [headers.join(',')];
     for (const entry of searchResults) {
-        rows.push(headers.map(h => escapeCSVField(entry[h])).join(','));
+        const enriched = {
+            schema_version: SCHEMA_VERSIONS.chatgpt_sources,
+            extractor_version: EXTRACTOR_VERSION,
+            ...entry
+        };
+        rows.push(headers.map(h => escapeCSVField(enriched[h])).join(','));
     }
-    return rows.join('\n');
+    return rows.join('\r\n') + '\r\n';
 }
 
 
@@ -598,6 +695,8 @@ function extractMessageUrls(conversationData) {
  */
 function generateMessageUrlsCSV(urlRows) {
     const headers = [
+        'schema_version',
+        'extractor_version',
         'donor_id',
         'donor_id_type',
         'download_time',
@@ -609,9 +708,14 @@ function generateMessageUrlsCSV(urlRows) {
 
     const rows = [headers.join(',')];
     for (const entry of urlRows) {
-        rows.push(headers.map(h => escapeCSVField(entry[h])).join(','));
+        const enriched = {
+            schema_version: SCHEMA_VERSIONS.chatgpt_message_urls,
+            extractor_version: EXTRACTOR_VERSION,
+            ...entry
+        };
+        rows.push(headers.map(h => escapeCSVField(enriched[h])).join(','));
     }
-    return rows.join('\n');
+    return rows.join('\r\n') + '\r\n';
 }
 
 
@@ -638,6 +742,8 @@ function extractDonorContext(conversationData) {
  */
 function generateDonorContextCSV(donorContext) {
     const headers = [
+        'schema_version',
+        'extractor_version',
         'donor_id',
         'donor_id_type',
         'download_time',
@@ -646,7 +752,12 @@ function generateDonorContextCSV(donorContext) {
         'user_instructions'
     ];
 
-    const row = headers.map(h => escapeCSVField(donorContext[h]));
+    const enriched = {
+        schema_version: SCHEMA_VERSIONS.chatgpt_donor_context,
+        extractor_version: EXTRACTOR_VERSION,
+        ...donorContext
+    };
+    const row = headers.map(h => escapeCSVField(enriched[h]));
     return [headers.join(','), row.join(',')].join('\n');
 }
 
@@ -671,10 +782,15 @@ function extractChatGPTConversation(conversationData, { donorId = '', donorIdTyp
     // Both mapping (old API) and messages (new API) are optional;
     // normalizeMessages() returns [] for unknown formats and CSVs will be empty rows.
 
+    const apiFormat = detectApiFormat(conversationData);
+    const orphanCount = countOrphanedNodes(conversationData);
+
     const metadata = extractConversationMetadata(conversationData);
     metadata.donor_id = donorId;
     metadata.donor_id_type = donorIdType;
     metadata.download_time = downloadTime;
+    metadata.api_format = apiFormat;
+    metadata.num_orphaned_nodes = orphanCount;
 
     const messages = extractConversationMessages(conversationData);
     messages.forEach(msg => {
@@ -705,9 +821,12 @@ function extractChatGPTConversation(conversationData, { donorId = '', donorIdTyp
     return {
         metadataCSV: generateMetadataCSV(metadata),
         messagesCSV: generateMessagesCSV(messages),
+        messagesCanonicalCSV: generateMessagesCanonicalCSV(messages, { donorId, donorIdType, downloadTime }),
         sourcesCSV: generateSearchResultsCSV(searchResults),
         messageUrlsCSV: generateMessageUrlsCSV(messageUrls),
         donorContextCSV: generateDonorContextCSV(donorContext),
+        apiFormat,
+        orphanCount,
         metadata,
         messages,
         searchResults,
@@ -728,8 +847,11 @@ export {
     extractSearchResults,
     extractMessageUrls,
     extractDonorContext,
+    detectApiFormat,
+    countOrphanedNodes,
     generateMetadataCSV,
     generateMessagesCSV,
+    generateMessagesCanonicalCSV,
     generateSearchResultsCSV,
     generateMessageUrlsCSV,
     generateDonorContextCSV

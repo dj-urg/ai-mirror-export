@@ -24,6 +24,10 @@
   const capturedIds = new Set();
 
   const originalFetch = window.fetch;
+  const originalXhrOpen = XMLHttpRequest.prototype.open;
+  const originalXhrSend = XMLHttpRequest.prototype.send;
+  const originalPostMessage = window.postMessage.bind(window);
+  const originalMessageSecurity = window.MessageSecurity;
 
   // ============================================================================
   // SECRET GENERATION
@@ -110,7 +114,7 @@
       return;
     }
 
-    const signedMessage = await MessageSecurity.createSignedMessage(
+    const signedMessage = await originalMessageSecurity.createSignedMessage(
       data,
       MESSAGE_TYPE,
       SOURCE_ID,
@@ -118,7 +122,7 @@
       storedSecret
     );
 
-    window.postMessage(signedMessage, window.location.origin);
+    originalPostMessage(signedMessage, window.location.origin);
 
     logDebug('Captured conversation data', {
       uuid: conversationId,
@@ -147,15 +151,17 @@
         url = String(request);
       }
 
-      const isConversationRequest = url && (
-        url.includes('chat_conversations') ||
-        (url.includes('/api/organizations/') && url.includes('/chat/'))
-      );
+      const isConversationRequest = isConversationUrl(url);
 
       if (isConversationRequest) {
         const validation = validateResponse(response);
         if (!validation.isValid) {
           logWarn('Passive intercept validation failed', { error: validation.error });
+          return response;
+        }
+
+        const ctype = response.headers.get('content-type') || '';
+        if (!ctype.toLowerCase().includes('application/json')) {
           return response;
         }
 
@@ -188,6 +194,52 @@
     return response;
   };
 
-  logDebug('Passive fetch interceptor installed');
+  // ============================================================================
+  // PASSIVE XHR INTERCEPTOR
+  // ============================================================================
+
+  function isConversationUrl(url) {
+    if (!url) return false;
+    // Require the full prefix /api/organizations/<org>/chat_conversations/<uuid>
+    // and reject sub-resources (title, rename, composer_notices, etc.) so that
+    // only the conversation GET endpoint matches.
+    const re = /\/api\/organizations\/[^/?#]+\/chat_conversations\/[0-9a-f-]{10,}(?:[?#]|$|\/(?!composer_notices|title|rename))/i;
+    return re.test(url);
+  }
+
+  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    try {
+      this.__claudeExporterUrl = typeof url === 'string' ? url : String(url);
+      this.__claudeExporterMethod = method;
+    } catch (_) {}
+    return originalXhrOpen.call(this, method, url, ...rest);
+  };
+
+  XMLHttpRequest.prototype.send = function (...args) {
+    try {
+      const url = this.__claudeExporterUrl || '';
+      if (isConversationUrl(url)) {
+        this.addEventListener('load', () => {
+          try {
+            if (this.status < 200 || this.status >= 300) return;
+            const text = this.responseText;
+            if (!text || text.length > MAX_RESPONSE_SIZE) return;
+            let data;
+            try {
+              data = JSON.parse(text);
+            } catch (_) {
+              return;
+            }
+            if (data && typeof data === 'object' && Array.isArray(data.chat_messages)) {
+              sendDataToContentScript(data).catch(() => {});
+            }
+          } catch (e) {
+            logWarn('XHR load handler failed', { error: e.message });
+          }
+        });
+      }
+    } catch (_) {}
+    return originalXhrSend.apply(this, args);
+  };
 
 })();

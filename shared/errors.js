@@ -14,7 +14,7 @@ const ERROR_TYPES = {
   UNSUPPORTED_PLATFORM: {
     message: 'This page is not supported',
     detail: 'Please navigate to a supported chat platform.',
-    troubleshooting: 'Supported platforms: ChatGPT, Claude, and Copilot.'
+    troubleshooting: 'Supported platforms: ChatGPT, Claude, Copilot, DeepSeek, Grok, Perplexity, and Google AI Overview.'
   },
   NO_CONVERSATION_ID: {
     message: 'No conversation detected',
@@ -71,6 +71,16 @@ const PLATFORM_TROUBLESHOOTING = {
     noConversationId: 'Make sure you are on a conversation page (URL should contain /chats/).',
     noData: 'Try scrolling through the conversation to ensure all messages are loaded.',
     exportFailed: 'Try refreshing the page and waiting for the conversation to fully load before exporting.'
+  },
+  grok: {
+    noConversationId: 'Make sure you are on a conversation page (URL should contain /c/).',
+    noData: 'Reload the page so Grok re-fetches the conversation, then try exporting again.',
+    exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
+  },
+  deepseek: {
+    noConversationId: 'Make sure you are on a conversation page (URL should contain /a/chat/s/).',
+    noData: 'Reload the page so DeepSeek re-fetches the conversation, then try exporting again.',
+    exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
   }
 };
 

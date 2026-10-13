@@ -12,11 +12,13 @@
       }
     }
   },
-  "description": "Export conversations from ChatGPT, Claude, and Co-pilot to CSV. All processing happens locally in your browser.",
+  "description": "Export conversations from ChatGPT, Claude, DeepSeek, and Co-pilot to CSV. All processing happens locally in your browser.",
   "permissions": [
     "activeTab",
+    "tabs",
     "downloads",
-    "storage"
+    "storage",
+    "scripting"
   ],
   "host_permissions": [
     "https://chatgpt.com/*",

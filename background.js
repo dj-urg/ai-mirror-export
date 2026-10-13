@@ -5,176 +5,472 @@
  * and manages CSV generation and downloads
  */
 
-import { extractChatGPTConversation, generateMessageUrlsCSV, generateDonorContextCSV } from './platforms/chatgpt/extractor.js';
+// Load breadcrumb: this prints before any imports run, so if it never shows
+// up in the Inspect console, background.js isn't being parsed/loaded at all.
+try { console.log('[Background] background.js top-of-file reached'); } catch (_) {}
+
+import {
+  extractChatGPTConversation,
+  generateMessagesCSV,
+  generateMessagesCanonicalCSV,
+  generateDonorContextCSV
+} from './platforms/chatgpt/extractor.js';
+import {
+  extractClaudeConversation,
+  generateMetadataCSV as generateClaudeMetadataCSV,
+  generateMessagesCSV as generateClaudeMessagesCSV,
+  generateSourcesCSV as generateClaudeSourcesCSV,
+  generateAttachmentsCSV as generateClaudeAttachmentsCSV,
+  generateMessagesCanonicalCSV as generateClaudeMessagesCanonicalCSV
+} from './platforms/claude/extractor.js';
+import {
+  extractPerplexityConversation,
+  generateMetadataCSV as generatePerplexityMetadataCSV,
+  generateMessagesCSV as generatePerplexityMessagesCSV,
+  generateSourcesCSV as generatePerplexitySourcesCSV
+} from './platforms/perplexity/extractor.js';
+import {
+  extractGrokConversation,
+  generateMetadataCSV as generateGrokMetadataCSV,
+  generateMessagesCSV as generateGrokMessagesCSV,
+  generateSourcesCSV as generateGrokSourcesCSV
+} from './platforms/grok/extractor.js';
+import {
+  extractDeepSeekConversation,
+  generateMetadataCSV as generateDeepSeekMetadataCSV,
+  generateMessagesCSV as generateDeepSeekMessagesCSV,
+  generateSourcesCSV as generateDeepSeekSourcesCSV
+} from './platforms/deepseek/extractor.js';
 import { EXTENSION_CONFIG } from './config/settings.js';
-import { escapeCSVField, generateCSV, createCSVBlob, generateFilename } from './utils/csv.js';
+import { escapeCSVField, generateCSV } from './utils/csv.js';
+import {
+  SCHEMA_VERSIONS,
+  EXTRACTOR_VERSION,
+  canonicalHeaders,
+  toIsoUtc,
+  sha256Hex,
+  hmacDonorId,
+  buildManifest,
+  countRows
+} from './utils/manifest.js';
+import { scrubText, scrubRows, countRedactions, DEFAULT_SCRUB_COLUMNS } from './utils/pii.js';
+import { cleanText } from './utils/text_cleaner.js';
+import { validateRows } from './utils/validators.js';
+import { buildZip } from './utils/zip.js';
+
+// UTF-8 BOM prepended to every CSV inside the ZIP so Excel opens them with the
+// right encoding, matching the pre-zip single-file behavior from createCSVBlob.
+const UTF8_BOM = '﻿';
 
 // In production, suppress all console output to avoid leaking operational
 // details and internal state to the browser console.
 const IS_PRODUCTION = true;
 const _console = IS_PRODUCTION ? { log: () => {}, warn: () => {}, error: () => {} } : console;
 
+// Sanitize a conversation/query identifier for use inside a filename. Keeps
+// enough context to be useful at a glance while staying well within POSIX
+// filename limits.
+function sanitizeIdForFilename(id) {
+  const s = typeof id === 'string' ? id.replace(/[^A-Za-z0-9_-]/g, '') : '';
+  return s.substring(0, 40) || 'unknown';
+}
 
+// Turn an ISO 8601 timestamp into a filename-safe UTC slug. Example:
+// '2026-10-13T11:58:12.345Z' → '2026-10-13T11-58-12Z'. Matches the timestamp
+// format used by generateFilename() in utils/csv.js so inner and outer names
+// stay consistent.
+function timestampSlug(iso) {
+  if (typeof iso !== 'string' || !iso) return '';
+  return iso.replace(/:/g, '-').replace(/\.\d+Z$/, 'Z');
+}
+
+// Resolve the best conversation identifier available on a payload. Order
+// matches the per-platform shapes: ChatGPT uses `conversation_id`, Claude uses
+// `uuid`, Copilot uses `conversationId`, Google uses `query`.
+function resolveConversationId(conversationData) {
+  if (!conversationData || typeof conversationData !== 'object') return null;
+  // Grok's conversation payload is just `{ responses: [...] }` with no
+  // conversation id in the body — the id is stamped on from the request URL by
+  // inject.js/content.js as `_captured_conversation_id`. Also honor the nested
+  // `conversation.conversationId` shape for forward-compat with other platforms.
+  const stamped = typeof conversationData._captured_conversation_id === 'string'
+    ? conversationData._captured_conversation_id
+    : null;
+  const grokNested = conversationData.conversation
+    && typeof conversationData.conversation === 'object'
+    ? conversationData.conversation.conversationId
+    : null;
+  // DeepSeek wraps the conversation metadata under `data.biz_data.chat_session`.
+  const deepseekBiz = conversationData.data && conversationData.data.biz_data
+    ? conversationData.data.biz_data
+    : (conversationData.biz_data || null);
+  const deepseekSession = deepseekBiz && typeof deepseekBiz.chat_session === 'object'
+    ? deepseekBiz.chat_session.id
+    : null;
+  return stamped
+    || grokNested
+    || deepseekSession
+    || conversationData.conversation_id
+    || conversationData.uuid
+    || conversationData.id
+    || conversationData.conversationId
+    || conversationData.query
+    || null;
+}
 
 
 /**
- * Claude Platform Handler
- * Handles Claude-specific conversation data processing
+ * Load per-donor privacy settings. Non-fatal if storage is unavailable.
+ * `study_salt` is the HMAC key for donor_id anonymization; empty means use raw UUID.
  */
-const ClaudeHandler = {
-  /**
-   * Extract text content from Claude message content array
-   * Claude messages can have multiple content blocks
-   */
-  extractTextFromContent(content) {
-    if (!content || !Array.isArray(content)) {
-      return '';
-    }
-
-    return content
-      .filter(block => block && block.type === 'text')
-      .map(block => block.text || '')
-      .join('\n\n');
-  },
-
-  /**
-   * Flatten Claude conversation data into CSV rows
-   */
-  flattenConversationData(convJson) {
-    if (!convJson || !Array.isArray(convJson.chat_messages)) {
-      _console.warn('[Claude] Invalid conversation data: missing chat_messages');
-      return [];
-    }
-
-    const messages = convJson.chat_messages;
-    const conversationId = convJson.uuid || '';
-    const conversationName = convJson.name || '';
-    const rows = [];
-
-    for (const msg of messages) {
-      try {
-        // Extract text from content array
-        const text = this.extractTextFromContent(msg.content);
-
-        // Build row
-        const row = {
-          conversation_id: conversationId,
-          conversation_name: conversationName,
-          message_id: msg.uuid || '',
-          parent_message_id: msg.parent_message_uuid || '',
-          sender: msg.sender || '',
-          text: text,
-          created_at: msg.created_at || '',
-          updated_at: msg.updated_at || '',
-          index: msg.index !== undefined ? msg.index : '',
-          truncated: msg.truncated || false,
-          stop_reason: msg.stop_reason || ''
-        };
-
-        rows.push(row);
-      } catch (error) {
-        _console.error('[Claude] Error processing message:', error);
-        // Continue with next message
-      }
-    }
-
-    return rows;
+async function loadPrivacySettings() {
+  try {
+    const s = await browser.storage.local.get([
+      'pii_scrub_enabled',
+      'include_donor_context',
+      'study_salt'
+    ]);
+    return {
+      piiScrubEnabled: Boolean(s.pii_scrub_enabled),
+      includeDonorContext: s.include_donor_context !== false, // default: true
+      studySalt: typeof s.study_salt === 'string' ? s.study_salt : ''
+    };
+  } catch {
+    return { piiScrubEnabled: false, includeDonorContext: true, studySalt: '' };
   }
-};
+}
+
 
 /**
  * Copilot Platform Handler
- * Handles Copilot-specific conversation data processing
  */
 const CopilotHandler = {
-  /**
-   * Extract text content from Copilot content parts array
-   * Copilot messages can have multiple content parts with type "text"
-   */
   extractTextFromContent(content) {
-    if (!content || !Array.isArray(content)) {
-      return '';
-    }
-
+    if (!content || !Array.isArray(content)) return '';
     return content
       .filter(part => part && part.type === 'text')
       .map(part => part.text || '')
       .join('\n\n');
   },
 
-  /**
-   * Flatten Copilot conversation data into CSV rows
-   */
   flattenConversationData(convJson) {
     if (!convJson || !Array.isArray(convJson.results)) {
       _console.warn('[Copilot] Invalid conversation data: missing results');
       return [];
     }
-
     const results = convJson.results;
     const conversationId = convJson.conversationId || '';
     const rows = [];
-
     for (const result of results) {
       try {
-        // Extract text from content array
         const text = this.extractTextFromContent(result.content);
-
-        // Map author.type to role
         const authorType = result.author?.type || '';
         const role = authorType === 'human' ? 'user' :
           authorType === 'ai' ? 'assistant' :
             authorType;
-
-        // Extract part IDs (for reference)
         const partIds = result.content
           ?.filter(part => part && part.type === 'text')
           .map(part => part.partId || '')
           .join(',') || '';
-
-        // Build row
-        const row = {
+        rows.push({
           conversation_id: conversationId,
           message_id: result.id || '',
-          role: role,
-          text: text,
-          created_at: result.createdAt || '',
+          role,
+          text,
+          text_cleaned: cleanText(text),
+          created_at: toIsoUtc(result.createdAt) || result.createdAt || '',
           channel: result.channel || '',
           mode: result.mode || '',
           part_ids: partIds,
           author_type: authorType
-        };
-
-        rows.push(row);
+        });
       } catch (error) {
         _console.error('[Copilot] Error processing result:', error);
-        // Continue with next result
       }
     }
-
     return rows;
   }
 };
 
+/**
+ * Microsoft 365 Copilot (BizChat) Handler
+ *
+ * Input payload is the structure assembled by platforms/m365_copilot/inject.js:
+ *   { conversationId, results: [m365_message...], metadata: {...} }
+ * where each m365_message is a Sydney/BizChat chat frame with fields like
+ * `author`, `text`, `messageType`, `requestId`, optional `sourceAttributions`
+ * and `suggestedResponses`.
+ */
+const M365CopilotHandler = {
+  _normalizeRole(author) {
+    if (author === 'user') return 'user';
+    if (author === 'bot' || author === 'assistant') return 'assistant';
+    return author || '';
+  },
+
+  flattenConversationData(convJson) {
+    if (!convJson || !Array.isArray(convJson.results)) {
+      _console.warn('[M365Copilot] Invalid conversation data: missing results');
+      return [];
+    }
+    const conversationId = convJson.conversationId || '';
+    const rows = [];
+    for (const msg of convJson.results) {
+      if (!msg || typeof msg !== 'object') continue;
+      try {
+        const author = typeof msg.author === 'string' ? msg.author : '';
+        const sourceAttr = Array.isArray(msg.sourceAttributions) ? msg.sourceAttributions : [];
+        const suggested = Array.isArray(msg.suggestedResponses) ? msg.suggestedResponses : [];
+        const adaptive = Array.isArray(msg.adaptiveCards) ? msg.adaptiveCards : [];
+        const createdAt = msg.createdAt || msg.timestamp || '';
+        const m365Text = typeof msg.text === 'string' ? msg.text : '';
+        rows.push({
+          conversation_id: conversationId,
+          message_id: typeof msg.messageId === 'string' ? msg.messageId : '',
+          request_id: typeof msg.requestId === 'string' ? msg.requestId : '',
+          author,
+          role: this._normalizeRole(author),
+          text: m365Text,
+          text_cleaned: cleanText(m365Text),
+          spoken_text: typeof msg.spokenText === 'string' ? msg.spokenText : '',
+          message_type: typeof msg.messageType === 'string' ? msg.messageType : '',
+          content_origin: typeof msg.contentOrigin === 'string' ? msg.contentOrigin : '',
+          turn_state: typeof msg.turnState === 'string' ? msg.turnState : '',
+          response_identifier: typeof msg.responseIdentifier === 'string' ? msg.responseIdentifier : '',
+          offense: typeof msg.offense === 'string' ? msg.offense : '',
+          input_method: typeof msg.inputMethod === 'string' ? msg.inputMethod : '',
+          turn_count: typeof msg.turnCount === 'number' ? msg.turnCount : '',
+          created_at: toIsoUtc(createdAt) || (typeof createdAt === 'string' ? createdAt : ''),
+          source_count: sourceAttr.length,
+          suggested_count: suggested.length,
+          adaptive_cards_json: adaptive.length > 0
+            ? (() => { try { return JSON.stringify(adaptive); } catch { return ''; } })()
+            : '',
+          raw_json: (() => { try { return JSON.stringify(msg); } catch { return ''; } })()
+        });
+      } catch (error) {
+        _console.error('[M365Copilot] Error processing message:', error);
+      }
+    }
+    return rows;
+  },
+
+  /**
+   * One row per sourceAttribution across all messages. Mirrors chatgpt_sources
+   * / claude_sources shape so researchers can concat across platforms.
+   */
+  flattenSources(convJson) {
+    if (!convJson || !Array.isArray(convJson.results)) return [];
+    const stripUtm = (url) => {
+      if (!url) return '';
+      try {
+        const u = new URL(url);
+        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
+          .forEach(p => u.searchParams.delete(p));
+        return u.toString();
+      } catch { return url; }
+    };
+    const rows = [];
+    const conversationId = convJson.conversationId || '';
+    for (const msg of convJson.results) {
+      const attrs = Array.isArray(msg?.sourceAttributions) ? msg.sourceAttributions : [];
+      for (let i = 0; i < attrs.length; i++) {
+        const a = attrs[i] || {};
+        const url = a.seeMoreUrl || a.url || '';
+        rows.push({
+          conversation_id: conversationId,
+          request_id: typeof msg.requestId === 'string' ? msg.requestId : '',
+          message_type: typeof msg.messageType === 'string' ? msg.messageType : '',
+          source_index: i,
+          provider_name: a.providerDisplayName || '',
+          title: a.title || a.name || '',
+          snippet: a.snippet || a.description || '',
+          url,
+          url_clean: stripUtm(url),
+          search_query: a.searchQuery || '',
+          image_link: a.imageLink || '',
+          raw_json: (() => { try { return JSON.stringify(a); } catch { return ''; } })()
+        });
+      }
+    }
+    return rows;
+  }
+};
+
+function generateM365CopilotSourcesCSV(rows) {
+  const headers = [
+    'schema_version',
+    'extractor_version',
+    'donor_id',
+    'donor_id_type',
+    'download_time',
+    'platform',
+    'conversation_id',
+    'request_id',
+    'message_type',
+    'source_index',
+    'provider_name',
+    'title',
+    'snippet',
+    'url',
+    'url_clean',
+    'search_query',
+    'image_link',
+    'raw_json'
+  ];
+  const out = [headers.join(',')];
+  for (const r of rows) {
+    const enriched = {
+      schema_version: SCHEMA_VERSIONS.m365_copilot_sources,
+      extractor_version: EXTRACTOR_VERSION,
+      platform: 'm365_copilot',
+      ...r
+    };
+    out.push(headers.map(h => escapeCSVField(enriched[h])).join(','));
+  }
+  return out.join('\r\n') + '\r\n';
+}
 
 /**
- * Validate conversation data structure and size
- * @param {Object} data - The conversation data to validate
- * @param {string} platform - The platform identifier
- * @returns {Object} Validation result with isValid and error properties
+ * Google Search AI Overview Handler
  */
+const GoogleSearchHandler = {
+  flattenConversationData(data) {
+    if (!data || typeof data !== 'object') {
+      _console.warn('[GoogleSearch] Invalid data: not an object');
+      return [];
+    }
+    if (data.mode === 'ai_mode') {
+      if (!Array.isArray(data.turns) || data.turns.length === 0) return [];
+      return data.turns.map((turn, i) => {
+        const sources = Array.isArray(turn.sources) ? turn.sources : [];
+        const turnText = turn.text || '';
+        return {
+          conversation_title: data.conversation_title || '',
+          source_page_url: data.source_page_url || '',
+          captured_at: turn.captured_at || data.captured_at || '',
+          turn_index: typeof turn.index === 'number' ? turn.index : i,
+          role: turn.role || '',
+          text: turnText,
+          text_cleaned: cleanText(turnText),
+          source_urls: sources.map(s => s && s.url ? s.url : '').filter(Boolean).join(', '),
+          source_titles: sources.map(s => s && s.title ? s.title : '').filter(Boolean).join(', ')
+        };
+      });
+    }
+    if (typeof data.ai_overview_text !== 'string') return [];
+    const sources = Array.isArray(data.sources) ? data.sources : [];
+    const followUps = Array.isArray(data.follow_up_questions) ? data.follow_up_questions : [];
+    return [{
+      query: data.query || '',
+      source_page_url: data.source_page_url || '',
+      captured_at: data.captured_at || '',
+      ai_overview_text: data.ai_overview_text,
+      ai_overview_text_cleaned: cleanText(data.ai_overview_text),
+      source_urls: sources.map(s => s && s.url ? s.url : '').filter(Boolean).join(', '),
+      source_titles: sources.map(s => s && s.title ? s.title : '').filter(Boolean).join(', '),
+      follow_up_questions: followUps.join(', '),
+      follow_up_count: followUps.length
+    }];
+  },
+
+  /**
+   * One row per source URL (across turns in ai_mode, or across data.sources
+   * in ai_overview). Mirrors the per-source grain used by chatgpt_sources
+   * and claude_sources so analysts can concat across platforms.
+   */
+  flattenSources(data) {
+    if (!data || typeof data !== 'object') return [];
+    const stripUtm = (url) => {
+      if (!url) return '';
+      try {
+        const u = new URL(url);
+        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
+          .forEach(p => u.searchParams.delete(p));
+        return u.toString();
+      } catch { return url; }
+    };
+    const rows = [];
+    if (data.mode === 'ai_mode') {
+      const turns = Array.isArray(data.turns) ? data.turns : [];
+      turns.forEach((turn, i) => {
+        const srcs = Array.isArray(turn.sources) ? turn.sources : [];
+        for (const s of srcs) {
+          if (!s || !s.url) continue;
+          rows.push({
+            mode: 'ai_mode',
+            conversation_id: data.conversation_title || '',
+            turn_index: typeof turn.index === 'number' ? turn.index : i,
+            source_page_url: data.source_page_url || '',
+            captured_at: turn.captured_at || data.captured_at || '',
+            url: s.url,
+            url_clean: stripUtm(s.url),
+            title: s.title || ''
+          });
+        }
+      });
+      return rows;
+    }
+    const srcs = Array.isArray(data.sources) ? data.sources : [];
+    for (const s of srcs) {
+      if (!s || !s.url) continue;
+      rows.push({
+        mode: 'ai_overview',
+        conversation_id: data.query || '',
+        turn_index: '',
+        source_page_url: data.source_page_url || '',
+        captured_at: data.captured_at || '',
+        url: s.url,
+        url_clean: stripUtm(s.url),
+        title: s.title || ''
+      });
+    }
+    return rows;
+  }
+};
+
+/**
+ * Generate google_sources.csv from the per-source rows above. Schema matches
+ * claude_sources/chatgpt_sources enough that researchers can union all three.
+ */
+function generateGoogleSourcesCSV(rows) {
+  const headers = [
+    'schema_version',
+    'extractor_version',
+    'donor_id',
+    'donor_id_type',
+    'download_time',
+    'platform',
+    'mode',
+    'conversation_id',
+    'turn_index',
+    'source_page_url',
+    'captured_at',
+    'url',
+    'url_clean',
+    'title'
+  ];
+  const out = [headers.join(',')];
+  for (const r of rows) {
+    const enriched = {
+      schema_version: SCHEMA_VERSIONS.google_sources,
+      extractor_version: EXTRACTOR_VERSION,
+      platform: 'google_search',
+      ...r
+    };
+    out.push(headers.map(h => escapeCSVField(enriched[h])).join(','));
+  }
+  return out.join('\r\n') + '\r\n';
+}
+
+
 function validateConversationData(data, platform) {
-  // Basic type check
   if (!data || typeof data !== 'object') {
     return { isValid: false, error: 'Data is not an object' };
   }
-
-  // Size limit check (prevent DoS attacks)
-  const MAX_PAYLOAD_SIZE = 50 * 1024 * 1024; // 50MB
+  const MAX_PAYLOAD_SIZE = 50 * 1024 * 1024;
   try {
-    const jsonString = JSON.stringify(data);
-    const jsonSize = jsonString.length;
-
+    const jsonSize = JSON.stringify(data).length;
     if (jsonSize > MAX_PAYLOAD_SIZE) {
       return {
         isValid: false,
@@ -184,68 +480,99 @@ function validateConversationData(data, platform) {
   } catch (error) {
     return { isValid: false, error: 'Failed to serialize data: ' + error.message };
   }
-
-  // Platform-specific structure validation
   switch (platform) {
     case 'chatgpt':
-      // ChatGPT requires either mapping or conversation_id
       if (!data.mapping && !data.conversation_id) {
-        return {
-          isValid: false,
-          error: 'ChatGPT data missing required fields (mapping or conversation_id)'
-        };
+        return { isValid: false, error: 'ChatGPT data missing required fields (mapping or conversation_id)' };
       }
-      // Validate mapping structure if present
-      if (data.mapping && typeof data.mapping !== 'object') {
-        return { isValid: false, error: 'ChatGPT mapping is not an object' };
+      if ('mapping' in data && (data.mapping === null || typeof data.mapping !== 'object' || Array.isArray(data.mapping))) {
+        return { isValid: false, error: 'ChatGPT mapping is not a plain object' };
       }
       break;
-
     case 'claude':
-      // Claude requires chat_messages array
       if (!Array.isArray(data.chat_messages)) {
-        return {
-          isValid: false,
-          error: 'Claude data missing required chat_messages array'
-        };
+        return { isValid: false, error: 'Claude data missing required chat_messages array' };
       }
-      // Validate array is not empty
       if (data.chat_messages.length === 0) {
         return { isValid: false, error: 'Claude chat_messages array is empty' };
       }
       break;
-
     case 'copilot':
-      // Copilot requires results array
       if (!Array.isArray(data.results)) {
-        return {
-          isValid: false,
-          error: 'Copilot data missing required results array'
-        };
+        return { isValid: false, error: 'Copilot data missing required results array' };
       }
-      // Validate array is not empty
       if (data.results.length === 0) {
         return { isValid: false, error: 'Copilot results array is empty' };
       }
       break;
-
+    case 'm365_copilot':
+      if (!Array.isArray(data.results)) {
+        return { isValid: false, error: 'M365 Copilot data missing required results array' };
+      }
+      if (data.results.length === 0) {
+        return { isValid: false, error: 'M365 Copilot results array is empty' };
+      }
+      break;
+    case 'google_search':
+      if (data.mode === 'ai_mode') {
+        if (!Array.isArray(data.turns) || data.turns.length === 0) {
+          return { isValid: false, error: 'Google AI Mode data missing turns' };
+        }
+      } else if (typeof data.ai_overview_text !== 'string' || data.ai_overview_text.length < 10) {
+        return { isValid: false, error: 'Google Search data missing ai_overview_text' };
+      }
+      break;
+    case 'perplexity':
+      if (!Array.isArray(data.entries)) {
+        return { isValid: false, error: 'Perplexity data missing entries array' };
+      }
+      if (data.entries.length === 0) {
+        return { isValid: false, error: 'Perplexity entries array is empty' };
+      }
+      break;
+    case 'grok': {
+      // Grok responses may wrap messages under `responses`, `conversation.responses`,
+      // or `messages` depending on the endpoint. Any one of them is acceptable.
+      const nestedResponses = data.conversation && Array.isArray(data.conversation.responses)
+        ? data.conversation.responses
+        : null;
+      const flatResponses = Array.isArray(data.responses) ? data.responses : null;
+      const flatMessages = Array.isArray(data.messages) ? data.messages : null;
+      const messages = flatResponses || nestedResponses || flatMessages;
+      if (!messages) {
+        return { isValid: false, error: 'Grok data missing responses/messages array' };
+      }
+      if (messages.length === 0) {
+        return { isValid: false, error: 'Grok messages array is empty' };
+      }
+      break;
+    }
+    case 'deepseek': {
+      // DeepSeek wraps the payload under `data.biz_data`. Accept either the
+      // wrapped shape or an unwrapped `chat_messages` for forward-compat.
+      const biz = data.data && data.data.biz_data
+        ? data.data.biz_data
+        : (data.biz_data || null);
+      const chatMessages =
+        (biz && Array.isArray(biz.chat_messages) ? biz.chat_messages : null) ||
+        (Array.isArray(data.chat_messages) ? data.chat_messages : null);
+      if (!chatMessages) {
+        return { isValid: false, error: 'DeepSeek data missing chat_messages array' };
+      }
+      if (chatMessages.length === 0) {
+        return { isValid: false, error: 'DeepSeek chat_messages array is empty' };
+      }
+      break;
+    }
     default:
-      // For unknown platforms, just ensure it's an object
       _console.warn(`[${platform}] Unknown platform, skipping detailed validation`);
       break;
   }
-
   return { isValid: true, error: null };
 }
 
-const DONOR_ID_EXPIRY_MS = 365 * 24 * 60 * 60 * 1000; // 1 year
+const DONOR_ID_EXPIRY_MS = 365 * 24 * 60 * 60 * 1000;
 
-/**
- * Get or create a persistent donor ID stored in local extension storage.
- * Returns { id, type } where type is "persistent" (storage worked) or
- * "session" (storage failed — ID is not stable across exports).
- * IDs expire after 1 year and are regenerated on next export.
- */
 async function getOrCreateDonorId() {
   try {
     const stored = await browser.storage.local.get(['donor_id', 'donor_id_created']);
@@ -263,7 +590,165 @@ async function getOrCreateDonorId() {
 }
 
 /**
- * Handle conversation data from any platform
+ * Build the cross-platform canonical messages CSV for Claude/Copilot/Google.
+ * ChatGPT builds its own canonical CSV inside the extractor.
+ */
+function buildCanonicalCSV(rows, mapping, { donorId, donorIdType, downloadTime, platform, schemaName }) {
+  const headers = canonicalHeaders();
+  const schemaVersion = SCHEMA_VERSIONS[schemaName] || 'unknown';
+  const out = [headers.join(',')];
+  for (const row of rows) {
+    const extras = {};
+    for (const key in row) {
+      if (!mapping.consumed.has(key)) extras[key] = row[key];
+    }
+    const canonical = {
+      donor_id: donorId,
+      platform,
+      conversation_id: mapping.conversation_id(row),
+      message_id: mapping.message_id(row),
+      parent_message_id: mapping.parent_message_id(row),
+      turn_index: mapping.turn_index(row),
+      role: mapping.role(row),
+      text: mapping.text(row),
+      text_cleaned: mapping.text_cleaned
+        ? mapping.text_cleaned(row)
+        : cleanText(mapping.text(row)),
+      created_at_iso: mapping.created_at_iso(row),
+      model_identifier: mapping.model_identifier(row),
+      schema_version: schemaVersion,
+      extractor_version: EXTRACTOR_VERSION,
+      platform_specific_json: JSON.stringify({ donor_id_type: donorIdType, download_time: downloadTime, ...extras })
+    };
+    out.push(headers.map(h => escapeCSVField(canonical[h])).join(','));
+  }
+  return out.join('\r\n') + '\r\n';
+}
+
+const CANONICAL_MAPPINGS = {
+  copilot: {
+    consumed: new Set(['conversation_id', 'message_id', 'role', 'text', 'text_cleaned', 'created_at', 'mode']),
+    conversation_id: r => r.conversation_id,
+    message_id: r => r.message_id,
+    parent_message_id: () => '',
+    turn_index: () => '',
+    role: r => r.role,
+    text: r => r.text,
+    text_cleaned: r => r.text_cleaned,
+    created_at_iso: r => r.created_at,
+    model_identifier: r => r.mode || ''
+  },
+  m365_copilot: {
+    consumed: new Set([
+      'conversation_id', 'message_id', 'request_id', 'role', 'text', 'text_cleaned',
+      'created_at', 'message_type', 'turn_count'
+    ]),
+    conversation_id: r => r.conversation_id,
+    // Each message has its own stable messageId. For the user's prompt
+    // message, Sydney reuses the requestId as the messageId so cross-platform
+    // joins by message_id still work per turn.
+    message_id: r => r.message_id || r.request_id,
+    parent_message_id: () => '',
+    turn_index: r => typeof r.turn_count === 'number' ? r.turn_count : '',
+    role: r => r.role,
+    text: r => r.text,
+    text_cleaned: r => r.text_cleaned,
+    created_at_iso: r => r.created_at,
+    model_identifier: r => r.message_type || ''
+  },
+  google_ai_mode: {
+    consumed: new Set(['conversation_title', 'turn_index', 'role', 'text', 'text_cleaned', 'captured_at']),
+    conversation_id: r => r.conversation_title,
+    message_id: r => `turn_${r.turn_index}`,
+    parent_message_id: () => '',
+    turn_index: r => r.turn_index,
+    role: r => r.role,
+    text: r => r.text,
+    text_cleaned: r => r.text_cleaned,
+    created_at_iso: r => r.captured_at,
+    model_identifier: () => ''
+  },
+  google_ai_overview: {
+    consumed: new Set(['query', 'ai_overview_text', 'ai_overview_text_cleaned', 'captured_at']),
+    conversation_id: r => r.query,
+    message_id: () => '0',
+    parent_message_id: () => '',
+    turn_index: () => 0,
+    role: () => 'assistant',
+    text: r => r.ai_overview_text,
+    text_cleaned: r => r.ai_overview_text_cleaned,
+    created_at_iso: r => r.captured_at,
+    model_identifier: () => ''
+  }
+};
+
+/**
+ * Generate a flat CSV with schema_version + extractor_version prepended.
+ */
+function generateVersionedCSV(rows, schemaName) {
+  if (!rows || rows.length === 0) return '';
+  const schemaVersion = SCHEMA_VERSIONS[schemaName] || 'unknown';
+  const baseHeaders = Object.keys(rows[0]);
+  const headers = ['schema_version', 'extractor_version', ...baseHeaders];
+  const enriched = rows.map(r => ({ schema_version: schemaVersion, extractor_version: EXTRACTOR_VERSION, ...r }));
+  return generateCSV(enriched, headers);
+}
+
+/**
+ * Scrub PII (optional) and count redactions across all scrub-targeted columns.
+ */
+function scrubIfEnabled(rows, columns, enabled) {
+  if (!enabled || !columns || columns.length === 0) return { rows, redactionCount: 0 };
+  let total = 0;
+  const scrubbed = rows.map(row => {
+    const next = { ...row };
+    for (const col of columns) {
+      if (typeof next[col] === 'string' && next[col].length > 0) {
+        const original = next[col];
+        next[col] = scrubText(original);
+        total += countRedactions(original, next[col]).total;
+      }
+    }
+    return next;
+  });
+  return { rows: scrubbed, redactionCount: total };
+}
+
+/**
+ * Run validators against each CSV we're about to download; return a summary
+ * safe to embed in the manifest.
+ */
+function summarizeValidation(perSchema) {
+  const summary = {};
+  for (const [schemaName, result] of Object.entries(perSchema)) {
+    summary[schemaName] = {
+      valid: result.valid,
+      total_rows: result.totalRows,
+      error_rows: result.errorRows,
+      warning_rows: result.warningRows,
+      errors_sample: result.errorsSample.slice(0, 5),
+      warnings_sample: result.warningsSample.slice(0, 5)
+    };
+  }
+  return summary;
+}
+
+/**
+ * Push a CSV entry into the per-export file list.
+ * `stem` is the schema-level name (e.g. `claude_metadata`); the actual
+ * inner filename gets the export slug (short conversation id + download
+ * timestamp) appended so each CSV is traceable back to its originating ZIP
+ * even when extracted and moved around in isolation. Scripts can still glob
+ * by schema with a trailing wildcard: `**​/claude_metadata_*.csv`.
+ */
+function pushCsv(list, stem, schemaName, content, slug) {
+  const innerName = slug ? `${stem}_${slug}.csv` : `${stem}.csv`;
+  list.push({ innerName, schemaName, content });
+}
+
+/**
+ * Main entrypoint: generate the CSV bundle for one conversation and trigger
+ * a single ZIP download containing every CSV + the provenance manifest.
  */
 async function handleConversationData(message) {
   const platform = message.platform || 'unknown';
@@ -274,268 +759,498 @@ async function handleConversationData(message) {
     return;
   }
 
-  // Validate conversation data
   const validation = validateConversationData(conversationData, platform);
   if (!validation.isValid) {
     _console.error(`[${platform}] Invalid conversation data:`, validation.error);
     return;
   }
 
-  _console.log(`[${platform}] Processing conversation data (validated)`);
-
   try {
-    const { id: donorId, type: donorIdType } = await getOrCreateDonorId();
+    const { id: donorIdRaw, type: donorIdType } = await getOrCreateDonorId();
+    const { piiScrubEnabled, includeDonorContext, studySalt } = await loadPrivacySettings();
+    const donorId = await hmacDonorId(donorIdRaw, studySalt);
+    const donorIdHashed = studySalt ? donorId : await sha256Hex(donorIdRaw);
     const downloadTime = new Date().toISOString();
 
-    // Get platform-specific handler
-    let rows;
-    let csvFiles = []; // Array of { filename, content }
+    // Build a filename slug that pins every file in this export (CSVs and
+    // manifest) to its conversation + download time. If the ZIP is unpacked
+    // and the CSVs move around, each file still carries enough provenance in
+    // its name to be matched back to the manifest / archive.
+    const conversationIdForNaming = resolveConversationId(conversationData);
+    const idShort = sanitizeIdForFilename(conversationIdForNaming || '');
+    const slug = `${idShort}_${timestampSlug(downloadTime)}`;
+
+    const csvFiles = []; // { innerName, schemaName, content, rowCount }
+    const perSchemaValidation = {};
+    let totalPiiRedactions = 0;
+    let apiFormat = null;
+    let orphanCount = 0;
+    let extractionTelemetry = null;
 
     if (platform === 'chatgpt') {
-      // Use the new extractor which returns multiple CSVs
-      if (typeof extractChatGPTConversation === 'function') {
-        const result = extractChatGPTConversation(conversationData, { donorId, donorIdType, downloadTime });
+      const result = extractChatGPTConversation(conversationData, { donorId, donorIdType, downloadTime });
+      apiFormat = result.apiFormat;
+      orphanCount = result.orphanCount;
 
-        const conversationId = conversationData.conversation_id || conversationData.id || 'unknown';
-        const idShort = conversationId.substring(0, 8);
+      const { rows: msgRows, redactionCount: msgRed } = scrubIfEnabled(
+        result.messages, DEFAULT_SCRUB_COLUMNS.chatgpt_messages, piiScrubEnabled
+      );
+      totalPiiRedactions += msgRed;
 
-        csvFiles.push({
-          filename: generateFilename(`chatgpt_metadata`, idShort),
-          content: result.metadataCSV
-        });
+      pushCsv(csvFiles, 'chatgpt_metadata', 'chatgpt_metadata', result.metadataCSV, slug);
 
-        csvFiles.push({
-          filename: generateFilename(`chatgpt_messages`, idShort),
-          content: result.messagesCSV
-        });
-
-        if (result.searchResults && result.searchResults.length > 0) {
-          csvFiles.push({
-            filename: generateFilename(`chatgpt_sources`, idShort),
-            content: result.sourcesCSV
-          });
-        }
-
-        if (result.messageUrls && result.messageUrls.length > 0) {
-          csvFiles.push({
-            filename: generateFilename(`chatgpt_message_urls`, idShort),
-            content: result.messageUrlsCSV
-          });
-        }
-
-        if (result.donorContext &&
-            (result.donorContext.user_profile || result.donorContext.user_instructions)) {
-          csvFiles.push({
-            filename: generateFilename(`chatgpt_donor_context`, idShort),
-            content: result.donorContextCSV
-          });
-        }
+      if (piiScrubEnabled && msgRed > 0) {
+        pushCsv(csvFiles, 'chatgpt_messages', 'chatgpt_messages', generateMessagesCSV(msgRows), slug);
+        pushCsv(csvFiles, 'chatgpt_messages_canonical', 'chatgpt_messages_canonical',
+          generateMessagesCanonicalCSV(msgRows, { donorId, donorIdType, downloadTime }), slug);
       } else {
-        _console.error('[ChatGPT] Extractor function not found');
-        return;
+        pushCsv(csvFiles, 'chatgpt_messages', 'chatgpt_messages', result.messagesCSV, slug);
+        pushCsv(csvFiles, 'chatgpt_messages_canonical', 'chatgpt_messages_canonical', result.messagesCanonicalCSV, slug);
       }
-    } else if (platform === 'claude' && ClaudeHandler) {
-      rows = ClaudeHandler.flattenConversationData(conversationData).map(row => ({
+
+      if (result.searchResults && result.searchResults.length > 0) {
+        pushCsv(csvFiles, 'chatgpt_sources', 'chatgpt_sources', result.sourcesCSV, slug);
+      }
+      if (result.messageUrls && result.messageUrls.length > 0) {
+        pushCsv(csvFiles, 'chatgpt_message_urls', 'chatgpt_message_urls', result.messageUrlsCSV, slug);
+      }
+      if (includeDonorContext && result.donorContext &&
+          (result.donorContext.user_profile || result.donorContext.user_instructions)) {
+        if (piiScrubEnabled) {
+          const dc = { ...result.donorContext };
+          for (const col of DEFAULT_SCRUB_COLUMNS.chatgpt_donor_context) {
+            if (typeof dc[col] === 'string' && dc[col].length > 0) {
+              const before = dc[col];
+              dc[col] = scrubText(before);
+              totalPiiRedactions += countRedactions(before, dc[col]).total;
+            }
+          }
+          pushCsv(csvFiles, 'chatgpt_donor_context', 'chatgpt_donor_context', generateDonorContextCSV(dc), slug);
+        } else {
+          pushCsv(csvFiles, 'chatgpt_donor_context', 'chatgpt_donor_context', result.donorContextCSV, slug);
+        }
+      }
+
+      const msgRowsForValidation = msgRows.map(m => ({
+        donor_id: m.donor_id,
+        donor_id_type: m.donor_id_type,
+        download_time: m.download_time,
+        conversation_id: m.conversation_id,
+        message_id: m.node_id,
+        parent_id: m.parent_id,
+        turn_number: m.turn_number,
+        author_role: m.author_role,
+        tool_name: m.tool_name,
+        content_type: m.content_type,
+        text: m.text,
+        create_time: m.create_time,
+        model_slug: m.model_slug
+      }));
+      perSchemaValidation.chatgpt_messages = validateRows(msgRowsForValidation, 'chatgpt_messages');
+
+    } else if (platform === 'claude') {
+      const result = extractClaudeConversation(conversationData, { donorId, donorIdType, downloadTime });
+
+      // Optional PII scrub per CSV. Each schema has its own target columns.
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.claude_metadata, piiScrubEnabled);
+      totalPiiRedactions += scrubMetadata.redactionCount;
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.claude_messages, piiScrubEnabled);
+      totalPiiRedactions += scrubMessages.redactionCount;
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.claude_sources, piiScrubEnabled);
+      totalPiiRedactions += scrubSources.redactionCount;
+      const scrubAttachments = scrubIfEnabled(result.attachments, DEFAULT_SCRUB_COLUMNS.claude_attachments, piiScrubEnabled);
+      totalPiiRedactions += scrubAttachments.redactionCount;
+
+      pushCsv(csvFiles, 'claude_metadata', 'claude_metadata',
+        generateClaudeMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
+      pushCsv(csvFiles, 'claude_messages', 'claude_messages',
+        generateClaudeMessagesCSV(scrubMessages.rows), slug);
+      if (scrubSources.rows.length > 0) {
+        pushCsv(csvFiles, 'claude_sources', 'claude_sources',
+          generateClaudeSourcesCSV(scrubSources.rows), slug);
+      }
+      if (scrubAttachments.rows.length > 0) {
+        pushCsv(csvFiles, 'claude_attachments', 'claude_attachments',
+          generateClaudeAttachmentsCSV(scrubAttachments.rows), slug);
+      }
+      pushCsv(csvFiles, 'claude_messages_canonical', 'claude_messages_canonical',
+        result.messagesCanonicalCSV, slug);
+
+      perSchemaValidation.claude_messages = validateRows(scrubMessages.rows, 'claude_messages');
+
+    } else if (platform === 'perplexity') {
+      const result = extractPerplexityConversation(conversationData, { donorId, donorIdType, downloadTime });
+
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.perplexity_metadata, piiScrubEnabled);
+      totalPiiRedactions += scrubMetadata.redactionCount;
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.perplexity_messages, piiScrubEnabled);
+      totalPiiRedactions += scrubMessages.redactionCount;
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.perplexity_sources, piiScrubEnabled);
+      totalPiiRedactions += scrubSources.redactionCount;
+
+      pushCsv(csvFiles, 'perplexity_metadata', 'perplexity_metadata',
+        generatePerplexityMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
+      pushCsv(csvFiles, 'perplexity_messages', 'perplexity_messages',
+        generatePerplexityMessagesCSV(scrubMessages.rows), slug);
+      if (scrubSources.rows.length > 0) {
+        pushCsv(csvFiles, 'perplexity_sources', 'perplexity_sources',
+          generatePerplexitySourcesCSV(scrubSources.rows), slug);
+      }
+      pushCsv(csvFiles, 'perplexity_messages_canonical', 'perplexity_messages_canonical',
+        result.messagesCanonicalCSV, slug);
+
+      perSchemaValidation.perplexity_messages = validateRows(scrubMessages.rows, 'perplexity_messages');
+
+    } else if (platform === 'grok') {
+      const result = extractGrokConversation(conversationData, { donorId, donorIdType, downloadTime });
+
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.grok_metadata, piiScrubEnabled);
+      totalPiiRedactions += scrubMetadata.redactionCount;
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.grok_messages, piiScrubEnabled);
+      totalPiiRedactions += scrubMessages.redactionCount;
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.grok_sources, piiScrubEnabled);
+      totalPiiRedactions += scrubSources.redactionCount;
+
+      pushCsv(csvFiles, 'grok_metadata', 'grok_metadata',
+        generateGrokMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
+      pushCsv(csvFiles, 'grok_messages', 'grok_messages',
+        generateGrokMessagesCSV(scrubMessages.rows), slug);
+      if (scrubSources.rows.length > 0) {
+        pushCsv(csvFiles, 'grok_sources', 'grok_sources',
+          generateGrokSourcesCSV(scrubSources.rows), slug);
+      }
+      pushCsv(csvFiles, 'grok_messages_canonical', 'grok_messages_canonical',
+        result.messagesCanonicalCSV, slug);
+
+      perSchemaValidation.grok_messages = validateRows(scrubMessages.rows, 'grok_messages');
+
+    } else if (platform === 'deepseek') {
+      const result = extractDeepSeekConversation(conversationData, { donorId, donorIdType, downloadTime });
+
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.deepseek_metadata, piiScrubEnabled);
+      totalPiiRedactions += scrubMetadata.redactionCount;
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.deepseek_messages, piiScrubEnabled);
+      totalPiiRedactions += scrubMessages.redactionCount;
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.deepseek_sources, piiScrubEnabled);
+      totalPiiRedactions += scrubSources.redactionCount;
+
+      pushCsv(csvFiles, 'deepseek_metadata', 'deepseek_metadata',
+        generateDeepSeekMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
+      pushCsv(csvFiles, 'deepseek_messages', 'deepseek_messages',
+        generateDeepSeekMessagesCSV(scrubMessages.rows), slug);
+      if (scrubSources.rows.length > 0) {
+        pushCsv(csvFiles, 'deepseek_sources', 'deepseek_sources',
+          generateDeepSeekSourcesCSV(scrubSources.rows), slug);
+      }
+      pushCsv(csvFiles, 'deepseek_messages_canonical', 'deepseek_messages_canonical',
+        result.messagesCanonicalCSV, slug);
+
+      perSchemaValidation.deepseek_messages = validateRows(scrubMessages.rows, 'deepseek_messages');
+
+    } else if (platform === 'copilot' || platform === 'm365_copilot' || platform === 'google_search') {
+      const handler =
+        platform === 'copilot' ? CopilotHandler :
+        platform === 'm365_copilot' ? M365CopilotHandler :
+        GoogleSearchHandler;
+      const rawRows = handler.flattenConversationData(conversationData).map(row => ({
         donor_id: donorId,
         donor_id_type: donorIdType,
         download_time: downloadTime,
         ...row
       }));
-    } else if (platform === 'copilot' && CopilotHandler) {
-      rows = CopilotHandler.flattenConversationData(conversationData).map(row => ({
-        donor_id: donorId,
-        donor_id_type: donorIdType,
-        download_time: downloadTime,
-        ...row
-      }));
+
+      let canonicalKey, scrubColumns, flatSchemaName, innerPrefix, canonicalInner;
+      if (platform === 'copilot') {
+        canonicalKey = 'copilot';
+        scrubColumns = DEFAULT_SCRUB_COLUMNS.copilot_conversation;
+        flatSchemaName = 'copilot_conversation';
+        innerPrefix = 'copilot_conversation';
+        canonicalInner = 'copilot_messages_canonical';
+      } else if (platform === 'm365_copilot') {
+        canonicalKey = 'm365_copilot';
+        scrubColumns = DEFAULT_SCRUB_COLUMNS.m365_copilot_conversation;
+        flatSchemaName = 'm365_copilot_conversation';
+        innerPrefix = 'm365_copilot_conversation';
+        canonicalInner = 'm365_copilot_messages_canonical';
+      } else {
+        const isAIMode = conversationData.mode === 'ai_mode';
+        canonicalKey = isAIMode ? 'google_ai_mode' : 'google_ai_overview';
+        scrubColumns = isAIMode ? DEFAULT_SCRUB_COLUMNS.google_ai_mode : DEFAULT_SCRUB_COLUMNS.google_ai_overview;
+        flatSchemaName = isAIMode ? 'google_ai_mode' : 'google_ai_overview';
+        innerPrefix = flatSchemaName;
+        canonicalInner = isAIMode ? 'google_ai_mode_canonical' : 'google_ai_overview_canonical';
+        extractionTelemetry = conversationData.extraction_telemetry || null;
+      }
+
+      const { rows: scrubbedRows, redactionCount } = scrubIfEnabled(rawRows, scrubColumns, piiScrubEnabled);
+      totalPiiRedactions += redactionCount;
+
+      pushCsv(csvFiles, innerPrefix, flatSchemaName, generateVersionedCSV(scrubbedRows, flatSchemaName), slug);
+
+      const canonicalSchemaName = {
+        copilot: 'copilot_messages_canonical',
+        m365_copilot: 'm365_copilot_messages_canonical',
+        google_ai_mode: 'google_ai_mode_canonical',
+        google_ai_overview: 'google_ai_overview_canonical'
+      }[canonicalKey];
+      pushCsv(csvFiles, canonicalInner, canonicalSchemaName,
+        buildCanonicalCSV(scrubbedRows, CANONICAL_MAPPINGS[canonicalKey], {
+          donorId, donorIdType, downloadTime,
+          platform: canonicalKey,
+          schemaName: canonicalSchemaName
+        }), slug);
+
+      // Dedicated sources CSV for Google (parity with chatgpt_sources /
+      // claude_sources). Only emit when there's actually at least one source.
+      if (platform === 'google_search') {
+        const sourceRows = GoogleSearchHandler.flattenSources(conversationData).map(r => ({
+          donor_id: donorId,
+          donor_id_type: donorIdType,
+          download_time: downloadTime,
+          ...r
+        }));
+        if (sourceRows.length > 0) {
+          pushCsv(csvFiles, 'google_sources', 'google_sources', generateGoogleSourcesCSV(sourceRows), slug);
+        }
+      }
+
+      if (platform === 'm365_copilot') {
+        const sourceRows = M365CopilotHandler.flattenSources(conversationData).map(r => ({
+          donor_id: donorId,
+          donor_id_type: donorIdType,
+          download_time: downloadTime,
+          ...r
+        }));
+        if (sourceRows.length > 0) {
+          const scrubbedSources = scrubIfEnabled(sourceRows, DEFAULT_SCRUB_COLUMNS.m365_copilot_sources, piiScrubEnabled);
+          totalPiiRedactions += scrubbedSources.redactionCount;
+          pushCsv(csvFiles, 'm365_copilot_sources', 'm365_copilot_sources',
+            generateM365CopilotSourcesCSV(scrubbedSources.rows), slug);
+        }
+      }
+
+      perSchemaValidation[flatSchemaName] = validateRows(scrubbedRows, flatSchemaName);
+
     } else {
       _console.error(`[${platform}] No handler found for platform`);
       return;
     }
 
-    // If we have rows (legacy single CSV path), convert to csvFiles format
-    if (rows && rows.length > 0) {
-      const csv = generateCSV(rows);
-      const conversationId = conversationData.conversation_id || conversationData.id || 'unknown';
-      const idShort = conversationId.substring(0, 8);
-      const filename = generateFilename(`${platform}_conversation`, idShort);
-
-      csvFiles.push({
-        filename: filename,
-        content: csv
-      });
-    } else if (csvFiles.length === 0) {
+    if (csvFiles.length === 0) {
       _console.warn(`[${platform}] No data extracted from conversation`);
       return;
     }
 
-    // Process all CSV files
-    csvFiles.forEach((file, index) => {
-      // Create blob with UTF-8 BOM
-      const blob = createCSVBlob(file.content);
-      const url = URL.createObjectURL(blob);
+    for (const f of csvFiles) f.rowCount = countRows(f.content);
 
-      // Trigger download with a small delay between files to ensure browser handles them
-      setTimeout(() => {
-        browser.downloads.download({
-          url: url,
-          filename: file.filename,
-          saveAs: false
-        }).then(() => {
-          _console.log(`[${platform}] ✓ Download triggered`, {
-            filename: file.filename
-          });
+    const conversationIdForManifest = conversationIdForNaming;
 
-          setTimeout(() => {
-            URL.revokeObjectURL(url);
-          }, 1000);
-        }).catch(error => {
-          _console.error(`[${platform}] ✗ Download failed:`, error);
-          URL.revokeObjectURL(url);
-        });
-      }, index * 500);
+    // Build manifest using inner filenames (the archive paths) so the manifest
+    // describes exactly what's in the zip the user downloads.
+    const manifestExtras = {
+      pii_scrub_enabled: piiScrubEnabled,
+      pii_redactions_total: totalPiiRedactions,
+      include_donor_context: includeDonorContext,
+      orphaned_nodes: orphanCount,
+      validation: summarizeValidation(perSchemaValidation),
+      ...(extractionTelemetry ? { extraction_telemetry: extractionTelemetry } : {})
+    };
+    const manifestJson = await buildManifest({
+      platform,
+      conversationId: conversationIdForManifest,
+      donorIdHashed,
+      donorIdType,
+      downloadTime,
+      apiFormat,
+      files: csvFiles.map(f => ({
+        filename: f.innerName,
+        content: f.content,
+        schemaName: f.schemaName,
+        rowCount: f.rowCount
+      })),
+      extras: manifestExtras
     });
 
+    // Compose the ZIP. CSVs get a UTF-8 BOM so Excel renders them correctly
+    // when a researcher opens the file straight from the archive. The manifest
+    // name mirrors the CSV naming so it is also traceable back to the ZIP in
+    // isolation.
+    const manifestName = `${platform}_manifest_${slug}.json`;
+    const zipEntries = [
+      ...csvFiles.map(f => ({ name: f.innerName, content: UTF8_BOM + f.content })),
+      { name: manifestName, content: manifestJson }
+    ];
+    const zipBytes = buildZip(zipEntries);
+    const zipBlob = new Blob([zipBytes], { type: 'application/zip' });
+    const url = URL.createObjectURL(zipBlob);
+
+    const zipFilename = `${platform}_${slug}.zip`;
+
+    browser.downloads.download({ url, filename: zipFilename, saveAs: false })
+      .then(() => setTimeout(() => URL.revokeObjectURL(url), 1000))
+      .catch(error => {
+        _console.error(`[${platform}] Download failed:`, error);
+        URL.revokeObjectURL(url);
+      });
   } catch (error) {
     _console.error(`[${platform}] Error processing conversation data:`, error);
   }
 }
 
-/**
- * Message listener - routes to platform handlers
- */
+const MESSAGE_TYPE_TO_PLATFORM = {
+  CHATGPT_CONVERSATION_DATA: 'chatgpt',
+  CLAUDE_CONVERSATION_DATA: 'claude',
+  COPILOT_CONVERSATION_DATA: 'copilot',
+  M365_COPILOT_CONVERSATION_DATA: 'm365_copilot',
+  PERPLEXITY_CONVERSATION_DATA: 'perplexity',
+  GROK_CONVERSATION_DATA: 'grok',
+  DEEPSEEK_CONVERSATION_DATA: 'deepseek',
+  GOOGLE_SEARCH_AI_OVERVIEW_DATA: 'google_search'
+};
+
+function senderHostnameMatchesPlatform(hostname, platformId) {
+  const platform = EXTENSION_CONFIG.platforms[platformId];
+  if (!platform || !platform.enabled) return false;
+  const domains = platform.domains || [];
+  return domains.some(domain => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
 browser.runtime.onMessage.addListener((message, sender) => {
-  // Proper sender validation
   if (!sender || sender.id !== browser.runtime.id) {
     _console.warn('[Background] Message from unauthorized sender:', sender?.id);
-    return;
+    return false;
   }
-
-  // For content scripts, validate the URL matches expected domains
-  if (sender.tab) {
-    try {
-      const url = new URL(sender.tab.url);
-      const allowedDomains = Object.values(EXTENSION_CONFIG.platforms)
-        .filter(platform => platform.enabled)
-        .reduce((acc, platform) => acc.concat(platform.domains || []), []);
-
-      if (!allowedDomains.some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`))) {
-        _console.warn('[Background] Message from unauthorized domain:', url.hostname);
-        return;
-      }
-    } catch (error) {
-      _console.warn('[Background] Invalid URL in sender tab:', error);
-      return;
-    }
-  }
-
-  // Validate message structure
   if (!message || typeof message.type !== 'string') {
-    _console.warn('[Background] Invalid message structure:', message);
-    return;
-  }
-
-  // Handle ChatGPT conversation data
-  if (message.type === 'CHATGPT_CONVERSATION_DATA') {
-    handleConversationData({ platform: 'chatgpt', payload: message.payload });
+    _console.warn('[Background] Invalid message structure');
     return false;
   }
 
-  // Handle Claude conversation data
-  if (message.type === 'CLAUDE_CONVERSATION_DATA') {
-    handleConversationData({ platform: 'claude', payload: message.payload });
+  const expectedPlatform = MESSAGE_TYPE_TO_PLATFORM[message.type];
+  if (!expectedPlatform) {
     return false;
   }
 
-  // Handle Copilot conversation data
-  if (message.type === 'COPILOT_CONVERSATION_DATA') {
-    handleConversationData({ platform: 'copilot', payload: message.payload });
+  if (!sender.tab || typeof sender.tab.url !== 'string') {
+    _console.warn('[Background] Privileged message without tab origin');
     return false;
   }
 
-  // Add other platform message types here as they're implemented
+  if (sender.frameId !== 0) {
+    _console.warn('[Background] Privileged message from subframe rejected');
+    return false;
+  }
 
+  let senderUrl;
+  try {
+    senderUrl = new URL(sender.tab.url);
+  } catch {
+    _console.warn('[Background] Invalid URL in sender tab');
+    return false;
+  }
 
+  if (senderUrl.protocol !== 'https:') {
+    _console.warn('[Background] Non-https sender rejected');
+    return false;
+  }
+
+  if (!senderHostnameMatchesPlatform(senderUrl.hostname, expectedPlatform)) {
+    _console.warn('[Background] Message type does not match sender origin');
+    return false;
+  }
+
+  handleConversationData({ platform: expectedPlatform, payload: message.payload });
   return false;
 });
 
 _console.log('AI Chat Exporter: Main background script loaded at ' + new Date().toISOString());
 
-// Runtime Integrity Monitoring
-// Register critical functions for integrity checking
-const criticalFunctions = {
-  validateConversationData,
-  escapeCSVField,
-  extractChatGPTConversation,
-  generateMessageUrlsCSV,
-  generateDonorContextCSV
-};
-
-// Simple function fingerprinting for runtime integrity
-const functionFingerprints = new Map();
-
-function registerCriticalFunctions() {
-  for (const [name, func] of Object.entries(criticalFunctions)) {
-    if (typeof func === 'function') {
-      const source = func.toString();
-      let hash = 0;
-      for (let i = 0; i < source.length; i++) {
-        hash = ((hash << 5) - hash) + source.charCodeAt(i);
-        hash = hash & hash;
-      }
-      functionFingerprints.set(name, hash);
-    }
-  }
-  _console.log('[Integrity] Registered', functionFingerprints.size, 'critical functions');
-}
-
-function verifyIntegrity() {
-  let tamperedCount = 0;
-
-  for (const [name, expectedHash] of functionFingerprints.entries()) {
-    const func = criticalFunctions[name];
-    if (!func) {
-      _console.error('[Integrity] Critical function missing:', name);
-      tamperedCount++;
-      continue;
-    }
-
-    const source = func.toString();
-    let actualHash = 0;
-    for (let i = 0; i < source.length; i++) {
-      actualHash = ((actualHash << 5) - actualHash) + source.charCodeAt(i);
-      actualHash = actualHash & actualHash;
-    }
-
-    if (actualHash !== expectedHash) {
-      _console.error('[Integrity] Function tampering detected:', name);
-      tamperedCount++;
-    }
-  }
-
-  if (tamperedCount === 0) {
-    _console.log('[Integrity] All critical functions verified');
-  } else {
-    _console.error('[Integrity] Tampering detected in', tamperedCount, 'function(s)');
-  }
-
-  return tamperedCount === 0;
-}
-
-// Initialize integrity checking
-registerCriticalFunctions();
-
-// Verify integrity periodically (every 5 minutes)
-setInterval(() => {
-  verifyIntegrity();
-}, 300000);
-
-// Verify on first load
-setTimeout(() => {
-  verifyIntegrity();
-}, 1000);
-
-// Global error handler
 self.addEventListener('unhandledrejection', event => {
   _console.error('[Background] Unhandled rejection:', event.reason);
 });
+
+// ---------------------------------------------------------------------------
+// Programmatic content script registration for Perplexity.
+//
+// The manifest `content_scripts` entries for Perplexity do not reliably take
+// effect in some Firefox builds, even though structurally identical entries
+// work for every other platform. Registering the same scripts via
+// `browser.scripting.registerContentScripts` at background startup bypasses
+// whatever is going wrong at manifest-parse time.
+//
+// This is additive: if the manifest entries also fire, Firefox dedupes
+// matching script IDs so we never double-inject.
+// ---------------------------------------------------------------------------
+
+(async function ensurePerplexityContentScripts() {
+  const scripting = typeof browser !== 'undefined' ? browser.scripting : null;
+  if (!scripting || typeof scripting.registerContentScripts !== 'function') {
+    console.warn('[Background] browser.scripting unavailable; relying on manifest content_scripts');
+    return;
+  }
+
+  const scripts = [
+    {
+      id: 'perplexity-main-world',
+      matches: ['https://www.perplexity.ai/*'],
+      js: ['shared/message-security.js', 'platforms/perplexity/inject.js'],
+      runAt: 'document_start',
+      world: 'MAIN',
+      persistAcrossSessions: true
+    },
+    {
+      id: 'perplexity-isolated-world',
+      matches: ['https://www.perplexity.ai/*'],
+      js: ['shared/message-security.js', 'platforms/perplexity/content.js'],
+      runAt: 'document_start',
+      world: 'ISOLATED',
+      persistAcrossSessions: true
+    }
+  ];
+
+  try {
+    const existing = await scripting.getRegisteredContentScripts({
+      ids: scripts.map(s => s.id)
+    });
+    const existingIds = new Set(existing.map(s => s.id));
+    if (existingIds.size > 0) {
+      await scripting.unregisterContentScripts({ ids: Array.from(existingIds) });
+    }
+    await scripting.registerContentScripts(scripts);
+    console.log('[Background] Perplexity content scripts registered via scripting API');
+  } catch (err) {
+    console.error('[Background] Failed to register Perplexity content scripts:', err);
+  }
+
+  // Belt-and-suspenders: also hook navigation and inject on each page load.
+  // If both the manifest entries AND the registerContentScripts path have
+  // somehow been ignored, this at least gets the scripts into the page the
+  // moment Firefox tells us it's committed to a navigation.
+  try {
+    browser.tabs.onUpdated.addListener(async (tabId, info, tab) => {
+      try {
+        if (!tab || typeof tab.url !== 'string') return;
+        if (!tab.url.startsWith('https://www.perplexity.ai/')) return;
+        if (info.status !== 'loading') return;
+        console.log('[Background] perplexity tab loading, injecting via executeScript', { tabId });
+        await scripting.executeScript({
+          target: { tabId },
+          files: ['shared/message-security.js', 'platforms/perplexity/inject.js'],
+          world: 'MAIN',
+          injectImmediately: true
+        });
+        await scripting.executeScript({
+          target: { tabId },
+          files: ['shared/message-security.js', 'platforms/perplexity/content.js'],
+          world: 'ISOLATED',
+          injectImmediately: true
+        });
+        console.log('[Background] perplexity executeScript succeeded for tab', tabId);
+      } catch (err) {
+        console.error('[Background] perplexity executeScript failed:', err && (err.message || err));
+      }
+    });
+    console.log('[Background] perplexity tab-navigation injector installed');
+  } catch (err) {
+    console.error('[Background] could not install tab-navigation injector:', err);
+  }
+})();

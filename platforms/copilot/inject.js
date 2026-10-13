@@ -21,6 +21,8 @@
 
   // Store the original fetch function
   const originalFetch = window.fetch;
+  const originalPostMessage = window.postMessage.bind(window);
+  const originalMessageSecurity = window.MessageSecurity;
 
   // Generate the signing secret here in the MAIN world at document_start,
   // before any page scripts execute. Write it to a dataset attribute so
@@ -135,11 +137,10 @@
       }
 
       // Check if this is a conversation history API request
-      // Copilot uses URLs like: /c/api/conversations/{conversationId}/history?api-version=2
-      const isConversationRequest = url && (
-        url.includes('/c/api/conversations/') &&
-        url.includes('/history')
-      );
+      // Copilot URL shape: /c/api/conversations/{conversationId}/history (optional query)
+      // Anchor the pattern so unrelated URLs that merely contain these substrings don't match.
+      const isConversationRequest = url &&
+        /\/c\/api\/conversations\/[^/?#]+\/history(?:[?#]|$)/i.test(url);
 
       if (isConversationRequest) {
         logDebug('Detected conversation API request, attempting to capture...');
@@ -148,6 +149,11 @@
         const validation = validateResponse(response);
         if (!validation.isValid) {
           logWarn('Response validation failed', { error: validation.error });
+          return response;
+        }
+
+        const ctype = response.headers.get('content-type') || '';
+        if (!ctype.toLowerCase().includes('application/json')) {
           return response;
         }
 
@@ -186,7 +192,7 @@
                 return;
               }
 
-              const signedMessage = await MessageSecurity.createSignedMessage(
+              const signedMessage = await originalMessageSecurity.createSignedMessage(
                 payloadWithId,
                 MESSAGE_TYPE,
                 SOURCE_ID,
@@ -194,7 +200,7 @@
                 storedSecret
               );
 
-              window.postMessage(signedMessage, window.location.origin);
+              originalPostMessage(signedMessage, window.location.origin);
 
               logDebug('Captured conversation data (signed)', {
                 conversationId: conversationId,

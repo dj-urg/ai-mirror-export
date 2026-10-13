@@ -164,6 +164,95 @@
   // Start periodic cleanup
   setInterval(cleanupOldConversations, CLEANUP_INTERVAL_MS);
 
+  // ==========================================================================
+  // ACTIVE FETCH — Claude migrated some endpoints to gRPC-Web, so passive
+  // interception races against the page bundle. We instead directly call the
+  // REST endpoint that still exists, using the page's logged-in cookies.
+  // ==========================================================================
+
+  let activeFetchInFlight = null;
+
+  function extractConversationIdFromPath() {
+    const m = window.location.pathname.match(/\/chat\/([0-9a-f-]{8,})/i);
+    return m ? m[1] : null;
+  }
+
+  async function fetchOrgId() {
+    const resp = await fetch('/api/organizations', { credentials: 'include' });
+    if (!resp.ok) throw new Error(`organizations ${resp.status}`);
+    const orgs = await resp.json();
+    if (!Array.isArray(orgs) || orgs.length === 0) throw new Error('no organizations returned');
+    const org = orgs.find(o => o && o.uuid) || orgs[0];
+    if (!org || !org.uuid) throw new Error('organization missing uuid');
+    return org.uuid;
+  }
+
+  async function fetchConversation(orgId, convId) {
+    const url = `/api/organizations/${encodeURIComponent(orgId)}/chat_conversations/${encodeURIComponent(convId)}?tree=True&rendering_mode=messages&render_all_tools=true`;
+    const resp = await fetch(url, { credentials: 'include' });
+    if (!resp.ok) throw new Error(`chat_conversations ${resp.status}`);
+    return resp.json();
+  }
+
+  async function activelyFetchAndStore(convId) {
+    if (!convId) return null;
+    if (capturedConversations.has(convId)) return capturedConversations.get(convId);
+    if (activeFetchInFlight) {
+      try { await activeFetchInFlight; } catch (_) {}
+      if (capturedConversations.has(convId)) return capturedConversations.get(convId);
+    }
+    activeFetchInFlight = (async () => {
+      const orgId = await fetchOrgId();
+      const data = await fetchConversation(orgId, convId);
+      if (!data || !Array.isArray(data.chat_messages)) {
+        throw new Error('response missing chat_messages');
+      }
+      storeConversation(convId, data);
+      logDebug('Actively fetched conversation', {
+        conversationId: convId,
+        messageCount: data.chat_messages.length
+      });
+      browser.runtime.sendMessage({
+        type: 'CONVERSATION_READY',
+        platform: 'claude',
+        conversationId: convId
+      }).catch(() => { /* popup may not be open */ });
+      return data;
+    })();
+    try {
+      return await activeFetchInFlight;
+    } catch (e) {
+      logWarn('Active fetch failed', { error: e.message });
+      return null;
+    } finally {
+      activeFetchInFlight = null;
+    }
+  }
+
+  // Kick off an opportunistic fetch on load — fast path for when the popup
+  // opens right after the user navigates to a chat.
+  function kickoffIfOnChatPage() {
+    const convId = extractConversationIdFromPath();
+    if (convId) {
+      activelyFetchAndStore(convId).catch(() => {});
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', kickoffIfOnChatPage, { once: true });
+  } else {
+    kickoffIfOnChatPage();
+  }
+
+  // SPA navigation: Claude swaps conversations without full page reload.
+  // Watch for pathname changes and refetch when a new /chat/<uuid> appears.
+  let _lastPath = window.location.pathname;
+  setInterval(() => {
+    if (window.location.pathname !== _lastPath) {
+      _lastPath = window.location.pathname;
+      kickoffIfOnChatPage();
+    }
+  }, 1500);
+
   /**
    * Verify HMAC-SHA256 signature
    */
@@ -198,8 +287,9 @@
    * Listen for messages from the injected page script
    */
   window.addEventListener('message', async event => {
-    // Only accept messages from the same window
+    // Only accept messages from the same window and same origin.
     if (event.source !== window) return;
+    if (event.origin !== window.location.origin) return;
 
     // Only accept our specific message type
     if (!event.data || event.data.type !== MESSAGE_TYPE) return;
@@ -248,8 +338,14 @@
       return;
     }
 
-    // Extract conversation UUID
-    const conversationId = conversationData.uuid || 'unknown';
+    // Require a safely-formatted UUID so it can be used as a Map key, logged,
+    // and later composed into a filename without any sanitization footguns.
+    const rawId = conversationData.uuid;
+    if (typeof rawId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(rawId)) {
+      logWarn('Received conversation data with missing or malformed uuid');
+      return;
+    }
+    const conversationId = rawId;
 
     // Store in memory with memory management
     storeConversation(conversationId, conversationData);
@@ -292,30 +388,55 @@
     }
 
     if (message.type === 'GET_CAPTURED_CONVERSATIONS') {
-      const conversations = Array.from(capturedConversations.entries()).map(([id, data]) => ({
-        id,
-        title: data.name || 'Untitled Conversation'
-      }));
+      const urlConvId = extractConversationIdFromPath();
+      const needActiveFetch = urlConvId && !capturedConversations.has(urlConvId);
 
-      sendResponse({
-        success: true,
-        conversations: conversations,
-        conversationIds: conversations.map(c => c.id), // Keep for backward compatibility
-        platform: 'claude'
-      });
+      const respond = () => {
+        const conversations = Array.from(capturedConversations.entries()).map(([id, data]) => ({
+          id,
+          title: data.name || 'Untitled Conversation'
+        }));
+        sendResponse({
+          success: true,
+          conversations: conversations,
+          conversationIds: conversations.map(c => c.id),
+          platform: 'claude'
+        });
+      };
+
+      if (needActiveFetch) {
+        activelyFetchAndStore(urlConvId).finally(respond);
+        return true; // async
+      }
+      respond();
       return false;
     }
 
     if (message.type === 'EXPORT_CONVERSATION' && message.platform === 'claude') {
       const conversationId = message.conversationId;
-      const conversationData = capturedConversations.get(conversationId);
 
+      const forward = (conversationData) => {
+        browser.runtime.sendMessage({
+          type: MESSAGE_TYPE,
+          payload: conversationData,
+          platform: 'claude'
+        }).then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+      };
+
+      let conversationData = capturedConversations.get(conversationId);
       if (!conversationData) {
-        sendResponse({
-          success: false,
-          error: 'Conversation not found. Please wait for the page to load the conversation.'
+        activelyFetchAndStore(conversationId).then(data => {
+          if (!data) {
+            sendResponse({
+              success: false,
+              error: 'Conversation not found. Please reload the page and try again.'
+            });
+            return;
+          }
+          forward(data);
         });
-        return false;
+        return true; // async
       }
 
       // Forward to background for CSV generation

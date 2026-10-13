@@ -25,6 +25,8 @@
   const capturedIds = new Set();
 
   const originalFetch = window.fetch;
+  const originalPostMessage = window.postMessage.bind(window);
+  const originalMessageSecurity = window.MessageSecurity;
 
   // ============================================================================
   // SECRET GENERATION
@@ -112,7 +114,7 @@
     }
     const secret = storedSecret;
 
-    const signedMessage = await MessageSecurity.createSignedMessage(
+    const signedMessage = await originalMessageSecurity.createSignedMessage(
       data,
       MESSAGE_TYPE,
       SOURCE_ID,
@@ -120,7 +122,7 @@
       secret
     );
 
-    window.postMessage(signedMessage, window.location.origin);
+    originalPostMessage(signedMessage, window.location.origin);
 
     logDebug('Captured conversation data', {
       conversationId,
@@ -158,6 +160,11 @@
         const validation = validateResponse(response);
         if (!validation.isValid) {
           logWarn('Passive intercept validation failed', { error: validation.error });
+          return response;
+        }
+
+        const ctype = response.headers.get('content-type') || '';
+        if (!ctype.toLowerCase().includes('application/json')) {
           return response;
         }
 
