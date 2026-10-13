@@ -1,0 +1,35 @@
+{
+  "_captured_conversation_id": "mistral-golden-0001",
+  "chat": {
+    "id": "mistral-golden-0001",
+    "title": "Synthetic Mistral golden fixture",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "updatedAt": "2026-01-01T00:00:30.000Z"
+  },
+  "messages": [
+    {
+      "id": "msg-2",
+      "chatId": "mistral-golden-0001",
+      "parentId": "msg-1",
+      "role": "assistant",
+      "model": "mistral-large",
+      "turn": 1,
+      "createdAt": "2026-01-01T00:00:30.000Z",
+      "contentChunks": [
+        {
+          "type": "text",
+          "text": "RFC 4180 recommends CRLF line endings and double-quote escaping for CSV."
+        }
+      ]
+    },
+    {
+      "id": "msg-1",
+      "chatId": "mistral-golden-0001",
+      "parentId": null,
+      "role": "user",
+      "turn": 0,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "content": "Which RFC defines CSV?"
+    }
+  ]
+}

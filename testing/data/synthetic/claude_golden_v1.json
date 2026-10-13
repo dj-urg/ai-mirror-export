@@ -1,0 +1,37 @@
+{
+  "uuid": "11111111-2222-3333-4444-555555555555",
+  "name": "Synthetic Claude golden fixture",
+  "summary": "",
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "updated_at": "2026-01-01T00:00:30.000Z",
+  "settings": {
+    "enabled_web_search": false,
+    "enabled_monkeys_in_a_barrel": false,
+    "preview_feature_uses_artifacts": false
+  },
+  "is_starred": false,
+  "is_temporary": false,
+  "current_leaf_message_uuid": "msg-2",
+  "chat_messages": [
+    {
+      "uuid": "msg-1",
+      "parent_message_uuid": null,
+      "sender": "human",
+      "content": [
+        { "type": "text", "text": "Explain idempotence in one sentence." }
+      ],
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "uuid": "msg-2",
+      "parent_message_uuid": "msg-1",
+      "sender": "assistant",
+      "content": [
+        { "type": "text", "text": "An operation is idempotent when applying it twice yields the same result as applying it once." }
+      ],
+      "created_at": "2026-01-01T00:00:30.000Z",
+      "updated_at": "2026-01-01T00:00:30.000Z"
+    }
+  ]
+}

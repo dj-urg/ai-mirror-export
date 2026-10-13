@@ -1,0 +1,41 @@
+{
+  "code": 0,
+  "msg": "",
+  "data": {
+    "biz_code": 0,
+    "biz_msg": "",
+    "biz_data": {
+      "chat_session": {
+        "id": "deepseek-golden-0001",
+        "title": "Synthetic DeepSeek golden fixture",
+        "title_type": "USER",
+        "model_type": "deepseek-chat",
+        "pinned": false,
+        "version": 1,
+        "updated_at": 1767225630
+      },
+      "chat_messages": [
+        {
+          "message_id": 1,
+          "parent_id": null,
+          "role": "USER",
+          "model": "",
+          "fragments": [
+            { "id": 1, "type": "REQUEST", "content": "Explain CSV quoting rules briefly." }
+          ],
+          "inserted_at": 1767225600
+        },
+        {
+          "message_id": 2,
+          "parent_id": 1,
+          "role": "ASSISTANT",
+          "model": "deepseek-chat",
+          "fragments": [
+            { "id": 1, "type": "RESPONSE", "content": "Fields containing commas, quotes, or newlines must be wrapped in double quotes, with internal quotes doubled." }
+          ],
+          "inserted_at": 1767225630
+        }
+      ]
+    }
+  }
+}

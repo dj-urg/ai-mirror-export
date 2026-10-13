@@ -1,0 +1,37 @@
+{
+  "uuid": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+  "title": "Synthetic Perplexity golden fixture",
+  "created_at": "2026-01-01T00:00:00.000Z",
+  "updated_at": "2026-01-01T00:00:30.000Z",
+  "page_count": 1,
+  "entries": [
+    {
+      "uuid": "entry-1",
+      "query_str": "What is a browser extension content script?",
+      "status": "COMPLETED",
+      "display_model": "sonar",
+      "created_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:12.000Z",
+      "blocks": [
+        {
+          "markdown_block": {
+            "answer": "A content script runs in the context of a web page but is isolated from the page's JavaScript.",
+            "progress": "DONE"
+          }
+        },
+        {
+          "web_result_block": {
+            "web_results": [
+              {
+                "url": "https://developer.mozilla.org/docs/content-scripts?utm_source=test",
+                "title": "Content scripts | MDN",
+                "snippet": "Content scripts are files that run in the context of web pages.",
+                "domain": "developer.mozilla.org"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

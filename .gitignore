@@ -231,6 +231,17 @@ testing/tests/*
 !testing/tests/test_text_cleaner.js
 !testing/tests/test_validators.js
 !testing/tests/test_perplexity_extractor.js
+!testing/tests/test_claude_golden.js
+!testing/tests/test_perplexity_golden.js
+!testing/tests/test_grok_golden.js
+!testing/tests/test_deepseek_golden.js
+!testing/tests/test_mistral_golden.js
+# Synthetic (hand-built) fixtures used by the golden tests. Real-origin
+# fixtures under testing/data/<platform>/ stay ignored.
+!testing/data/
+testing/data/*
+!testing/data/synthetic/
+!testing/data/synthetic/**
 /*.csv
 /conversation_*.csv
 /chatgpt_*.csv

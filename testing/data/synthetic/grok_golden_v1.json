@@ -1,0 +1,34 @@
+{
+  "_captured_conversation_id": "grok-golden-0001",
+  "conversation": {
+    "conversationId": "grok-golden-0001",
+    "title": "Synthetic Grok golden fixture",
+    "createTime": "2026-01-01T00:00:00.000Z",
+    "modifyTime": "2026-01-01T00:00:30.000Z",
+    "temporary": false,
+    "systemPromptName": "",
+    "mediaTypes": []
+  },
+  "responses": [
+    {
+      "responseId": "resp-1",
+      "sender": "USER",
+      "message": "What is a browser extension manifest?",
+      "manual": false,
+      "partial": false,
+      "shared": false,
+      "timestamp": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "responseId": "resp-2",
+      "parentResponseId": "resp-1",
+      "sender": "ASSISTANT",
+      "message": "The manifest.json file declares what a browser extension does and what access it needs.",
+      "model": "grok-2",
+      "manual": false,
+      "partial": false,
+      "shared": false,
+      "timestamp": "2026-01-01T00:00:30.000Z"
+    }
+  ]
+}
