@@ -82,8 +82,11 @@ const PLATFORMS = {
     name: 'DeepSeek',
     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm5.5 11.5a1 1 0 01-1 1h-9a1 1 0 010-2h9a1 1 0 011 1zm0-4a1 1 0 01-1 1h-9a1 1 0 010-2h9a1 1 0 011 1z" fill="currentColor"/></svg>',
     requiresConversationId: true,
+    // DeepSeek's SPA route is `/a/:agentId/s/:sessionId` — the agent id
+    // defaults to `chat` but DeepSeek has other agents (e.g. search), so
+    // match any slug for the agent segment.
     extractConversationId: (url) => {
-      const match = url.match(/\/a\/chat\/s\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      const match = url.match(/\/a\/[^/]+\/s\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
       return match ? match[1] : null;
     }
   },
@@ -1950,9 +1953,39 @@ function initMainUI() {
   hydratePrivacySettings();
   wirePrivacySettings();
 
+  wirePreviewBanner();
+
   startPolling(2000);
   verifyRuntimeIntegrity();
   focusInitialTarget();
+}
+
+/**
+ * Show the "Development Preview" banner on first open and hide it on
+ * subsequent opens once dismissed. The permanent small `Preview` tag in
+ * the header stays regardless — see docs/ux-audit.md §3.1 B4.
+ */
+async function wirePreviewBanner() {
+  const banner = document.getElementById('previewBanner');
+  const dismiss = document.getElementById('previewBannerDismiss');
+  if (!banner || !dismiss) return;
+  try {
+    const stored = await browser.storage.local.get('preview_banner_dismissed');
+    if (stored.preview_banner_dismissed === true) {
+      banner.hidden = true;
+      return;
+    }
+    banner.hidden = false;
+  } catch (_) {
+    // storage.local failed — show the banner by default; it's informational.
+    banner.hidden = false;
+  }
+  dismiss.addEventListener('click', async () => {
+    banner.hidden = true;
+    try {
+      await browser.storage.local.set({ preview_banner_dismissed: true });
+    } catch (_) { /* best-effort: the banner will reappear next session */ }
+  });
 }
 
 /**

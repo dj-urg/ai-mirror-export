@@ -48,11 +48,32 @@
           fill="currentColor" />
       </svg>
       <h1 class="popup-header__text">AI Chat Exporter</h1>
+      <span class="preview-tag" aria-label="Development preview build">Preview</span>
     </div>
     <div class="popup-header__platform" id="platformBadge" aria-live="polite">
       <!-- Platform badge inserted dynamically -->
     </div>
   </header>
+
+  <!-- Dismissible preview banner. Shown once per install; dismissal
+       persisted in browser.storage.local as preview_banner_dismissed. -->
+  <div class="preview-banner" id="previewBanner" role="status" aria-live="polite" hidden>
+    <svg class="preview-banner__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none"
+      xmlns="http://www.w3.org/2000/svg">
+      <path fill-rule="evenodd" clip-rule="evenodd"
+        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+        fill="currentColor" />
+    </svg>
+    <div class="preview-banner__content">
+      <p class="preview-banner__title">Development Preview</p>
+      <p class="preview-banner__text">This extension is in active development. Behavior may change between releases, and you may encounter bugs. Report issues on GitHub.</p>
+    </div>
+    <button class="preview-banner__dismiss" id="previewBannerDismiss" type="button" aria-label="Dismiss the development preview notice">
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 3 L9 9 M9 3 L3 9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </button>
+  </div>
 
   <!-- Consent Panel (first-run gate). role="main" because when the panel
        is shown, the real <main class="popup-main"> is display:none; without
@@ -277,6 +298,20 @@
             <li>No permanent storage of conversations</li>
           </ul>
         </div>
+        <div class="info-section__block">
+          <h3 class="info-section__heading">What's in the file?</h3>
+          <p class="info-section__paragraph">Exports are saved to your Downloads folder as a ZIP named <code class="info-section__code">&lt;platform&gt;_&lt;conversation-id&gt;_&lt;timestamp&gt;.zip</code>. Inside is a <code class="info-section__code">_manifest.json</code> describing the files, plus one or more CSVs:</p>
+          <dl class="info-section__defs">
+            <dt><code class="info-section__code">metadata.csv</code></dt>
+            <dd>Title, model, message count, platform, extraction timestamp.</dd>
+            <dt><code class="info-section__code">messages.csv</code></dt>
+            <dd>One row per turn: role (user/assistant), text, timestamp, model if known.</dd>
+            <dt><code class="info-section__code">sources.csv</code></dt>
+            <dd>Cited web results — only if the conversation used search.</dd>
+            <dt><code class="info-section__code">canonical.csv</code></dt>
+            <dd>A shared schema across platforms so cross-platform analysis is possible.</dd>
+          </dl>
+        </div>
       </div>
     </details>
   </main>
@@ -289,7 +324,10 @@
         d="M6 1a2 2 0 00-2 2v1H3a1 1 0 00-1 1v5a1 1 0 001 1h6a1 1 0 001-1V5a1 1 0 00-1-1H8V3a2 2 0 00-2-2zM5.5 3a.5.5 0 01.5-.5.5.5 0 01.5.5v1h-1V3z"
         fill="currentColor" />
     </svg>
-    <p class="popup-footer__text">All data stays local in your browser</p>
+    <div class="popup-footer__content">
+      <p class="popup-footer__text popup-footer__text--strong">Your data stays on your device.</p>
+      <p class="popup-footer__text">Nothing is sent to any server. Files are saved to your Downloads folder.</p>
+    </div>
   </footer>
 
   <script src="shared/logger.js"></script>

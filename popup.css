@@ -509,6 +509,94 @@ strong {
   flex-shrink: 0;
 }
 
+/* Small "Preview" chip in the header. Permanent — not dismissible. Signals
+   to every user, every time they open the popup, that this is a beta
+   build (per docs/ux-audit.md §3.1 B4). */
+.preview-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  margin-left: var(--space-xs);
+  font-size: 10px;
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-warning-text);
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+
+/* ============================================
+   PREVIEW BANNER COMPONENT (BEM)
+   First-run dismissible banner that explains the Preview tag. Dismissal
+   persists in browser.storage.local as `preview_banner_dismissed`.
+   ============================================ */
+
+.preview-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: clamp(var(--space-md), 3vw, var(--space-lg));
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-md);
+}
+
+.preview-banner__icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-warning-text);
+}
+
+.preview-banner__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.preview-banner__title {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-warning-text);
+  margin: 0 0 2px;
+}
+
+.preview-banner__text {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-relaxed);
+  margin: 0;
+}
+
+.preview-banner__dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  margin-top: -2px;
+  margin-right: -4px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-warning-text);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.preview-banner__dismiss:hover {
+  background-color: rgba(196, 64, 0, 0.12);
+}
+
+.preview-banner__dismiss:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
 /* ============================================
    PLATFORM BADGE COMPONENT (BEM)
    ============================================ */
@@ -1181,6 +1269,45 @@ strong {
 }
 
 /* Block headings */
+.info-section__paragraph {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+  margin: 0 0 var(--space-sm);
+}
+
+.info-section__code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+  padding: 1px 4px;
+  background-color: var(--color-background-hover);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-primary);
+}
+
+.info-section__defs {
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  font-size: var(--font-size-sm);
+}
+
+.info-section__defs dt {
+  margin-top: var(--space-xs);
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-medium);
+}
+
+.info-section__defs dt:first-child {
+  margin-top: 0;
+}
+
+.info-section__defs dd {
+  margin: 2px 0 0 var(--space-md);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+}
+
 .info-section__heading {
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-semibold);
@@ -1223,10 +1350,24 @@ strong {
   color: var(--color-text-tertiary);
 }
 
+.popup-footer__content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .popup-footer__text {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
-  text-align: center;
+  text-align: left;
+  margin: 0;
+  line-height: var(--line-height-relaxed);
+}
+
+.popup-footer__text--strong {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ============================================
