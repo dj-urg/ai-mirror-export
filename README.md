@@ -1,275 +1,201 @@
+<div align="center">
+
+<img src="docs/images/icon.png" alt="AI Chat Exporter icon" width="96" height="96" />
+
 # AI Chat Exporter
 
+Export your AI chat conversations to CSV, entirely on your own device.
+
+[![Mozilla Add-on version](https://img.shields.io/amo/v/local-ai-chat-exporter?label=Firefox%20Add-on&color=orange)](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
+[![Mozilla Add-on users](https://img.shields.io/amo/users/local-ai-chat-exporter?label=users&color=blue)](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
+[![CI](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/actions/workflows/ci.yml/badge.svg)](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-see%20repository-lightgrey)](#license)
+
+### [Install from Firefox Add-ons &rarr;](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
+
+</div>
+
 > [!WARNING]
-> **Development Preview**: This extension is currently in active development. Please approach results with caution. If you encounter any bugs or errors, please report them.
+> **Development Preview.** This extension is in active development. Behaviour may change between releases, and you may encounter bugs. Please verify your exports before using them in a study, and report issues on the [GitHub tracker](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/issues).
 
-A Firefox extension that exports chats from ChatGPT and Claude into CSV files. All processing happens locally in your browser - no data is sent to external servers.
+<div align="center">
 
-## Features
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/popup-dark.png" />
+  <img src="docs/images/popup-light.png" alt="AI Chat Exporter popup — ready to export a Claude conversation. Shows the Development Preview banner, a 'Capturing conversation data' status card, a Privacy settings section, the Export ZIP button, an About this extension section, and the footer line 'Your data stays on your device.'" width="420" />
+</picture>
 
-- **Export to CSV**: Convert chat conversations into spreadsheet-compatible CSV format
-- **Multi-platform support**: Works with ChatGPT (chatgpt.com), Claude (claude.ai), and Copilot (copilot.microsoft.com)
-- **Privacy-focused**: All extraction and conversion happens client-side
-- **Simple interface**: One-click export from the browser toolbar
-- **No dependencies**: Pure JavaScript with no external libraries
-- **Advanced ChatGPT support**: Exports both conversation metadata and full message history with support for thoughts, tools, and multimodal content
-- **Claude support**: Exports Claude conversations with full message history, content blocks, and parent-child relationships
-- **Copilot support**: Exports Copilot conversations with full message history and content blocks
+</div>
 
-## Supported Platforms
+## For participants and students
 
-- **ChatGPT**: https://chatgpt.com/* and https://chat.openai.com/* (Fully supported)
-- **Claude**: https://claude.ai/chat/* (Fully supported)
-- **Copilot**: https://copilot.microsoft.com/* and https://copilotstudio.microsoft.com/* (Fully supported)
+If a researcher asked you to install this extension, here is the whole process:
 
-## Installation
+1. **[Install from the Firefox Add-ons site.](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)** The icon will appear in your toolbar.
+2. **Open the AI chat you want to share** on one of the [supported sites](#supported-platforms).
+3. **Click the extension icon.** The popup tells you what will be exported.
+4. **(Optional) Open "Privacy settings"** to turn on PII scrubbing or enter a study code before you export.
+5. **Click "Export ZIP."** A single ZIP file is saved to your Downloads folder. Send it to the researcher by whatever channel they told you to use.
 
-### Firefox (Development)
+Nothing is uploaded anywhere by the extension. The ZIP sits in your Downloads folder until you decide what to do with it.
 
-1. Download or clone this repository
-2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`
-3. Click "Load Temporary Add-on..."
-4. Navigate to the extension directory and select `manifest.json`
-5. The extension icon will appear in your browser toolbar
+<details>
+<summary>Install from source (for development only)</summary>
 
-### Firefox Add-ons Store
+1. Clone or download this repository.
+2. In Firefox, open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on&hellip;** and select this project's `manifest.json`.
 
-*Coming soon - extension will be submitted to Mozilla Add-ons (AMO) for easier installation*
+The temporary install is wiped when you close Firefox — use the Add-ons store build for day-to-day use.
 
-## Usage
+</details>
 
-### ChatGPT
+## Supported platforms
 
-1. Navigate to any ChatGPT conversation (you must be logged in)
-2. Click the AI Chat Exporter icon in your browser toolbar
-3. A popup will appear showing the current page status
-4. Click "Export this chat to CSV"
-5. Two CSV files will be downloaded:
-   - `chatgpt_metadata_TIMESTAMP.csv` - Conversation metadata (one row)
-   - `chatgpt_messages_TIMESTAMP.csv` - All messages in the conversation
+| Platform | Sites | What gets exported |
+|---|---|---|
+| **ChatGPT** | `chatgpt.com`, `chat.openai.com` | Metadata, per-node messages (with thoughts, reasoning, tool output), cited sources, in-message URLs, donor context (opt-in), canonical messages |
+| **Claude** | `claude.ai` | Metadata, per-content-block messages, citations, attachments, canonical messages |
+| **Copilot** | `copilot.microsoft.com`, `copilotstudio.microsoft.com` | Conversation messages, canonical messages |
+| **Microsoft&nbsp;365 Copilot** | `m365.cloud.microsoft` | Conversation messages, cited sources, canonical messages |
+| **Perplexity** | `www.perplexity.ai` | Metadata, messages, sources, canonical messages |
+| **Grok** | `grok.com` | Metadata, messages, sources, canonical messages |
+| **DeepSeek** | `chat.deepseek.com` | Metadata, messages, sources, canonical messages |
+| **Mistral** | `chat.mistral.ai` | Metadata, messages, sources, canonical messages |
+| **Google AI Overview / AI Mode** | `google.com` and nine country domains (`.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au`) | AI Overview text or AI Mode turns, source URLs, canonical messages |
 
-### Claude
+Full column schemas live in [`METHODS.md`](METHODS.md) and [`STUDENT_GUIDE.md`](STUDENT_GUIDE.md).
 
-1. Navigate to any Claude conversation at https://claude.ai/chat/*
-2. Click the AI Chat Exporter icon in your browser toolbar
-3. A popup will appear showing the current page status
-4. Click "Export this chat to CSV"
-5. A CSV file will be downloaded named `claude_conversation_TIMESTAMP.csv`
+## How it works
 
-### Copilot
+```mermaid
+flowchart LR
+    A["Chat site<br/>(e.g. chatgpt.com)"] -->|API responses<br/>intercepted in-page| B[Content script]
+    B -->|postMessage| C[Extension popup]
+    C -->|browser.downloads| D[("ZIP in your<br/>Downloads folder")]
 
-1. Navigate to any Copilot conversation at https://copilot.microsoft.com/* or https://copilotstudio.microsoft.com/*
-2. Click the AI Chat Exporter icon in your browser toolbar
-3. A popup will appear showing the current page status
-4. Click "Export this chat to CSV"
-5. A CSV file will be downloaded named `copilot_conversation_TIMESTAMP.csv`
+    subgraph Device["Your device — nothing leaves it"]
+        A
+        B
+        C
+        D
+    end
+```
 
-### CSV Format
+The extension hooks the chat site's own `fetch` calls, reads the conversation payload the site has already loaded for you, formats it as CSV, bundles the CSVs plus a manifest with SHA-256 checksums into a ZIP, and triggers a browser download. There is no server component.
 
-#### ChatGPT
+**What the extension does *not* do:**
 
-**Metadata CSV (CSV A)** - One row per conversation:
-- **conversation_id**: Unique conversation identifier
-- **title**: Conversation title
-- **create_time**: Unix timestamp for conversation start
-- **update_time**: Unix timestamp for last update
-- **default_model_slug**: Model used (e.g., gpt-5-1)
-- **memory_scope**: Memory setting (e.g., global_enabled)
-- **is_do_not_remember**: Boolean flag for memory opt-out
-- **num_messages**: Total count of all messages
-- **num_user_messages**: Count of user messages
-- **num_assistant_messages**: Count of assistant messages
-- **num_tool_messages**: Count of tool messages
-- **user_editable_context**: User profile and custom instructions (JSON string)
+- No external network requests. The CSP (`connect-src 'none'`) blocks outbound connections from extension pages.
+- No telemetry, analytics, or crash reporting.
+- No account linking. The `donor_id` is a UUID generated locally on first use, never tied to your ChatGPT / Claude / Microsoft / Google account.
+- No DOM scraping of the chat site. The exporter uses the site's own API payloads, so what you see is what you export.
 
-**Messages CSV (CSV B)** - One row per message/node:
-- **conversation_id**: Links to metadata CSV
-- **node_id**: Unique message/node identifier
-- **parent_id**: Parent node ID (conversation graph structure)
-- **author_role**: Message author (user, assistant, tool, system)
-- **content_type**: Type of content (text, thoughts, multimodal_text, etc.)
-- **text**: Extracted text content
-- **has_image**: Boolean indicating if message contains images
-- **image_ids**: Comma-separated image asset pointers
-- **create_time**: Message timestamp
-- **status**: Message status (e.g., finished_successfully)
-- **end_turn**: Boolean indicating end of turn
-- **is_visually_hidden**: Boolean indicating if message is hidden in UI
-- **model_slug**: Model used for this specific message
-- **tool_name**: Tool name (if author_role is "tool")
+**Permissions, and why:**
 
-#### Claude
+| Permission | Reason |
+|---|---|
+| `activeTab`, `tabs` | Read the URL of the tab you clicked the icon on, so the popup knows which platform you are on. |
+| `scripting` | Inject the per-site content and `fetch`-hook scripts (`document_start`). |
+| `downloads` | Save the ZIP to your Downloads folder. |
+| `storage` | Remember your privacy settings and the local `donor_id` across exports. |
+| `host_permissions` | Limited to the ten supported chat site hosts plus the ten Google search domains listed in `manifest.json`. |
 
-**Single CSV** - One row per message:
-- **conversation_id**: Unique conversation identifier (UUID)
-- **conversation_name**: Title of the conversation
-- **message_id**: Unique message identifier (UUID)
-- **parent_message_id**: Parent message UUID (for conversation threading)
-- **sender**: Message author ("human" or "assistant")
-- **text**: Extracted text content from content blocks
-- **created_at**: Message creation timestamp (ISO 8601 format)
-- **updated_at**: Message update timestamp (ISO 8601 format)
-- **index**: Sequential message number in conversation
-- **truncated**: Boolean indicating if message was truncated
-- **stop_reason**: Reason assistant stopped generating (if applicable)
+## What's inside the ZIP
 
-#### Copilot
+Every export is a single ZIP named `{platform}_{conversation_id_short}_{timestamp}.zip`. Inside, each CSV repeats that slug so individual files can be traced back to the ZIP (and manifest) they came from:
 
-**Single CSV** - One row per message:
-- **conversation_id**: Unique conversation identifier
-- **message_id**: Unique message identifier
-- **role**: Message author role (user, assistant)
-- **text**: Extracted text content
-- **created_at**: Message timestamp
-- **channel**: Source channel (e.g., bing)
-- **mode**: Conversation mode (e.g., balanced, creative, precise)
-- **part_ids**: Comma-separated IDs of content parts
-- **author_type**: Original author type from API
+```
+claude_c6a2d8dc_2026-10-13T11-58-12Z.zip
+├── claude_metadata_…csv            — one row, conversation-level
+├── claude_messages_…csv            — one row per content block
+├── claude_sources_…csv             — one row per citation (only if present)
+├── claude_attachments_…csv         — one row per uploaded file (only if present)
+├── claude_messages_canonical_…csv  — one row per message, cross-platform shape
+└── claude_manifest_…json           — checksums, row counts, validation summary
+```
 
-**Key Features:**
-- Handles Claude's content block array structure (multiple text blocks concatenated with `\n\n`)
-- Preserves parent-child message relationships
-- ISO 8601 timestamps for easy parsing
-- Includes conversation metadata in each row
-- Handles Copilot's multi-part content structure (concatenates text parts)
-- Maps author types to standard roles (user/assistant)
-- Captures conversation mode (Creative, Balanced, Precise) and channel
-- Includes conversation metadata in each row
+Every CSV is UTF-8 with BOM, RFC 4180–quoted, and starts with the same five donor columns: `schema_version`, `extractor_version`, `donor_id`, `donor_id_type`, `download_time`.
 
-All CSV files are UTF-8 encoded and follow RFC 4180 standards, making them compatible with Excel, Google Sheets, R, Python pandas, and other data analysis tools.
+Every platform also emits a **canonical messages CSV** with the same 14 columns in the same order, so corpora can be pooled across platforms without a bespoke join:
 
-## Privacy & Security
+> `donor_id`, `platform`, `conversation_id`, `message_id`, `parent_message_id`, `turn_index`, `role`, `text`, `text_cleaned`, `created_at_iso`, `model_identifier`, `schema_version`, `extractor_version`, `platform_specific_json`
 
-- **No external servers**: All data extraction and CSV generation happens entirely in your browser
-- **No data collection**: The extension does not collect, store, or transmit any data
-- **Minimal permissions**: Only requests `activeTab` and `tabs` permissions
-- **Open source**: All code is available for inspection and audit
-- **No obfuscation**: Plain JavaScript with clear comments
-- **Active Fetch**: The extension may perform background fetches to the AI provider's API (e.g., ChatGPT, Claude) on your behalf to retrieve the full history of the current conversation. This is necessary to ensure complete data export and is only triggered by your actions.
+See [`METHODS.md`](METHODS.md) for extraction choices and [`STUDENT_GUIDE.md`](STUDENT_GUIDE.md) for the full per-column reference, confidence annotations, and common pitfalls.
 
-## Troubleshooting
+## Security & privacy
 
-### "This page is not supported" message
+The real risk is that your past chats may contain sensitive content you've forgotten about. The extension does not try to attack you, and does not expose you to anything beyond what visiting the chat site already does.
 
-**Cause**: You're on a page that isn't a ChatGPT or Claude chat.
+- **Everything runs locally.** The extension reads the chat site's own API responses, writes them to a ZIP, and saves it via the browser's download API. The extension-page CSP sets `connect-src 'none'`, blocking all outbound requests. No telemetry, no server component, zero runtime npm dependencies.
+- **The page↔extension bridge is HMAC-signed** ([`shared/message-security.js`](shared/message-security.js)) — stops other scripts on the same tab from injecting fake data. It does *not* protect against the chat site itself; that site already has your conversation, so trusting it with the extraction is unavoidable by design.
+- **Updates ship through Mozilla.** No `update_url` in `manifest.json`, so updates flow through [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/) and are signed by Mozilla. Integrity depends on the publisher's AMO account (2FA enabled).
+- **PII scrubbing is pattern-based** ([`utils/pii.js`](utils/pii.js)) — matches emails, phones, API keys, credit cards, SSNs, long tokens. Misses free-text names, addresses, employer names, medical narrative. A reduction in exposure, not a guarantee. On/off and which categories is a per-study decision that must match the consent text.
 
-**Solution**: Navigate to a chat page on chatgpt.com or claude.ai/chat/* and try again.
+**Why ten Google locale permissions?** The Google Search content script only runs on `/search*` paths (and does nothing on the rest of Google) to read AI Overview text that is already visible in the page you're viewing; no search queries are sent anywhere by the extension. The locale set — `.com`, `.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au` — covers the European and English-speaking populations this release targets. Firefox will prompt existing users to re-approve on update because the host list is new; declining the prompt disables the Google capture only, the rest of the extension continues to work.
 
-### "No conversation data captured" message
+**Before you send a ZIP, open it and look.** Reviewing the CSVs is the single most effective privacy step: a scrubber only catches patterns; your eyes catch *this specific message that mentions my employer's project*.
 
-**Cause**: The extension hasn't captured conversation data yet. This may happen if:
-- The page hasn't fully loaded yet
-- The conversation is empty
-- The API interception hasn't triggered
+## For researchers
 
-**Solution**: 
-1. Wait for the page to fully load and try again
-2. Refresh the page to trigger API calls
-3. Navigate to a different conversation and back
-4. Check browser console (F12) for capture confirmation messages
+- **[`METHODS.md`](METHODS.md)** — unit of analysis, content flattening rules, timestamp handling, Google selector fallback chain, and known limitations. Cite this in your methods section.
+- **[`STUDENT_GUIDE.md`](STUDENT_GUIDE.md)** — a per-column walk-through for donors and research assistants, written to make a received export legible on its own.
 
-### "Failed to extract chat" alert
+**Donor identity.** `donor_id` is a UUID generated on first use and stored in `browser.storage.local`. If a donor enters a **study code** (salt) in Privacy settings, every `donor_id` in the ZIP becomes `HMAC-SHA256(uuid, salt)` — the same donor across different studies yields different IDs, so cross-study joins are blocked.
 
-**Cause**: An unexpected error occurred during extraction.
+**PII scrubbing is best-effort.** The optional regex pass in [`utils/pii.js`](utils/pii.js) targets emails, phone numbers, IPv4 addresses, JWTs, bearer tokens, provider-prefixed keys (`sk-…`, `AKIA…`, `AIza…`, etc.), credit-card-shaped numbers (Luhn-checked), US SSNs, and long opaque tokens. Scrubbed values are replaced with tagged placeholders (`<REDACTED:EMAIL>`, …) and counted in the manifest. It will miss names, addresses, and anything that doesn't match these patterns. Treat it as a reduction in exposure, not a guarantee.
 
-**Solution**:
-1. Check the browser console (F12) for detailed error messages
-2. Ensure you're on a supported chat page
-3. Try refreshing the page
-4. If the issue persists, report it as a bug with console error details
-
-### CSV opens incorrectly in Excel
-
-**Cause**: Character encoding issues (rare, as the extension includes UTF-8 BOM).
-
-**Solution**: 
-1. Open Excel
-2. Use "Data" → "From Text/CSV" instead of double-clicking the file
-3. Ensure UTF-8 encoding is selected
-
-### Error: "Failed to fetch conversation data" (404 error)
-
-**Cause**: The extension couldn't extract conversation data from the page or API.
-
-**Solution**:
-1. **Refresh the page** - Make sure the conversation is fully loaded
-2. **Check you're logged in** - You must be logged into ChatGPT
-3. **Wait a moment** - Let the page fully load before clicking export
-
-### Extension icon is grayed out or unresponsive
-
-**Cause**: Permission or installation issue.
-
-**Solution**:
-1. Check that the extension is enabled in `about:addons`
-2. Try reloading the extension from `about:debugging`
-3. Ensure you're using a recent version of Firefox
-
-## API Changes and Updates
-
-ChatGPT and Claude use API interception rather than DOM scraping, making the extension more resilient to UI changes. However, if the platforms change their API structure, the extension may need updates.
-
-### Reporting API Issues
-
-If you encounter extraction issues:
-
-1. Open an issue on the project repository
-2. Include:
-   - The platform
-   - The date when extraction stopped working
-   - Browser console errors (if any)
-   - Console logs showing "[Platform] Fetch interceptor installed" status
+**How to cite.** The repository ships a [`CITATION.cff`](CITATION.cff), so GitHub shows a "Cite this repository" button in the sidebar. BibTeX / APA export is generated from that file.
 
 ## Development
 
-### Technical Details
+<details>
+<summary>Local setup &amp; running the extension</summary>
 
-- **Manifest Version**: V3 (for maximum Firefox compatibility)
-- **JavaScript**: ES6+ (const/let, arrow functions, template literals)
-- **Architecture**: Modular platform-specific handlers with shared utilities
-- **Data Capture**: API interception via fetch hooks (no DOM scraping)
-- **Privacy**: All processing happens locally in the browser
-- **APIs Used**:
-  - `window.fetch` hook - Intercept API responses (inject scripts)
-  - `window.postMessage` - Page to content script communication
-  - `browser.runtime.sendMessage()` - Content script to background communication
-  - `browser.downloads` - Trigger CSV file downloads
-  - Blob API - Create CSV files
+```bash
+git clone https://github.com/dj-urg/AI-Dialogue-Insight-Extension.git
+cd AI-Dialogue-Insight-Extension
+npm install
+npm run lint          # ESLint
+npm run lint:web-ext  # web-ext lint
+npm test              # Node test runner
+npx web-ext run       # Launch Firefox with the extension loaded
+```
 
-### Architecture Highlights
+Requires Node 20+.
 
-This extension uses a robust architecture for reliable data capture:
+</details>
 
-1. **API Interception**: Captures data directly from platform APIs rather than scraping DOM
-   - More reliable than DOM scraping
-   - Resilient to UI changes
-   - Gets complete conversation data
+<details>
+<summary>Preview harness (popup UI, no live chat required)</summary>
 
-2. **Modular Platform Handlers**: Each platform has dedicated processing logic
-   - `ChatGPTHandler` - Handles hierarchical message mapping
-   - `ClaudeHandler` - Handles flat message array structure
-   - `CopilotHandler` - Handles flat message array structure
-   - Shared CSV utilities for consistent output
+The `dev/` directory contains a static HTML harness that renders the popup in every possible state (supported, ready, loading, each error, consent gate) over mocked `browser.*` APIs. All fixtures are synthetic — no real conversations.
 
-3. **Three-Layer Communication**:
-   - Inject script (page context) → Content script (isolated) → Background script (processing)
-   - Secure message passing between contexts
-   - No data leakage between layers
+```bash
+python3 -m http.server 8000
+# then open http://localhost:8000/dev/harness.html
+```
 
-4. **Privacy-First Design**:
-   - All processing happens locally
-   - No external network requests
-   - No data storage or tracking
+The harness supports light/dark/forced-theme switching and 320 / 380 / 600 px viewports for responsive checks. See [`dev/README.md`](dev/README.md). The harness is excluded from `web-ext build`.
 
-## Contributing
+</details>
 
-Contributions are welcome! Areas for improvement:
+<details>
+<summary>Visual regression baselines</summary>
 
-- Support for additional platforms
-- Additional export formats (JSON, Markdown)
-- Internationalization (i18n)
-- Chrome Web Store publication
+```bash
+npm run baseline            # capture the current popup states to dev/baselines/
+npm run baseline:compare    # diff against the previous capture
+```
 
-## Credits
+Baseline PNGs and axe reports are gitignored (`dev/baselines/`); only the script is checked in.
 
-This tool was built with the assistance of AI agents using **Cursor**, **Kiro**, and **Antigravity**.
+</details>
+
+## License
+
+No license file is checked in yet. Until one is added, treat the code as "all rights reserved" and open an [issue](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/issues) if you want to reuse it. A permissive license will be added before the first stable Add-on release.
+
+## Contact
+
+Maintainer: Daniel Jurg — Vrije Universiteit Brussel. Bugs, extraction regressions, and schema questions all go to the [issue tracker](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/issues).
