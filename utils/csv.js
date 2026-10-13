@@ -28,11 +28,16 @@ export function escapeCSVField(value) {
   // Convert to string
   let stringValue = String(value);
 
-  // Prevent CSV injection: sanitize values starting with dangerous characters
-  // These characters can trigger formula execution in Excel/LibreOffice/Google Sheets
-  // = (formula), + (formula), - (formula), @ (formula), \t (tab), \r (carriage return)
-  const dangerousChars = ['=', '+', '-', '@', '\t', '\r'];
-  if (dangerousChars.some(char => stringValue.startsWith(char))) {
+  // Prevent CSV injection: sanitize values starting with dangerous characters.
+  // Covers Excel/LibreOffice/Google Sheets/Numbers formula triggers plus the
+  // DDE pipe and Unicode variants (fullwidth equals/plus/minus/at) that some
+  // spreadsheets normalize before evaluation.
+  const dangerousChars = [
+    '=', '+', '-', '@', '|',
+    '\t', '\r', '\n',
+    '＝', '＋', '－', '＠'
+  ];
+  if (stringValue.length > 0 && dangerousChars.includes(stringValue.charAt(0))) {
     // Prefix with single quote to treat as text
     stringValue = "'" + stringValue;
   }
@@ -59,15 +64,11 @@ export function generateCSV(data, headers = null) {
     return '';
   }
 
-  // If headers not provided, extract from first object
   if (!headers) {
     headers = Object.keys(data[0]);
   }
 
-  // Generate header row
   const headerRow = headers.map(escapeCSVField).join(',');
-
-  // Generate data rows
   const rows = [headerRow];
   for (const row of data) {
     const values = headers.map(header => escapeCSVField(row[header]));
@@ -90,28 +91,48 @@ export function createCSVBlob(csvContent) {
 }
 
 /**
- * Generates a filename with timestamp
+ * Generates a filename with timestamp.
  *
- * @param {string} prefix - Filename prefix (e.g., 'conversation_messages', 'chatgpt_conversation')
- * @param {string} suffix - Optional suffix to add before timestamp (e.g., conversation ID)
- * @returns {string} Generated filename
+ * Safety rules applied (cross-platform best practices):
+ *  - Only [A-Za-z0-9_.-] in the base name.
+ *  - No reserved characters (/, \, :, *, ?, ", <, >, |) — these would be
+ *    rejected or silently rewritten by Windows/macOS/Linux filesystems.
+ *  - No leading dot (hidden file on Unix) and no trailing dot/space (invalid
+ *    on Windows).
+ *  - Total length capped at 180 chars (well under the 255-byte filesystem
+ *    limit even with multi-byte characters).
+ *  - ISO 8601-like UTC timestamp so file listings sort chronologically.
+ *
+ * @param {string} prefix - Filename prefix (e.g., 'claude_conversation')
+ * @param {string} [suffix] - Optional suffix (e.g., conversation id/query)
+ * @returns {string} Generated filename ending in .csv
  */
 export function generateFilename(prefix = 'export', suffix = '') {
+  const safe = (s) => String(s || '')
+    .replace(/[^A-Za-z0-9_.-]+/g, '_')
+    .replace(/^[._-]+/, '')
+    .replace(/[._-]+$/, '')
+    .replace(/_+/g, '_');
+
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  const seconds = String(now.getSeconds()).padStart(2, '0');
+  // UTC timestamp so the same conversation exported from any timezone sorts
+  // identically.
+  const pad = (n) => String(n).padStart(2, '0');
+  const timestamp =
+    `${now.getUTCFullYear()}-${pad(now.getUTCMonth() + 1)}-${pad(now.getUTCDate())}` +
+    `T${pad(now.getUTCHours())}-${pad(now.getUTCMinutes())}-${pad(now.getUTCSeconds())}Z`;
 
-  const timestamp = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
+  const safePrefix = safe(prefix) || 'export';
+  const safeSuffix = safe(suffix);
 
-  if (suffix) {
-    return `${prefix}_${suffix}_${timestamp}.csv`;
-  }
+  let base = safeSuffix
+    ? `${safePrefix}_${safeSuffix}_${timestamp}`
+    : `${safePrefix}_${timestamp}`;
 
-  return `${prefix}_${timestamp}.csv`;
+  // Guard against filesystem length limits.
+  if (base.length > 180) base = base.substring(0, 180).replace(/[._-]+$/, '');
+
+  return `${base}.csv`;
 }
 
 

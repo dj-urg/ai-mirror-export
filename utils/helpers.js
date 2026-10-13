@@ -13,7 +13,16 @@
  */
 function safeGet(obj, path, defaultValue = '') {
   try {
-    return path.split('.').reduce((acc, part) => acc?.[part], obj) ?? defaultValue;
+    const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
+    const parts = String(path).split('.');
+    let acc = obj;
+    for (const part of parts) {
+      if (acc == null) return defaultValue;
+      if (FORBIDDEN.has(part)) return defaultValue;
+      if (!Object.prototype.hasOwnProperty.call(acc, part)) return defaultValue;
+      acc = acc[part];
+    }
+    return acc ?? defaultValue;
   } catch {
     return defaultValue;
   }
@@ -93,6 +102,17 @@ function sanitizeTimestamp(rawTimestamp) {
  * @returns {string} Generated filename
  */
 function generateFilename(prefix = 'export', extension = 'csv', conversationId = null) {
+  const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
+  const safe = (s, fallback = '') => {
+    const cleaned = String(s == null ? '' : s)
+      .replace(/[\x00-\x1f\x7f]/g, '')
+      .replace(/[^A-Za-z0-9_.-]+/g, '_')
+      .replace(/^[._-]+/, '')
+      .replace(/[._\s-]+$/, '');
+    if (!cleaned || WIN_RESERVED.test(cleaned)) return fallback;
+    return cleaned;
+  };
+
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -100,11 +120,17 @@ function generateFilename(prefix = 'export', extension = 'csv', conversationId =
   const hours = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
-  
+
   const timestamp = `${year}-${month}-${day}_${hours}-${minutes}-${seconds}`;
-  const idPart = conversationId ? `_${conversationId.substring(0, 8)}` : '';
-  
-  return `${prefix}${idPart}_${timestamp}.${extension}`;
+  const safePrefix = safe(prefix, 'export');
+  const safeExt = safe(extension, 'csv');
+  const safeId = conversationId ? safe(String(conversationId).substring(0, 8)) : '';
+  const idPart = safeId ? `_${safeId}` : '';
+
+  let base = `${safePrefix}${idPart}_${timestamp}`;
+  if (base.length > 180) base = base.substring(0, 180).replace(/[._-]+$/, '');
+
+  return `${base}.${safeExt}`;
 }
 
 /**
@@ -120,17 +146,21 @@ function deepSearchForProperty(obj, property, maxDepth = 5, currentDepth = 0, vi
   if (currentDepth > maxDepth || !obj || typeof obj !== 'object') {
     return null;
   }
-  
+
   if (visited.has(obj)) {
     return null;
   }
   visited.add(obj);
-  
-  if (obj[property] !== undefined) {
+
+  const FORBIDDEN = new Set(['__proto__', 'prototype', 'constructor']);
+  if (FORBIDDEN.has(property)) return null;
+
+  if (Object.prototype.hasOwnProperty.call(obj, property) && obj[property] !== undefined) {
     return obj;
   }
-  
-  for (const key in obj) {
+
+  for (const key of Object.keys(obj)) {
+    if (FORBIDDEN.has(key)) continue;
     try {
       const value = obj[key];
       if (value && typeof value === 'object') {
@@ -143,7 +173,7 @@ function deepSearchForProperty(obj, property, maxDepth = 5, currentDepth = 0, vi
       // Skip inaccessible properties
     }
   }
-  
+
   return null;
 }
 

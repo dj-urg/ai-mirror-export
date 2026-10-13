@@ -13,16 +13,30 @@
 (function (global) {
   'use strict';
 
+  // Capture critical globals at module load. This module is injected at
+  // document_start in both isolated and MAIN worlds; in MAIN world the page
+  // can later replace these on `window`, so we freeze references now.
+  const _crypto = global.crypto;
+  const _subtle = _crypto && _crypto.subtle;
+  const _subtleImportKey = _subtle && _subtle.importKey.bind(_subtle);
+  const _subtleSign = _subtle && _subtle.sign.bind(_subtle);
+  const _getRandomValues = _crypto && _crypto.getRandomValues.bind(_crypto);
+  const _TextEncoder = global.TextEncoder;
+  const _Uint8Array = global.Uint8Array;
+  const _Uint32Array = global.Uint32Array;
+  const _JSONstringify = JSON.stringify;
+  const _ArrayFrom = Array.from;
+  const _DateNow = Date.now.bind(Date);
+
   /**
    * Generate a cryptographic secret key for message signing
    * This is generated once per page load and shared between inject and content scripts
    * via a secure initialization handshake
    */
   async function generateSecretKey() {
-    // Generate a random 256-bit key
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    const array = new _Uint8Array(32);
+    _getRandomValues(array);
+    return _ArrayFrom(array, byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
   /**
@@ -32,12 +46,11 @@
    * @returns {Promise<string>} The signature as hex string
    */
   async function signMessage(message, secret) {
-    const encoder = new TextEncoder();
+    const encoder = new _TextEncoder();
     const keyData = encoder.encode(secret);
     const messageData = encoder.encode(message);
 
-    // Import the key for HMAC
-    const key = await crypto.subtle.importKey(
+    const key = await _subtleImportKey(
       'raw',
       keyData,
       { name: 'HMAC', hash: 'SHA-256' },
@@ -45,11 +58,9 @@
       ['sign']
     );
 
-    // Sign the message
-    const signature = await crypto.subtle.sign('HMAC', key, messageData);
+    const signature = await _subtleSign('HMAC', key, messageData);
 
-    // Convert to hex string
-    return Array.from(new Uint8Array(signature), byte =>
+    return _ArrayFrom(new _Uint8Array(signature), byte =>
       byte.toString(16).padStart(2, '0')
     ).join('');
   }
@@ -87,10 +98,9 @@
    * @returns {Promise<Object>} The signed message object
    */
   async function createSignedMessage(payload, messageType, sourceId, platform, secret) {
-    const timestamp = Date.now();
-    const nonce = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+    const timestamp = _DateNow();
+    const nonce = _getRandomValues(new _Uint32Array(1))[0].toString(36);
 
-    // Create the message object without signature
     const messageData = {
       type: messageType,
       payload: payload,
@@ -100,8 +110,7 @@
       nonce: nonce
     };
 
-    // Sign the message (excluding the signature field)
-    const messageString = JSON.stringify(messageData);
+    const messageString = _JSONstringify(messageData);
     const signature = await signMessage(messageString, secret);
 
     // Return the complete signed message
@@ -142,17 +151,15 @@
       return { isValid: false, error: 'Missing or invalid timestamp' };
     }
 
-    // Timestamp validation (prevent replay attacks)
-    const now = Date.now();
+    const now = _DateNow();
     const age = now - message.timestamp;
 
     if (age < 0 || age > maxAge) {
       return { isValid: false, error: 'Message timestamp out of valid range' };
     }
 
-    // Extract signature and reconstruct message for verification
     const { signature, ...messageData } = message;
-    const messageString = JSON.stringify(messageData);
+    const messageString = _JSONstringify(messageData);
 
     // Verify signature
     const isValid = await verifySignature(messageString, signature, secret);
@@ -164,27 +171,13 @@
     return { isValid: true, error: null };
   }
 
-  /**
-   * Get secret key from meta tag
-   * @param {string} metaName - The name of the meta tag
-   * @returns {string|null} The secret key or null if not found
-   */
-  function getSharedSecret(metaName) {
-    const meta = document.querySelector(`meta[name="${metaName}"]`);
-    if (meta) {
-      return meta.content;
-    }
-    return null;
-  }
-
   // Export API
   const MessageSecurity = {
     generateSecretKey,
     signMessage,
     verifySignature,
     createSignedMessage,
-    verifySignedMessage,
-    getSharedSecret
+    verifySignedMessage
   };
 
   // Export for CommonJS (Node/testing)
