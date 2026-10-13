@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Chat Exporter — Preview harness</title>
+  <link rel="stylesheet" href="harness.css">
+</head>
+<body>
+  <aside class="harness-sidebar">
+    <header class="harness-sidebar__header">
+      <h1>Preview harness</h1>
+      <p class="harness-sidebar__sub">Dev-only. Not shipped with the extension.</p>
+    </header>
+
+    <section class="harness-controls">
+      <label class="harness-field">
+        <span class="harness-field__label">State preset</span>
+        <select id="statePreset" class="harness-field__input">
+          <optgroup label="Supported — ready to export">
+            <option value="supported_ready_chatgpt" selected>ChatGPT — ready</option>
+            <option value="supported_ready_claude">Claude — ready</option>
+            <option value="supported_ready_copilot">Copilot — ready</option>
+            <option value="supported_ready_google_overview">Google AI Overview — ready</option>
+            <option value="supported_ready_google_ai_mode_capturing">Google AI Mode — capturing</option>
+          </optgroup>
+          <optgroup label="Loading / transitional">
+            <option value="supported_loading_data">Supported, capturing data</option>
+            <option value="loading_tab_navigating">Tab still navigating</option>
+          </optgroup>
+          <optgroup label="Errors">
+            <option value="error_unsupported">Unsupported site</option>
+            <option value="error_no_conversation_id">On supported site, no conversation</option>
+            <option value="error_content_script_not_loaded">Content script not loaded</option>
+            <option value="error_no_data_google">Google — no overview on page</option>
+          </optgroup>
+          <optgroup label="First run">
+            <option value="consent_first_run">Consent panel (first run)</option>
+          </optgroup>
+        </select>
+      </label>
+
+      <label class="harness-field">
+        <span class="harness-field__label">Export outcome (click Export in the popup)</span>
+        <select id="exportOutcome" class="harness-field__input">
+          <option value="success" selected>Succeed quickly</option>
+          <option value="hang">Hang (shows Exporting… forever)</option>
+          <option value="network_error">Fail: NETWORK_ERROR</option>
+          <option value="no_data">Fail: NO_DATA_AVAILABLE</option>
+          <option value="rate_limit">Fail: rate limit</option>
+          <option value="export_failed">Fail: generic export failed</option>
+        </select>
+      </label>
+
+      <fieldset class="harness-fieldset">
+        <legend>Theme</legend>
+        <label><input type="radio" name="theme" value="light" checked> Light</label>
+        <label><input type="radio" name="theme" value="dark"> Dark (forced)</label>
+        <label><input type="radio" name="theme" value="system"> System</label>
+      </fieldset>
+
+      <fieldset class="harness-fieldset">
+        <legend>Viewport width</legend>
+        <label><input type="radio" name="viewport" value="320"> 320 px</label>
+        <label><input type="radio" name="viewport" value="380" checked> 380 px</label>
+        <label><input type="radio" name="viewport" value="600"> 600 px</label>
+      </fieldset>
+
+      <button id="reloadFrame" class="harness-button" type="button">Reload popup</button>
+    </section>
+
+    <section class="harness-log">
+      <h2 class="harness-log__title">Event log</h2>
+      <ul id="eventLog" class="harness-log__list" aria-live="polite"></ul>
+    </section>
+
+    <footer class="harness-sidebar__footer">
+      <p>Each state change reloads the iframe. The mock lives in <code>dev/mock-browser.js</code>.</p>
+    </footer>
+  </aside>
+
+  <main class="harness-stage" id="harnessStage" data-theme="light" data-viewport="380">
+    <div class="harness-chrome">
+      <div class="harness-chrome__dot" aria-hidden="true"></div>
+      <div class="harness-chrome__dot" aria-hidden="true"></div>
+      <div class="harness-chrome__dot" aria-hidden="true"></div>
+      <span class="harness-chrome__label">Browser action popup</span>
+    </div>
+    <iframe
+      id="popupFrame"
+      class="harness-stage__frame"
+      title="AI Chat Exporter popup (preview)"
+      sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
+  </main>
+
+  <script src="harness.js"></script>
+</body>
+</html>

@@ -1,0 +1,248 @@
+/*
+ * Preview harness — outer page.
+ *
+ * Intentionally minimal and visually quiet. The point is to foreground the
+ * popup under test, not the chrome around it.
+ */
+
+:root {
+  --h-bg: #f4f4f6;
+  --h-surface: #ffffff;
+  --h-border: #d7d7db;
+  --h-text: #15141a;
+  --h-text-muted: #5b5b66;
+  --h-accent: #0060df;
+  --h-stage-bg: #e8e9ec;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", -moz-system-ui,
+               system-ui, "Helvetica Neue", Arial, sans-serif;
+  color: var(--h-text);
+  background: var(--h-bg);
+}
+
+.harness-sidebar {
+  background: var(--h-surface);
+  border-right: 1px solid var(--h-border);
+  padding: 20px 20px 16px;
+  overflow-y: auto;
+  max-height: 100vh;
+}
+
+.harness-sidebar__header h1 {
+  font-size: 15px;
+  margin: 0 0 2px;
+  font-weight: 600;
+}
+
+.harness-sidebar__sub {
+  font-size: 12px;
+  color: var(--h-text-muted);
+  margin: 0 0 20px;
+}
+
+.harness-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.harness-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.harness-field__label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--h-text-muted);
+}
+
+.harness-field__input {
+  padding: 6px 8px;
+  border: 1px solid var(--h-border);
+  border-radius: 4px;
+  background: var(--h-surface);
+  font: inherit;
+  font-size: 13px;
+  color: var(--h-text);
+}
+
+.harness-fieldset {
+  border: 1px solid var(--h-border);
+  border-radius: 4px;
+  padding: 8px 10px 10px;
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.harness-fieldset legend {
+  padding: 0 4px;
+  font-size: 12px;
+  color: var(--h-text-muted);
+}
+
+.harness-fieldset label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.harness-button {
+  padding: 7px 12px;
+  border: 1px solid var(--h-border);
+  background: var(--h-surface);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.harness-button:hover { background: var(--h-bg); }
+
+.harness-log {
+  border-top: 1px solid var(--h-border);
+  padding-top: 12px;
+  margin-top: 4px;
+}
+
+.harness-log__title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--h-text-muted);
+  margin: 0 0 6px;
+}
+
+.harness-log__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  color: var(--h-text-muted);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.harness-log__list li {
+  padding: 2px 0;
+  border-bottom: 1px dashed transparent;
+}
+
+.harness-log__list li:not(:last-child) {
+  border-bottom-color: var(--h-border);
+}
+
+.harness-sidebar__footer {
+  margin-top: 16px;
+  font-size: 11px;
+  color: var(--h-text-muted);
+  border-top: 1px solid var(--h-border);
+  padding-top: 10px;
+}
+
+.harness-sidebar__footer code {
+  font-size: 11px;
+  background: var(--h-bg);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+/* Stage */
+
+.harness-stage {
+  background: var(--h-stage-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 24px;
+  overflow-y: auto;
+}
+
+.harness-stage[data-theme="dark"] {
+  --h-stage-bg: #1b1b1f;
+  color: #e9e9ed;
+}
+
+.harness-chrome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: #fff;
+  border: 1px solid var(--h-border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  width: 100%;
+  max-width: 640px;
+}
+
+.harness-stage[data-theme="dark"] .harness-chrome {
+  background: #2b2a33;
+  border-color: #52525e;
+}
+
+.harness-chrome__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--h-border);
+}
+
+.harness-chrome__dot:first-child { background: #ff5f57; }
+.harness-chrome__dot:nth-child(2) { background: #febc2e; }
+.harness-chrome__dot:nth-child(3) { background: #28c840; }
+
+.harness-chrome__label {
+  margin-left: 8px;
+  font-size: 12px;
+  color: var(--h-text-muted);
+}
+
+.harness-stage[data-theme="dark"] .harness-chrome__label {
+  color: #c0c0c7;
+}
+
+.harness-stage__frame {
+  border: 1px solid var(--h-border);
+  border-top: none;
+  background: #fff;
+  width: 380px;
+  min-height: 480px;
+  max-height: 600px;
+  display: block;
+  border-radius: 0 0 8px 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+.harness-stage[data-viewport="320"] .harness-stage__frame { width: 320px; }
+.harness-stage[data-viewport="380"] .harness-stage__frame { width: 380px; }
+.harness-stage[data-viewport="600"] .harness-stage__frame { width: 600px; }
+
+.harness-stage[data-viewport="320"] .harness-chrome,
+.harness-stage[data-viewport="380"] .harness-chrome,
+.harness-stage[data-viewport="600"] .harness-chrome {
+  max-width: calc(var(--viewport-width, 380px) + 2px);
+}
+
+.harness-stage[data-viewport="320"] { --viewport-width: 320px; }
+.harness-stage[data-viewport="380"] { --viewport-width: 380px; }
+.harness-stage[data-viewport="600"] { --viewport-width: 600px; }
+
+.harness-stage[data-theme="dark"] .harness-stage__frame {
+  background: #15141a;
+  border-color: #52525e;
+}

@@ -5,6 +5,8 @@ module.exports = {
     'testing/**',
     'test/**',
     'tests/**',
+    'dev/**',
+    'docs/**',
     'node_modules/**',
     'web-ext-artifacts/**',
     '.git/**',
