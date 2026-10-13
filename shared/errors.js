@@ -12,13 +12,13 @@ const ERROR_TYPES = {
     troubleshooting: 'If the issue persists, try reloading the page or restarting your browser.'
   },
   UNSUPPORTED_PLATFORM: {
-    message: 'This page is not supported',
-    detail: 'Please navigate to a supported chat platform.',
-    troubleshooting: 'Supported platforms: ChatGPT, Claude, Copilot, DeepSeek, Grok, Perplexity, and Google AI Overview.'
+    message: "The extension doesn't support this page.",
+    detail: 'Open one of the supported sites below and come back.',
+    troubleshooting: 'Supported sites: ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, and Google Search AI Overview.'
   },
   NO_CONVERSATION_ID: {
-    message: 'No conversation detected',
-    detail: 'Please open or start a conversation to export.',
+    message: "This page doesn't look like a conversation yet.",
+    detail: 'Open an existing chat or start a new one, then try again.',
     troubleshooting: null // Platform-specific, set dynamically
   },
   CONTENT_SCRIPT_NOT_LOADED: {
@@ -27,8 +27,8 @@ const ERROR_TYPES = {
     troubleshooting: 'Try refreshing the page and waiting a few seconds before exporting.'
   },
   NO_DATA_AVAILABLE: {
-    message: 'No conversation data found',
-    detail: 'The conversation may be empty or not yet loaded.',
+    message: "The extension hasn't captured this conversation yet.",
+    detail: 'Scroll through the conversation so every message loads, then reopen this popup.',
     troubleshooting: null // Platform-specific, set dynamically
   },
   EXPORT_FAILED: {
