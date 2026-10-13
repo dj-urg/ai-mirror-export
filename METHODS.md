@@ -1,0 +1,39 @@
+# Methods
+
+This document records the extraction and normalization choices made by the AI Chat Exporter so that downstream researchers can reproduce the unit of analysis in each CSV.
+
+## Overview
+
+The exporter captures conversations from ChatGPT, Claude, Copilot, and Google Search (classic AI Overview and AI Mode) and writes them to CSV files on the donor's machine. All processing runs locally in the browser; no data is transmitted. For ChatGPT the dataset is split across five files (metadata, messages, sources, message URLs, donor context); the other platforms produce a single flat messages CSV per capture. The grain of analysis is one row per message/turn in the messages files, and one row per source or URL in the auxiliary files.
+
+## Turn numbering (ChatGPT)
+
+ChatGPT ships two conversation shapes. The *mapping* format stores a node tree keyed by node ID; turn numbers are computed by a breadth-first search from the single root node (the node whose `parent` is null), with the root at depth 0. The *messages-array* format stores a flat chronological list; turn number is the array index. Nodes that are unreachable from the root — which occurs in branched or regenerated threads where the mapping retains dangling nodes — are not visited by the BFS and receive an empty `turn_number` in the messages CSV. The count of such orphaned nodes is not currently reported.
+
+## Content flattening
+
+ChatGPT text is extracted per `content_type`: `text` and `multimodal_text` (string parts joined with `\n`), `thoughts` (`summary` with `content` fallback, joined with `\n\n`), `reasoning_recap` (string or parts joined with `\n`), and `execution_output` and `code` (both read from `content.text`). `user_editable_context` and `model_editable_context` nodes are excluded from the messages CSV and surfaced instead in `donor_context.csv`, keeping donor-level profile and model instructions out of the per-message grain. Claude joins every content block with `type: 'text'` using `\n\n`. Copilot does the same with its `content` parts. Google AI Mode captures per-turn text extracted from DOM ranges delimited by role headings; classic AI Overview captures a single text blob.
+
+## Timestamps
+
+ChatGPT timestamps arrive as Unix seconds and are converted to ISO 8601 UTC via `unixToISO`; any falsy input becomes an empty string. Claude and Copilot timestamps are passed through as the strings supplied by the upstream API. Google captures a `captured_at` ISO timestamp at the moment of extraction for classic AI Overview; AI Mode records only the overall `captured_at` because Google's AI Mode DOM does not expose per-turn timestamps (known limitation).
+
+## Source extraction
+
+For ChatGPT, sources are drawn from two message-metadata lists and written to one CSV with a `source_list` discriminator: `search_result` rows come from `search_result_groups[].entries[]`, `grouped_webpages` rows come from `content_references[]` entries with `type: 'grouped_webpages'`. For every URL a `url_clean` column is produced by stripping the five standard UTM parameters. Image CDN URLs (`images.openai.com`) and URLs ending in common image extensions are excluded from the message URLs CSV because they are article thumbnails rather than linked sources. Google sources are the anchor tags inside the overview container; anchors pointing to Google-owned hosts (`google.*`, `googleusercontent.com`, `gstatic.com`, `googleadservices.com`, `googlesyndication.com`, `policies.google.com`, `support.google.com`) are filtered out.
+
+## Google Search extraction
+
+Classic AI Overview is parsed from a re-fetched HTML snapshot of the current search URL (fetched with the donor's cookies) so that extraction anchors on Google's own semantic markers rather than live-DOM CSS classes. AI Mode is parsed from the live DOM only because its content is injected client-side and is not present in the server HTML response. The overview container selector fallback chain, tried in order, is:
+
+1. `[data-attrid*="SrpGenSumSummary"]`
+2. `[data-attrid*="AioHostElement"]`
+3. `[data-async-type="aiov"]`
+4. `[data-async-type="agscls"]`
+5. `[jsname="FFzE2"]`
+
+If none match, the extractor falls back to locating a heading element whose exact text is one of the known AI Overview or AI Mode labels (English, Dutch, French, German, Spanish) and climbs up to five ancestors until it finds a container with 200–20000 characters of visible text.
+
+## Known limitations
+
+Orphaned ChatGPT nodes receive an empty `turn_number` but their count is not reported in the metadata CSV (TODO). Google selectors are brittle to Google's ongoing A/B tests of DOM structure and locale labels; a layout change may silently reduce the capture rate. The model identifier for Claude and Copilot is not yet recorded in the messages CSV (another team is adding this). Per-turn timestamps are not available on Google AI Mode.
