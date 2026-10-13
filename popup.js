@@ -1520,7 +1520,7 @@ async function checkAndUpdateUI() {
             'success',
             isAIMode ? 'Ready to export AI Mode conversation.' : 'Ready to export AI Overview.',
             isAIMode
-              ? 'Each turn exports as a separate row. Click refresh to re-capture.'
+              ? 'Each turn exports as a separate row. To capture newer turns, close and reopen this popup.'
               : `Query: "${query}"`
           );
           updateExportButton(true);
