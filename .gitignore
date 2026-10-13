@@ -134,9 +134,13 @@ https:
 # Playwright MCP session logs (local interactive dev artifacts)
 .playwright-mcp/
 
-# Local test capture (synthetic WebSocket payload used while debugging
-# the M365 Copilot handler; not shippable, not for commit)
+# Local test captures (synthetic payloads used while debugging platform
+# handlers; not shippable, not for commit). Add new capture filenames
+# below, or move them under dev/captures/ (already gitignored) to avoid
+# touching this list each time.
 dev/m365_ws_capture.json
+dev/mistral_message_all.json
+dev/captures/
 
 # JetBrains IDEs (WebStorm, IntelliJ, etc.)
 .idea/
