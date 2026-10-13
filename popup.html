@@ -54,8 +54,11 @@
     </div>
   </header>
 
-  <!-- Consent Panel (first-run gate) -->
-  <div class="consent-panel" id="consentPanel" hidden aria-labelledby="consentTitle">
+  <!-- Consent Panel (first-run gate). role="main" because when the panel
+       is shown, the real <main class="popup-main"> is display:none; without
+       it, axe reports "document has no main landmark" and the panel sits
+       outside any landmark (region rule). -->
+  <div class="consent-panel" id="consentPanel" hidden role="main" aria-labelledby="consentTitle">
     <h2 class="consent-panel__title" id="consentTitle">Research Participation</h2>
     <p class="consent-panel__intro">Before using this extension, please read the following information about your participation in the study.</p>
 
@@ -90,7 +93,7 @@
 
     <div class="consent-panel__agreement">
       <label class="consent-panel__label">
-        <input type="checkbox" id="consentCheckbox" class="consent-panel__checkbox" aria-required="true">
+        <input type="checkbox" id="consentCheckbox" class="consent-panel__checkbox" required>
         <span class="consent-panel__label-text">I have read the above and agree to participate in this research study.</span>
       </label>
     </div>
@@ -173,7 +176,7 @@
             d="M3 2a1 1 0 011-1h5.586a1 1 0 01.707.293l2.414 2.414A1 1 0 0113 4.414V14a1 1 0 01-1 1H4a1 1 0 01-1-1V2zm2 2v1h6V4H9.5A.5.5 0 019 3.5V2H5v2zm0 3v6h6V7H5z"
             fill="currentColor" />
         </svg>
-        <span class="file-list__heading" id="fileListHeading"></span>
+        <h2 class="file-list__heading" id="fileListHeading"></h2>
       </div>
       <ul class="file-list__items" id="fileListItems" aria-label="Files that will be downloaded"></ul>
     </div>
@@ -188,12 +191,6 @@
       </svg>
       <p class="data-notice__text">These files contain personal data in plaintext. Store them securely and delete them when no longer needed.</p>
     </div>
-
-    <!-- Reload prompt (shown when data not captured after initial loading phase) -->
-    <button class="btn btn--secondary btn--large" id="reloadBtn" type="button"
-      aria-label="Reload the page to capture conversation data" hidden>
-      <span class="btn__text">Reload Page</span>
-    </button>
 
     <!-- Privacy & Research Settings -->
     <details class="info-section" id="privacySettings" role="group" aria-label="Privacy and research settings">

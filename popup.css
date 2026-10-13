@@ -133,7 +133,7 @@
     --color-primary: #4891ff;
     --color-primary-hover: #6ba6ff;
     --color-primary-active: #80b4ff;
-    --color-primary-disabled: #4a4a52;
+    --color-primary-disabled: #8b8b93; /* light enough that near-black btn text (color = --color-background in dark) passes 4.5:1 */
     --color-primary-tint-weak: rgba(72, 145, 255, 0.12);
     --color-primary-tint-medium: rgba(72, 145, 255, 0.22);
 
@@ -204,7 +204,7 @@ html[data-force-color-scheme="dark"] {
   --color-primary: #4891ff;
   --color-primary-hover: #6ba6ff;
   --color-primary-active: #80b4ff;
-  --color-primary-disabled: #4a4a52;
+  --color-primary-disabled: #8b8b93; /* light enough that near-black btn text (color = --color-background in dark) passes 4.5:1 */
   --color-primary-tint-weak: rgba(72, 145, 255, 0.12);
   --color-primary-tint-medium: rgba(72, 145, 255, 0.22);
 
@@ -881,9 +881,12 @@ strong {
   transform: translateY(1px);
 }
 
-/* Focus State - Blue focus ring for keyboard navigation */
+/* Focus State — real outline + ring. Outline is a fallback for
+   environments that drop box-shadow (Windows High Contrast, some AT).
+   Both render on standard browsers; neither is strong enough alone. */
 .btn--primary:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
   box-shadow: var(--focus-ring);
 }
 
@@ -911,7 +914,8 @@ strong {
 }
 
 .btn--secondary:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
   box-shadow: var(--focus-ring);
 }
 
@@ -1102,9 +1106,11 @@ strong {
   background-color: var(--color-background-hover);
 }
 
-/* Focus state for keyboard navigation */
+/* Focus state for keyboard navigation. Inset shadow is the primary ring;
+   outline added as fallback when box-shadow is suppressed. */
 .info-section__toggle:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
   box-shadow: inset var(--focus-ring);
   background-color: var(--color-background-hover);
 }
@@ -1284,16 +1290,40 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
-/* Ensure focus is visible on all interactive elements */
+/* Ensure focus is visible on all interactive elements. Both outline and
+   box-shadow render; outline is the fallback for environments that drop
+   shadows. */
 .btn:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
   box-shadow: var(--focus-ring);
 }
 
 .info-section__toggle:focus-visible {
-  outline: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
   box-shadow: inset var(--focus-ring);
-  background-color: var(--color-border);
+  background-color: var(--color-background-hover);
+}
+
+/* ============================================
+   REDUCED MOTION
+   ============================================
+   Honor the user's OS/browser setting. Keyframe animations and slow
+   transitions are collapsed so the UI still responds, just without
+   motion. Scroll behavior also stops smooth-scrolling under the
+   preference. Universal override — targets everything, specific
+   components don't need to opt in. */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* ============================================

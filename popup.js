@@ -88,6 +88,19 @@ const PLATFORMS = {
     }
   },
 
+  mistral: {
+    name: 'Mistral',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 4h4v4H3V4zm0 6h4v4H3v-4zm0 6h4v4H3v-4zM10 4h4v4h-4V4zm0 6h4v4h-4v-4zm0 6h4v4h-4v-4zM17 4h4v4h-4V4zm0 6h4v4h-4v-4zm0 6h4v4h-4v-4z" fill="currentColor"/></svg>',
+    requiresConversationId: true,
+    // Mistral exposes two URL shapes for the same chatId:
+    //   /chat/<uuid>  — regular chat
+    //   /work/<uuid>  — the "Vibe" / work product surface
+    extractConversationId: (url) => {
+      const match = url.match(/\/(?:chat|work)\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      return match ? match[1] : null;
+    }
+  },
+
   google_search: {
     name: 'Google AI Overview',
     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="currentColor"/><circle cx="12" cy="18" r="2" fill="currentColor"/></svg>',
@@ -782,6 +795,28 @@ function updateFilePreview(title) {
         optional: true
       }
     ];
+  } else if (platformId === 'mistral') {
+    files = [
+      {
+        badge: 'Metadata',
+        badgeClass: 'metadata',
+        name: 'Conversation overview',
+        desc: 'Title, model, feature flags, turn count'
+      },
+      {
+        badge: 'Messages',
+        badgeClass: 'messages',
+        name: 'Full message log',
+        desc: 'User prompts, assistant answers, reasoning + tool calls'
+      },
+      {
+        badge: 'Sources',
+        badgeClass: 'sources',
+        name: 'Cited web results',
+        desc: 'Sources cited by Mistral \u2014 only if present',
+        optional: true
+      }
+    ];
   } else {
     const sanitizedTitle = (title || 'conversation')
       .replace(/[^a-z0-9\u00a0-\uffff_-]/gi, '_').trim();
@@ -866,47 +901,14 @@ function hideGoogleTip() {
   if (el) el.hidden = true;
 }
 
-/**
- * Show the reload-page prompt button
- */
-function showReloadPrompt() {
-  const btn = document.getElementById('reloadBtn');
-  if (btn) btn.hidden = false;
-}
-
-/**
- * Hide the reload-page prompt button
- */
-function hideReloadPrompt() {
-  const btn = document.getElementById('reloadBtn');
-  if (btn) btn.hidden = true;
-}
-
-/**
- * Reload the active tab and transition back to the loading state
- */
-async function handleReloadClick() {
-  const tab = state.currentTab;
-  if (!tab) return;
-
-  // Reset the capture timer so the loading spinner shows after reload
-  state.capture.waitingSince = Date.now();
-  state.capture.waitingForId = state.platform.conversationId;
-
-  hideReloadPrompt();
-  updateStatus('loading', 'Reloading page...', 'Capturing conversation data — this takes a moment.');
-
-  try {
-    // bypassCache mirrors Cmd+Shift+R — a cached reload often doesn't
-    // re-render dynamic sections (e.g. Google AI Overview) and leaves the
-    // popup stuck on the loading state.
-    await browser.tabs.reload(tab.id, { bypassCache: true });
-  } catch (e) {
-    // Reload failed — restore the prompt
-    showReloadPrompt();
-    updateStatus('warning', 'Could not reload the page.', 'Please reload manually, then reopen this popup.');
-  }
-}
+// Reload prompt removed in the UX pass. Earlier builds exposed a
+// "Reload Page" button in the popup that called browser.tabs.reload on
+// the user's active tab. The audit flagged that reloading someone's
+// tab from the popup is both surprising and bypasses browser
+// affordances (confirm-on-reload, form state, scroll position). We now
+// surface a message instead that asks the user to reload the tab
+// themselves. hideReloadPrompt/showReloadPrompt/handleReloadClick +
+// the #reloadBtn element are gone; see popup.html.
 
 // ============================================================================
 // EVENT-DRIVEN UPDATE MECHANISM (with fallback polling)
@@ -1088,7 +1090,6 @@ async function checkConversationData(tab, platform, conversationId) {
  * Update UI based on current tab and platform detection
  */
 async function checkAndUpdateUI() {
-  hideReloadPrompt(); // Reset on every check; shown explicitly when needed
   hideGoogleTip();    // Only re-shown below when the active tab is Google
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -1114,7 +1115,6 @@ async function checkAndUpdateUI() {
     // reaches 'complete'.
     const urlLooksTemporary = !url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('data:');
     if (tab.status === 'loading' || urlLooksTemporary) {
-      hideReloadPrompt();
       updateStatus('loading', 'Waiting for page to load…', 'The page is still loading.');
       updateExportButton(false);
       hideFilePreview();
@@ -1198,12 +1198,15 @@ async function checkAndUpdateUI() {
               'This usually takes a few seconds.'
             );
           } else {
-            // Timed out — prompt the user to reload the page
-            showReloadPrompt();
+            // Timed out — the extension only captures data on page load.
+            // Ask the user to reload the page themselves (we removed the
+            // in-popup reload button in the UX pass — reloading someone's
+            // tab from the popup bypasses browser affordances the user
+            // may have set, like confirm-on-reload or page-form state).
             updateStatus(
               'info',
               'Reload the page to export this conversation.',
-              'The extension captures data as the page loads.'
+              'The extension captures data as the page loads. Reload the tab, then reopen this popup.'
             );
           }
           updateExportButton(false);
@@ -1304,9 +1307,7 @@ async function checkAndUpdateUI() {
     } else if (platform.id === 'google_search') {
       // Google AI Overview / AI Mode: content script captures via DOM reads
       // and a MutationObserver — reloading the page actively hurts (clears
-      // state, forces a race against client-side rendering). Keep the Reload
-      // button hidden here regardless of state.
-      hideReloadPrompt();
+      // state, forces a race against client-side rendering).
       try {
         const query = state.platform.conversationId
           ? state.platform.conversationId.split('::')[0]
@@ -1383,7 +1384,6 @@ async function checkAndUpdateUI() {
         // script is still re-injecting). Same honest instruction: the popup
         // won't recover on its own while it stays open.
         popupLogError('checkConversationData', error, { platformId: platform.id });
-        hideReloadPrompt();
         stopCaptureTicker();
         updateStatus(
           'info',
@@ -1679,6 +1679,59 @@ function handleKeyboardNavigation(event) {
 }
 
 /**
+ * Close the browser-action popup on Escape.
+ *
+ * Firefox desktop does NOT close the browserAction popup on Esc natively
+ * (unlike Chrome). Verified against bugzilla + behavior in the harness;
+ * see docs/ux-audit.md §3.1 M4. We attach an explicit handler so keyboard
+ * users get the expected affordance. The handler is a no-op if the user
+ * is typing in the study-code <input> — Esc there just blurs the field.
+ *
+ * @param {KeyboardEvent} event
+ */
+function handlePopupEscape(event) {
+  if (event.key !== 'Escape') return;
+  const target = event.target;
+  // Esc inside a text field should clear focus, not close the popup. Users
+  // may be editing the study code; closing on Esc there would be hostile.
+  if (target && target.tagName === 'INPUT' && target.type === 'text') {
+    target.blur();
+    event.preventDefault();
+    return;
+  }
+  event.preventDefault();
+  window.close();
+}
+
+/**
+ * Move focus to a sensible first-focus target when the popup opens.
+ *
+ * The browser leaves focus on <body> by default when a popup opens, so
+ * keyboard users have to tab in from nothing. Picking the primary action
+ * for the current state removes that step:
+ *   - consent gate shown   → focus the consent checkbox
+ *   - export button enabled → focus the export button
+ *   - fallback              → focus the first focusable button
+ */
+function focusInitialTarget() {
+  // Give the DOM one tick in case checkAndUpdateUI is still toggling
+  // disabled attributes between render phases.
+  requestAnimationFrame(() => {
+    const consentCheckbox = document.getElementById('consentCheckbox');
+    if (consentCheckbox && !consentCheckbox.disabled && consentCheckbox.offsetParent !== null) {
+      consentCheckbox.focus();
+      return;
+    }
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn && !exportBtn.disabled) {
+      exportBtn.focus();
+      return;
+    }
+    // Nothing primary to focus — leave focus on <body>, user tabs in.
+  });
+}
+
+/**
  * Ensure focus is maintained during UI state changes
  * Prevents focus loss when status updates or button state changes
  */
@@ -1886,10 +1939,8 @@ function initMainUI() {
   const exportBtn = document.getElementById('exportBtn');
   exportBtn.addEventListener('click', handleExportClick);
 
-  const reloadBtn = document.getElementById('reloadBtn');
-  if (reloadBtn) reloadBtn.addEventListener('click', handleReloadClick);
-
   document.addEventListener('keydown', handleKeyboardNavigation);
+  // Esc handler is attached in init() so it also fires on the consent panel.
 
   setupTabOrder();
   verifyNoKeyboardTraps();
@@ -1901,15 +1952,22 @@ function initMainUI() {
 
   startPolling(2000);
   verifyRuntimeIntegrity();
+  focusInitialTarget();
 }
 
 /**
  * Entry point — gate the main UI behind first-run consent.
  */
 async function init() {
+  // Escape should close the popup even on the consent panel. Attach the
+  // listener here (not just in initMainUI) so first-run users can
+  // dismiss with the keyboard.
+  document.addEventListener('keydown', handlePopupEscape);
+
   const consentGiven = await checkConsent();
   if (!consentGiven) {
     showConsentPanel();
+    focusInitialTarget();
     return;
   }
   initMainUI();
