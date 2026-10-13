@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software in research, please cite it as below."
+title: "AI Chat Exporter"
+abstract: >-
+  A Firefox extension that exports conversations from ChatGPT, Claude,
+  Copilot, Perplexity, Grok, DeepSeek, Mistral, Microsoft 365 Copilot,
+  and Google Search's AI Overview / AI Mode as CSV files. All processing
+  happens locally in the donor's browser; nothing is sent to a remote
+  server. Designed for data-donation studies in digital methods and
+  computational social science.
+type: software
+authors:
+  - family-names: "Jurg"
+    given-names: "Daniel"
+    affiliation: "Vrije Universiteit Brussel"
+    email: "daniel.jurg@vub.be"
+repository-code: "https://github.com/dj-urg/AI-Dialogue-Insight-Extension"
+url: "https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/"
+version: "3.0.0"
+keywords:
+  - data donation
+  - digital methods
+  - computational social science
+  - AI chat
+  - ChatGPT
+  - Claude
+  - browser extension
+  - CSV export
