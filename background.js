@@ -1158,7 +1158,17 @@ browser.runtime.onMessage.addListener((message, sender) => {
     return false;
   }
 
-  handleConversationData({ platform: expectedPlatform, payload: message.payload });
+  const tabId = sender.tab.id;
+  handleConversationData({ platform: expectedPlatform, payload: message.payload })
+    .then((result) => {
+      // Clear any stale "!" badge from a previous failed export on this tab.
+      if (typeof tabId === 'number') clearExportFailureBadge(tabId);
+      return result;
+    })
+    .catch((err) => {
+      _console.error(`[${expectedPlatform}] Conversation handling failed:`, err);
+      if (typeof tabId === 'number') setExportFailureBadge(tabId);
+    });
   return false;
 });
 
@@ -1254,3 +1264,111 @@ self.addEventListener('unhandledrejection', event => {
     console.error('[Background] could not install tab-navigation injector:', err);
   }
 })();
+
+// ---------------------------------------------------------------------------
+// Toolbar icon state
+//
+// Reflect per-tab platform support in the toolbar icon + title. Color icon
+// when the active tab is on one of EXTENSION_CONFIG.platforms' domains;
+// greyed-out icon otherwise. setTitle always carries a text explanation so
+// the state is never communicated by color alone (WCAG 1.4.1 — use of
+// color), and the title is what macOS VoiceOver / NVDA / Jaws read out
+// when the toolbar button receives focus.
+//
+// Badges are reserved for conditions that need user attention: a '!'
+// appears when the most recent export on the tab failed. The badge
+// clears on the next successful export or navigation.
+// ---------------------------------------------------------------------------
+
+const ICON_PATHS_COLOR = {
+  16:  'icons/icon-16.png',
+  32:  'icons/icon-32.png',
+  48:  'icons/icon-48.png',
+  96:  'icons/icon-96.png',
+  128: 'icons/icon-128.png'
+};
+const ICON_PATHS_GREY = {
+  16:  'icons/icon-16-grey.png',
+  32:  'icons/icon-32-grey.png',
+  48:  'icons/icon-48-grey.png',
+  96:  'icons/icon-96-grey.png',
+  128: 'icons/icon-128-grey.png'
+};
+
+const UNSUPPORTED_TITLE =
+  'AI Chat Exporter — this page is not supported. Supported sites: ' +
+  'ChatGPT, Claude, Copilot, Perplexity, Grok, DeepSeek, Mistral, ' +
+  'Microsoft 365 Copilot, and Google Search AI Overview.';
+
+async function applyIconStateForTab(tabId, url) {
+  const action = typeof browser !== 'undefined' ? browser.action : null;
+  if (!action) return;
+  const platform = (typeof url === 'string') ? getPlatformByUrl(url) : null;
+  try {
+    if (platform) {
+      await action.setIcon({ tabId, path: ICON_PATHS_COLOR });
+      await action.setTitle({
+        tabId,
+        title: `AI Chat Exporter — ready to export this ${platform.name} conversation.`
+      });
+    } else {
+      await action.setIcon({ tabId, path: ICON_PATHS_GREY });
+      await action.setTitle({ tabId, title: UNSUPPORTED_TITLE });
+    }
+  } catch (_) {
+    // Per-tab setIcon can throw on about:/moz-extension: tabs. Not a
+    // user-facing problem; silently fall back to the default icon.
+  }
+}
+
+async function setExportFailureBadge(tabId) {
+  const action = typeof browser !== 'undefined' ? browser.action : null;
+  if (!action) return;
+  try {
+    await action.setBadgeText({ tabId, text: '!' });
+    if (typeof action.setBadgeBackgroundColor === 'function') {
+      // Firefox-friendly: provide an rgba array, not a hex string.
+      await action.setBadgeBackgroundColor({ tabId, color: [215, 0, 34, 255] });
+    }
+  } catch (_) { /* ignore */ }
+}
+
+async function clearExportFailureBadge(tabId) {
+  const action = typeof browser !== 'undefined' ? browser.action : null;
+  if (!action) return;
+  try { await action.setBadgeText({ tabId, text: '' }); } catch (_) { /* ignore */ }
+}
+
+try {
+  // URL change → re-evaluate the icon.
+  browser.tabs.onUpdated.addListener((tabId, info, tab) => {
+    if (info && typeof info.url === 'string') {
+      applyIconStateForTab(tabId, info.url);
+    }
+    // Clear stale "!" when the tab finishes loading a new page.
+    if (info && info.status === 'complete') {
+      clearExportFailureBadge(tabId);
+    }
+  });
+
+  // Tab switch → read the new tab's URL and re-apply.
+  browser.tabs.onActivated.addListener(async ({ tabId }) => {
+    try {
+      const tab = await browser.tabs.get(tabId);
+      applyIconStateForTab(tabId, tab && tab.url);
+    } catch (_) { /* ignore permission denials */ }
+  });
+
+  // On startup / install, paint every open tab's icon so there's no
+  // flash of the default color icon on an unsupported site.
+  (async () => {
+    try {
+      const tabs = await browser.tabs.query({});
+      for (const tab of tabs) {
+        if (typeof tab.id === 'number') applyIconStateForTab(tab.id, tab.url);
+      }
+    } catch (_) { /* ignore */ }
+  })();
+} catch (err) {
+  console.error('[Background] could not install icon-state listeners:', err);
+}
