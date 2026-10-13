@@ -33,7 +33,7 @@ export const EXTENSION_CONFIG = {
       injectScript: 'platforms/claude/inject.js'
     },
     copilot: {
-      name: 'Co-pilot',
+      name: 'Copilot',
       domains: ['copilot.microsoft.com', 'copilotstudio.microsoft.com'],
       enabled: true,
       contentScript: 'platforms/copilot/content.js',
