@@ -12,7 +12,7 @@ export const EXTENSION_CONFIG = {
   name: 'AI Chat Exporter',
   version: '3.0.0',
   description:
-    'Export conversations from ChatGPT, Claude, and Co-pilot to CSV. All processing happens locally in your browser.',
+    'Export conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral and Google Search AI Overview to CSV. All processing happens locally in your browser.',
 
   // Supported platforms
   // IMPORTANT: Platform objects must NOT contain an 'id' property.

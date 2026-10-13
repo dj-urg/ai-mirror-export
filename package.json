@@ -1,7 +1,7 @@
 {
   "name": "ai-chat-exporter",
   "version": "3.0.0",
-  "description": "Export conversations from ChatGPT, Claude, and Co-pilot to CSV. All processing happens locally in your browser.",
+  "description": "Export conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral and Google Search AI Overview to CSV. All processing happens locally in your browser.",
   "type": "module",
   "private": true,
   "scripts": {
