@@ -68,60 +68,6 @@ $RECYCLE.BIN/
 # ============================================================================
 
 
-tests
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-https:
 
 # VSCode
 .vscode/
@@ -254,6 +200,13 @@ coverage/
 # ============================================================================
 # Security and Secrets
 # ============================================================================
+
+# HAR / browser capture files contain cookies, auth headers and full
+# conversation bodies. Never commit them.
+*.har
+
+# Claude Code local settings (machine-specific tool allowlist)
+.claude/
 
 .env
 .env.local
