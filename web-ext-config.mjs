@@ -46,6 +46,14 @@ export default {
     '.DS_Store',
     'Thumbs.db',
 
+    // Local exports, logs, secrets and build output. These are gitignored,
+    // but web-ext packages from disk, so anything present here would ship.
+    '*.csv',
+    '*.log', '*.tmp', '*.temp', '*.bak', '*.swp',
+    '.env', '.env.*', 'secrets.json', '*.key', '*.pem', '*.cert', '*.har',
+    'coverage', 'coverage/**', 'dist', 'dist/**', 'build', 'build/**',
+    '.idea', '.idea/**',
+
     // Build artifacts + miscellany
     '*.zip',
     '*.xpi',
