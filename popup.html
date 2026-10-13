@@ -48,7 +48,7 @@
           fill="currentColor" />
       </svg>
       <h1 class="popup-header__text">AI Chat Exporter</h1>
-      <span class="preview-tag" aria-label="Development preview build">Preview</span>
+      <span class="preview-tag" title="Development preview build">Preview</span>
     </div>
     <div class="popup-header__platform" id="platformBadge" aria-live="polite">
       <!-- Platform badge inserted dynamically -->
@@ -151,7 +151,7 @@
             fill="currentColor" />
         </svg>
         <!-- Loading Icon (Spinner) -->
-        <div class="icon icon--loading spinner" role="status" aria-label="Loading">
+        <div class="icon icon--loading spinner" aria-hidden="true">
           <svg class="spinner__svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <circle class="spinner__circle" cx="12" cy="12" r="10"></circle>
           </svg>
@@ -266,8 +266,7 @@
     </div>
 
     <!-- Primary Action Button -->
-    <button class="btn btn--primary btn--large" id="exportBtn" type="button"
-      aria-label="Export conversation to ZIP file" disabled>
+    <button class="btn btn--primary btn--large" id="exportBtn" type="button" disabled>
       <svg class="btn__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
         xmlns="http://www.w3.org/2000/svg">
         <path
@@ -282,7 +281,7 @@
 
     <!-- Collapsible Info Section -->
     <details class="info-section" id="infoSection" role="group" aria-label="Extension information">
-      <summary class="info-section__toggle" aria-label="Toggle extension information">
+      <summary class="info-section__toggle">
         <svg class="info-section__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
           xmlns="http://www.w3.org/2000/svg">
           <path fill-rule="evenodd" clip-rule="evenodd"
