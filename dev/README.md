@@ -2,7 +2,7 @@
 
 Dev-only tooling for previewing the popup across every UI state without having
 to open a real chat site. Not shipped with the extension (`dev/` is in
-`web-ext-config.cjs` ignoreFiles).
+`web-ext-config.mjs` ignoreFiles).
 
 ## Run it
 
@@ -77,5 +77,5 @@ for (const state of STATES) {
 
 ## Not shipped
 
-`web-ext-config.cjs` excludes `dev/` and `dev/**` from `web-ext build`, so
+`web-ext-config.mjs` excludes `dev/` and `dev/**` from `web-ext build`, so
 nothing in this directory ends up in the published `.xpi`.
