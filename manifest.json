@@ -27,7 +27,17 @@
     "https://www.perplexity.ai/*",
     "https://grok.com/*",
     "https://chat.deepseek.com/*",
-    "https://m365.cloud.microsoft/*"
+    "https://m365.cloud.microsoft/*",
+    "https://www.google.com/*",
+    "https://www.google.be/*",
+    "https://www.google.nl/*",
+    "https://www.google.fr/*",
+    "https://www.google.de/*",
+    "https://www.google.co.uk/*",
+    "https://www.google.es/*",
+    "https://www.google.it/*",
+    "https://www.google.ca/*",
+    "https://www.google.com.au/*"
   ],
   "content_scripts": [
     {
@@ -178,6 +188,24 @@
       "js": [
         "shared/message-security.js",
         "platforms/m365_copilot/content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.google.com/search*",
+        "https://www.google.be/search*",
+        "https://www.google.nl/search*",
+        "https://www.google.fr/search*",
+        "https://www.google.de/search*",
+        "https://www.google.co.uk/search*",
+        "https://www.google.es/search*",
+        "https://www.google.it/search*",
+        "https://www.google.ca/search*",
+        "https://www.google.com.au/search*"
+      ],
+      "js": [
+        "platforms/google_search/content.js"
       ],
       "run_at": "document_start"
     }

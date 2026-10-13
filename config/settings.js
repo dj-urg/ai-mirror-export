@@ -66,6 +66,15 @@ export const EXTENSION_CONFIG = {
       enabled: true,
       contentScript: 'platforms/m365_copilot/content.js',
       injectScript: 'platforms/m365_copilot/inject.js'
+    },
+    google_search: {
+      name: 'Google AI Overview',
+      domains: [
+        'google.com', 'google.be', 'google.nl', 'google.fr', 'google.de',
+        'google.co.uk', 'google.es', 'google.it', 'google.ca', 'google.com.au'
+      ],
+      enabled: true,
+      contentScript: 'platforms/google_search/content.js'
     }
   },
 
