@@ -56,9 +56,6 @@
   --badge-deepseek-strong: #7c3aed;
   --badge-deepseek-bg: #f3e8ff;
   --badge-deepseek-text: #6d28d9;
-  --badge-gemini-strong: #4285f4;
-  --badge-gemini-bg: #e8f0fe;
-  --badge-gemini-text: #1967d2;
   --badge-metadata-bg: #dbeafe;
   --badge-metadata-text: #1d4ed8;
 
@@ -177,9 +174,6 @@
     --badge-deepseek-strong: #a97aff;
     --badge-deepseek-bg: #2a1a3d;
     --badge-deepseek-text: #c4a3ff;
-    --badge-gemini-strong: #7aa8ff;
-    --badge-gemini-bg: #15293d;
-    --badge-gemini-text: #a3c8ff;
     --badge-metadata-bg: #1a2b4d;
     --badge-metadata-text: #a3c8ff;
 
@@ -245,9 +239,6 @@ html[data-force-color-scheme="dark"] {
   --badge-deepseek-strong: #a97aff;
   --badge-deepseek-bg: #2a1a3d;
   --badge-deepseek-text: #c4a3ff;
-  --badge-gemini-strong: #7aa8ff;
-  --badge-gemini-bg: #15293d;
-  --badge-gemini-text: #a3c8ff;
   --badge-metadata-bg: #1a2b4d;
   --badge-metadata-text: #a3c8ff;
 
@@ -652,13 +643,6 @@ strong {
 }
 .platform-badge--deepseek .platform-badge__icon { color: var(--badge-deepseek-strong); }
 .platform-badge--deepseek .platform-badge__name { color: var(--badge-deepseek-text); }
-
-.platform-badge--gemini {
-  border-color: var(--badge-gemini-strong);
-  background-color: var(--badge-gemini-bg);
-}
-.platform-badge--gemini .platform-badge__icon { color: var(--badge-gemini-strong); }
-.platform-badge--gemini .platform-badge__name { color: var(--badge-gemini-text); }
 
 .platform-badge--perplexity {
   border-color: #20808d;
