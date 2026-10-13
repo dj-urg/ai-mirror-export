@@ -494,7 +494,7 @@ function validateConversationData(data, platform) {
         return { isValid: false, error: 'Claude data missing required chat_messages array' };
       }
       if (data.chat_messages.length === 0) {
-        return { isValid: false, error: 'Claude chat_messages array is empty' };
+        return { isValid: false, code: 'EMPTY', error: 'Claude chat_messages array is empty' };
       }
       break;
     case 'copilot':
@@ -502,7 +502,7 @@ function validateConversationData(data, platform) {
         return { isValid: false, error: 'Copilot data missing required results array' };
       }
       if (data.results.length === 0) {
-        return { isValid: false, error: 'Copilot results array is empty' };
+        return { isValid: false, code: 'EMPTY', error: 'Copilot results array is empty' };
       }
       break;
     case 'm365_copilot':
@@ -510,16 +510,16 @@ function validateConversationData(data, platform) {
         return { isValid: false, error: 'M365 Copilot data missing required results array' };
       }
       if (data.results.length === 0) {
-        return { isValid: false, error: 'M365 Copilot results array is empty' };
+        return { isValid: false, code: 'EMPTY', error: 'M365 Copilot results array is empty' };
       }
       break;
     case 'google_search':
       if (data.mode === 'ai_mode') {
         if (!Array.isArray(data.turns) || data.turns.length === 0) {
-          return { isValid: false, error: 'Google AI Mode data missing turns' };
+          return { isValid: false, code: 'EMPTY', error: 'Google AI Mode data missing turns' };
         }
       } else if (typeof data.ai_overview_text !== 'string' || data.ai_overview_text.length < 10) {
-        return { isValid: false, error: 'Google Search data missing ai_overview_text' };
+        return { isValid: false, code: 'EMPTY', error: 'Google Search data missing ai_overview_text' };
       }
       break;
     case 'perplexity':
@@ -527,7 +527,7 @@ function validateConversationData(data, platform) {
         return { isValid: false, error: 'Perplexity data missing entries array' };
       }
       if (data.entries.length === 0) {
-        return { isValid: false, error: 'Perplexity entries array is empty' };
+        return { isValid: false, code: 'EMPTY', error: 'Perplexity entries array is empty' };
       }
       break;
     case 'grok': {
@@ -543,7 +543,7 @@ function validateConversationData(data, platform) {
         return { isValid: false, error: 'Grok data missing responses/messages array' };
       }
       if (messages.length === 0) {
-        return { isValid: false, error: 'Grok messages array is empty' };
+        return { isValid: false, code: 'EMPTY', error: 'Grok messages array is empty' };
       }
       break;
     }
@@ -560,7 +560,7 @@ function validateConversationData(data, platform) {
         return { isValid: false, error: 'DeepSeek data missing chat_messages array' };
       }
       if (chatMessages.length === 0) {
-        return { isValid: false, error: 'DeepSeek chat_messages array is empty' };
+        return { isValid: false, code: 'EMPTY', error: 'DeepSeek chat_messages array is empty' };
       }
       break;
     }
@@ -762,16 +762,12 @@ async function handleConversationData(message) {
   const validation = validateConversationData(conversationData, platform);
   if (!validation.isValid) {
     _console.error(`[${platform}] Invalid conversation data:`, validation.error);
-    // Surface the failure instead of silently returning. Most "invalid"
-    // cases are actually empty conversations (chat_messages: []), which
-    // the user triggers by exporting a brand-new chat; a specific
-    // "no messages to export" message is far better than a hung spinner
-    // or a ZIP full of header-only CSVs. docs/ux-audit.md §3.1 B2.
-    const err = (validation.error || '').toLowerCase();
-    const isEmpty = /empty|no messages|missing .* array|chat_messages/.test(err);
+    // Branch on the structured `code` set by validateConversationData, not
+    // on the human-readable error string — the latter can drift (and did,
+    // before the independent review flagged it). docs/ux-audit.md §3.1 B2.
     broadcastExportResult({
       platform,
-      outcome: isEmpty ? 'empty_export' : 'invalid_data',
+      outcome: validation.code === 'EMPTY' ? 'empty_export' : 'invalid_data',
       reason: validation.error || 'Validation failed'
     });
     return;

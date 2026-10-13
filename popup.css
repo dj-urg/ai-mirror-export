@@ -409,10 +409,9 @@ strong {
   background-color: var(--color-primary-active);
 }
 
-.btn--primary:focus-visible {
-  outline: none;
-  box-shadow: var(--focus-ring);
-}
+/* Primary button focus-visible lives in the "PRIMARY ACTION BUTTON" block
+   below with the full outline + box-shadow pair; keeping only one
+   definition so the override order can't drift. */
 
 .btn--primary:disabled {
   background-color: #bdbdbd;
