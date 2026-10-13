@@ -50,8 +50,31 @@ const ERROR_TYPES = {
     message: 'An unexpected error occurred',
     detail: 'Please try again.',
     troubleshooting: 'If the problem continues, try reloading the page or restarting your browser.'
+  },
+  AUTH_FAILED: {
+    // Platform name is interpolated at display time; detail/troubleshooting
+    // come from PLATFORM_TROUBLESHOOTING[platform].authFailed below.
+    message: 'Please sign in to continue.',
+    detail: null,
+    troubleshooting: null
   }
 };
+
+/**
+ * Build a user-facing sign-in message for an auth failure. Takes the
+ * platform id, returns {message, detail}. The platform display name is
+ * resolved from EXTENSION_CONFIG at the call site so this module stays
+ * side-effect-free; here we just template the per-platform copy.
+ *
+ * @param {string} platformDisplayName — "Claude", "ChatGPT", etc.
+ * @returns {{message: string, detail: string}}
+ */
+function formatAuthFailureCopy(platformDisplayName) {
+  return {
+    message: `Please sign in to ${platformDisplayName} to continue.`,
+    detail: `The last request got a 401 — your session on ${platformDisplayName} looks signed out. Sign in on the ${platformDisplayName} tab, then reopen this popup.`
+  };
+}
 
 /**
  * Platform-specific troubleshooting tips.
@@ -65,7 +88,8 @@ const PLATFORM_TROUBLESHOOTING = {
   },
   claude: {
     noData: 'Start a conversation first, then try exporting. Data is captured as you chat.',
-    exportFailed: 'Make sure you have sent at least one message in the conversation before exporting.'
+    exportFailed: 'Make sure you have sent at least one message in the conversation before exporting.',
+    authFailed: 'Sign in on your claude.ai tab, then reopen this popup.'
   },
   copilot: {
     noConversationId: 'Make sure you are on a conversation page (URL should contain /chats/).',
@@ -151,4 +175,5 @@ function sanitizeErrorMessage(message) {
   globalObj.ERROR_TYPES = ERROR_TYPES;
   globalObj.PLATFORM_TROUBLESHOOTING = PLATFORM_TROUBLESHOOTING;
   globalObj.sanitizeErrorMessage = sanitizeErrorMessage;
+  globalObj.formatAuthFailureCopy = formatAuthFailureCopy;
 })(typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null)));

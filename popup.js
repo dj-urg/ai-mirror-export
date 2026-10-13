@@ -1078,10 +1078,59 @@ function handleExportResultMessage(detail) {
       );
       updateExportButton(true);
       break;
+    case 'auth_failed':
+      renderAuthFailure(detail.platform, platformDisplayName(detail.platform));
+      break;
+    case 'auth_recovered':
+      // User signed back in. Re-check UI state so the sign-in card is
+      // replaced by the real export state (ready / loading / etc).
+      debouncedCheckAndUpdateUI();
+      break;
     default:
       // Unknown outcome — no-op; forward compat.
       break;
   }
+}
+
+/**
+ * Ask background whether this tab currently has a stored auth failure.
+ * Returns {authFailed: boolean, platform?: string, where?: string, since?: number}
+ * or null on error. Safe to call even when background hasn't booted yet;
+ * the catch swallows the "no receiving end" case.
+ */
+async function fetchAuthStateForTab(tabId) {
+  if (typeof tabId !== 'number') return null;
+  try {
+    return await browser.runtime.sendMessage({ type: 'GET_AUTH_STATE', tabId });
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Resolve a platform id to its human-readable name via EXTENSION_CONFIG,
+ * with a fallback to a title-cased id if the lookup misses.
+ */
+function platformDisplayName(platformId) {
+  const def = EXTENSION_CONFIG?.platforms?.[platformId];
+  if (def && def.name) return def.name;
+  return String(platformId || 'the platform').replace(/_/g, ' ');
+}
+
+/**
+ * Repaint the status card for the auth-failed state. Platform-specific
+ * copy comes from shared/errors.js via formatAuthFailureCopy().
+ */
+function renderAuthFailure(platformId, platformName) {
+  const copy = (typeof formatAuthFailureCopy === 'function')
+    ? formatAuthFailureCopy(platformName || platformDisplayName(platformId))
+    : {
+        message: `Please sign in to ${platformName || 'the platform'}.`,
+        detail: 'The last request returned 401. Sign in on the tab, then reopen this popup.'
+      };
+  updateStatus('error', copy.message, copy.detail);
+  updateExportButton(false);
+  hideFilePreview();
 }
 
 /**
@@ -1260,6 +1309,15 @@ async function checkAndUpdateUI() {
     if (!platform) {
       displayError('UNSUPPORTED_PLATFORM');
       hideFilePreview();
+      return;
+    }
+
+    // Auth-failure short-circuit. Background tracks per-tab auth state so a
+    // 401 that fired while the popup was closed still shows the sign-in
+    // card next time the popup opens. See docs/ux-audit.md §3.1 B3.
+    const authState = await fetchAuthStateForTab(tab.id);
+    if (authState && authState.authFailed) {
+      renderAuthFailure(authState.platform || platform.id, platform.name);
       return;
     }
 

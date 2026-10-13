@@ -172,6 +172,43 @@
 
   let activeFetchInFlight = null;
 
+  // Auth-failure debounce. Only notify background once per content-script
+  // lifetime so we don't spam AUTH_FAILED. Reset by clearAuthFailure() on
+  // the next successful fetch so a user who signs back in gets a fresh
+  // "ready" state next time the popup opens.
+  //
+  // 401 is treated as "sign in required". 403 is deliberately NOT treated
+  // as auth failure — on Claude it's often a Cloudflare interstitial, not
+  // a logged-out session; those fall through to the generic stuck-state
+  // message from step 8d.
+  //
+  // Message goes content → background via browser.runtime.sendMessage, which
+  // the browser isolates from page JS entirely, so no HMAC via
+  // shared/message-security.js is needed. Background still validates
+  // sender.id + sender.tab + sender.frameId + hostname-matches-claude.
+  let authFailureNotified = false;
+  function notifyAuthFailure(where) {
+    if (authFailureNotified) return;
+    authFailureNotified = true;
+    try {
+      browser.runtime.sendMessage({
+        type: 'AUTH_FAILED',
+        platform: 'claude',
+        detail: { where }
+      }).catch(() => { /* popup may not be open; background still stores it */ });
+    } catch (_) { /* runtime unavailable (e.g. extension reloaded) */ }
+  }
+  function clearAuthFailure() {
+    if (!authFailureNotified) return;
+    authFailureNotified = false;
+    try {
+      browser.runtime.sendMessage({
+        type: 'AUTH_RECOVERED',
+        platform: 'claude'
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
   function extractConversationIdFromPath() {
     const m = window.location.pathname.match(/\/chat\/([0-9a-f-]{8,})/i);
     return m ? m[1] : null;
@@ -179,6 +216,12 @@
 
   async function fetchOrgId() {
     const resp = await fetch('/api/organizations', { credentials: 'include' });
+    // fetch() does NOT reject on 4xx; the real status code is the only
+    // reliable signal (no string matching on error messages).
+    if (resp.status === 401) {
+      notifyAuthFailure('organizations');
+      throw new Error('organizations 401');
+    }
     if (!resp.ok) throw new Error(`organizations ${resp.status}`);
     const orgs = await resp.json();
     if (!Array.isArray(orgs) || orgs.length === 0) throw new Error('no organizations returned');
@@ -190,6 +233,10 @@
   async function fetchConversation(orgId, convId) {
     const url = `/api/organizations/${encodeURIComponent(orgId)}/chat_conversations/${encodeURIComponent(convId)}?tree=True&rendering_mode=messages&render_all_tools=true`;
     const resp = await fetch(url, { credentials: 'include' });
+    if (resp.status === 401) {
+      notifyAuthFailure('conversation');
+      throw new Error('chat_conversations 401');
+    }
     if (!resp.ok) throw new Error(`chat_conversations ${resp.status}`);
     return resp.json();
   }
@@ -208,6 +255,8 @@
         throw new Error('response missing chat_messages');
       }
       storeConversation(convId, data);
+      // Success — if a previous call hit 401, the user has signed back in.
+      clearAuthFailure();
       logDebug('Actively fetched conversation', {
         conversationId: convId,
         messageCount: data.chat_messages.length

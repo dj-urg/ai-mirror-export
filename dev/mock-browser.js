@@ -75,6 +75,14 @@
       // Google-specific: content script responded but no overview on page
       tab: FIXTURES.tabs.google_overview,
       conversationsResponse: FIXTURES.conversations.no_overview_for_page
+    },
+    auth_failed_claude: {
+      // "Popup opened after auth failure" — background still has the
+      // stored authFailureByTab entry, so GET_AUTH_STATE returns it and
+      // popup short-circuits to the sign-in card.
+      tab: FIXTURES.tabs.claude,
+      conversationsResponse: FIXTURES.conversations.empty,
+      authFailed: { platform: 'claude', where: 'conversation' }
     }
   };
 
@@ -205,7 +213,23 @@
     runtime: {
       id: 'ai-chat-exporter@harness',
       onMessage: { addListener: noop, removeListener: noop },
-      sendMessage: asyncNoop,
+      // State-aware runtime.sendMessage so popup → background queries like
+      // GET_AUTH_STATE return the right thing per harness preset.
+      sendMessage: async (msg) => {
+        const s = currentState();
+        if (msg && msg.type === 'GET_AUTH_STATE') {
+          if (s.authFailed) {
+            return {
+              authFailed: true,
+              platform: s.authFailed.platform || 'claude',
+              where: s.authFailed.where || null,
+              since: Date.now() - 60000
+            };
+          }
+          return { authFailed: false };
+        }
+        return { success: true };
+      },
       getURL: (p) => new URL(p, document.baseURI).href,
       getManifest: () => ({ version: 'harness', name: 'AI Chat Exporter' })
     },

@@ -1148,6 +1148,18 @@ const MESSAGE_TYPE_TO_PLATFORM = {
   GOOGLE_SEARCH_AI_OVERVIEW_DATA: 'google_search'
 };
 
+// Content-script-authored messages that aren't conversation-data payloads.
+// These go through the same sender validation but take a separate branch.
+const AUTH_MESSAGE_TYPES = new Set(['AUTH_FAILED', 'AUTH_RECOVERED']);
+
+// Per-tab auth-failure state. Keyed by tabId, value: {platform, where, since}.
+// Set by AUTH_FAILED, cleared by AUTH_RECOVERED, tabs.onUpdated (url change
+// or status 'loading'), and tabs.onRemoved. The popup reads this on open
+// via GET_AUTH_STATE so a user who dismissed the previous popup still sees
+// the sign-in message on the next open — not just while a popup happens
+// to be live when the 401 fires.
+const authFailureByTab = new Map();
+
 function senderHostnameMatchesPlatform(hostname, platformId) {
   const platform = EXTENSION_CONFIG.platforms[platformId];
   if (!platform || !platform.enabled) return false;
@@ -1162,6 +1174,59 @@ browser.runtime.onMessage.addListener((message, sender) => {
   }
   if (!message || typeof message.type !== 'string') {
     _console.warn('[Background] Invalid message structure');
+    return false;
+  }
+
+  // Popup-authored read: "does this tab currently have a stored auth
+  // failure?" Popup uses this on open so it can show the sign-in message
+  // without needing to wait for a fresh 401 round-trip.
+  if (message.type === 'GET_AUTH_STATE') {
+    // Popup doesn't have sender.tab, which is how we tell it apart from a
+    // content script. We trust sender.id === runtime.id (checked above).
+    const tabId = typeof message.tabId === 'number' ? message.tabId : null;
+    const state = (tabId != null) ? authFailureByTab.get(tabId) : null;
+    return Promise.resolve(state
+      ? { authFailed: true, platform: state.platform, where: state.where, since: state.since }
+      : { authFailed: false });
+  }
+
+  // Content-script-authored auth signal. Validated identically to the
+  // conversation-data path: must be top frame of a tab whose URL hostname
+  // matches the claimed platform (so e.g. a chat.deepseek.com content
+  // script can't impersonate claude).
+  if (AUTH_MESSAGE_TYPES.has(message.type)) {
+    const platformId = message.platform;
+    if (!platformId) {
+      _console.warn('[Background] Auth message missing platform');
+      return false;
+    }
+    if (!sender.tab || typeof sender.tab.url !== 'string') {
+      _console.warn('[Background] Auth message without tab origin');
+      return false;
+    }
+    if (sender.frameId !== 0) {
+      _console.warn('[Background] Auth message from subframe rejected');
+      return false;
+    }
+    let authSenderUrl;
+    try { authSenderUrl = new URL(sender.tab.url); } catch { return false; }
+    if (authSenderUrl.protocol !== 'https:') return false;
+    if (!senderHostnameMatchesPlatform(authSenderUrl.hostname, platformId)) {
+      _console.warn('[Background] Auth message platform/host mismatch');
+      return false;
+    }
+    const tabId = sender.tab.id;
+    if (message.type === 'AUTH_FAILED') {
+      authFailureByTab.set(tabId, {
+        platform: platformId,
+        where: (message.detail && typeof message.detail.where === 'string') ? message.detail.where : null,
+        since: Date.now()
+      });
+      broadcastExportResult({ platform: platformId, outcome: 'auth_failed' });
+    } else { // AUTH_RECOVERED
+      authFailureByTab.delete(tabId);
+      broadcastExportResult({ platform: platformId, outcome: 'auth_recovered' });
+    }
     return false;
   }
 
@@ -1380,16 +1445,34 @@ async function clearExportFailureBadge(tabId) {
 }
 
 try {
-  // URL change → re-evaluate the icon.
+  // URL change → re-evaluate the icon + clear per-tab auth state.
   browser.tabs.onUpdated.addListener((tabId, info, tab) => {
     if (info && typeof info.url === 'string') {
       applyIconStateForTab(tabId, info.url);
+      // URL change → the user navigated; previous auth-failed state no
+      // longer applies on this tab (they may have signed in, moved to a
+      // different site, etc.). Dropping the entry lets the next 401
+      // on this tab re-notify.
+      authFailureByTab.delete(tabId);
     }
     // Clear stale "!" when the tab finishes loading a new page.
     if (info && info.status === 'complete') {
       clearExportFailureBadge(tabId);
     }
+    // A tab that is actively loading has fresh cookies; the previous
+    // 401 may now resolve to 200. Clear so popup opened mid-reload
+    // doesn't flash a stale sign-in message.
+    if (info && info.status === 'loading') {
+      authFailureByTab.delete(tabId);
+    }
   });
+
+  // Tab closed → drop its auth state (no lingering memory).
+  if (browser.tabs.onRemoved && browser.tabs.onRemoved.addListener) {
+    browser.tabs.onRemoved.addListener((tabId) => {
+      authFailureByTab.delete(tabId);
+    });
+  }
 
   // Tab switch → read the new tab's URL and re-apply.
   browser.tabs.onActivated.addListener(async ({ tabId }) => {

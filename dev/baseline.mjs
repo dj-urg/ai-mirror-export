@@ -42,6 +42,7 @@ const STATES = [
   'error_no_conversation_id',
   'error_content_script_not_loaded',
   'error_no_data_google',
+  'auth_failed_claude',
   'consent_first_run'
 ];
 

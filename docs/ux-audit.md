@@ -338,6 +338,40 @@ records them; it does not act on them.**
   note just flags that the current `manifest.json: 2.1.1 → 2.2.0`
   plan under-reflects the scope.
 
+## 9a. Auth-detection follow-up (deferred to a separate PR)
+
+Step 8c (committed) added `response.status === 401` detection in
+`platforms/claude/content.js`'s active-fetch path. It covers the most
+common silent-timeout case: Claude's `/api/organizations` and
+`/api/.../chat_conversations/<id>` endpoints return 401 for signed-out
+users; the extension now surfaces "Please sign in to Claude" instead of
+a hung spinner. State persists per-tab in `background.js`
+(`authFailureByTab`), cleared on tab reload / URL change / tab close /
+`AUTH_RECOVERED`, read by the popup on open via `GET_AUTH_STATE`.
+
+**Deferred (option 1 from the audit assessment)** — extend the same
+pattern across every platform's `platforms/*/inject.js`:
+
+- Hook the response-side of `window.fetch` so a 401 on any conversation
+  endpoint (ChatGPT, Copilot, Perplexity, Grok, DeepSeek, Mistral, M365
+  Copilot) fires an `AUTH_FAILED` signed message through
+  `shared/message-security.js` to the isolated-world content.js, which
+  forwards it to background via the same path as 8c.
+- 403 stays separate (Cloudflare, rate limits — not "sign in").
+- The security surface widens: inject.js runs in the MAIN world where
+  page JS could try to interpose the fetch hook. Mitigation is already
+  in `shared/message-security.js` (HMAC-signed postMessage with a nonce
+  cache + 60s window); any new AUTH_FAILED message must go through it.
+
+Why deferred: inject.js changes touch the fetch-hooking surface across
+seven platforms. Each needs its own fixture for the 401 round-trip, and
+some platforms (M365 Copilot WebSocket, Google Search page-level
+cookies) don't have the same 401 semantics. Doing it right needs its
+own test matrix and reviewer notes — larger scope than this UX pass.
+
+Ship 8c now; schedule option 1 as a dedicated follow-up PR with its own
+baseline captures.
+
 ## 10. Risks and non-goals
 
 - **Not touching parsing / fetch hooks.** If any step appears to need
