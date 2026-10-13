@@ -923,14 +923,22 @@ function hideGoogleTip() {
  */
 function setupEventDrivenUpdates() {
   browser.runtime.onMessage.addListener((message, sender) => {
-    // Only process CONVERSATION_READY messages
-    if (message.type !== 'CONVERSATION_READY') {
+    // Validate sender is from our extension (shared check for all types below)
+    if (!sender || sender.id !== browser.runtime.id) {
+      _console.warn('[Popup] Ignoring privileged message from unauthorized sender');
       return;
     }
 
-    // Validate sender is from our extension
-    if (!sender || sender.id !== browser.runtime.id) {
-      _console.warn('[Popup] Ignoring CONVERSATION_READY from unauthorized sender');
+    // Background-initiated export outcome. Lets the popup surface a real
+    // download/ZIP failure instead of a hung spinner, and clear the
+    // "Exporting…" state when background's async pipeline actually finishes.
+    if (message.type === 'EXPORT_RESULT') {
+      handleExportResultMessage(message.detail || {});
+      return;
+    }
+
+    // Content-script "fresh conversation data captured" notification.
+    if (message.type !== 'CONVERSATION_READY') {
       return;
     }
 
@@ -972,6 +980,57 @@ function setupEventDrivenUpdates() {
   }
 
   _console.log('[Popup] Event-driven updates enabled');
+}
+
+/**
+ * React to an EXPORT_RESULT runtime message from background.js. These are
+ * fire-and-forget — background sends them after the asynchronous download
+ * resolves (success) or rejects (download_failed / processing_failed).
+ *
+ * When popup is still open, we repaint the status card so the user sees
+ * the real outcome. When popup has closed (common on the 3-second auto-
+ * close), the toolbar '!' badge set by background.js's catch is the
+ * fallback signal. See docs/ux-audit.md §3.1 B1.
+ *
+ * @param {{outcome: string, platform?: string, reason?: string, filename?: string}} detail
+ */
+function handleExportResultMessage(detail) {
+  if (!detail || typeof detail.outcome !== 'string') return;
+  switch (detail.outcome) {
+    case 'success':
+      // Background confirmed the download. The sync-path "Export complete!"
+      // card may already be showing; re-affirm with the real filename.
+      updateStatus(
+        'success',
+        'Export complete.',
+        detail.filename
+          ? `Saved to Downloads as ${detail.filename}`
+          : 'Check your Downloads folder.'
+      );
+      updateExportButton(true);
+      break;
+    case 'download_failed':
+      updateStatus(
+        'error',
+        'Download failed.',
+        (detail.reason ? `${detail.reason}. ` : '') +
+        'Check that your browser allows downloads for this site, and that the Downloads folder is writable, then try again.'
+      );
+      updateExportButton(true);
+      break;
+    case 'processing_failed':
+      updateStatus(
+        'error',
+        'Could not build the export.',
+        (detail.reason ? `${detail.reason}. ` : '') +
+        'Reload the tab, wait for the conversation to finish loading, then try again.'
+      );
+      updateExportButton(true);
+      break;
+    default:
+      // Unknown outcome — no-op; forward compat.
+      break;
+  }
 }
 
 /**

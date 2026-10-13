@@ -1087,14 +1087,42 @@ async function handleConversationData(message) {
     const zipFilename = `${platform}_${slug}.zip`;
 
     browser.downloads.download({ url, filename: zipFilename, saveAs: false })
-      .then(() => setTimeout(() => URL.revokeObjectURL(url), 1000))
+      .then(() => {
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        broadcastExportResult({ platform, outcome: 'success', filename: zipFilename });
+      })
       .catch(error => {
         _console.error(`[${platform}] Download failed:`, error);
         URL.revokeObjectURL(url);
+        broadcastExportResult({
+          platform,
+          outcome: 'download_failed',
+          reason: sanitizeErrorMessage(error && (error.message || String(error))) || 'Download failed',
+          filename: zipFilename
+        });
       });
   } catch (error) {
     _console.error(`[${platform}] Error processing conversation data:`, error);
+    broadcastExportResult({
+      platform,
+      outcome: 'processing_failed',
+      reason: sanitizeErrorMessage(error && (error.message || String(error))) || 'Processing failed'
+    });
+    // Re-throw so the message-listener's .catch() sets the toolbar '!' badge.
+    throw error;
   }
+}
+
+/**
+ * Fire a one-way runtime message any open popup / dev harness can listen
+ * for. Returns no value; caller doesn't await. Safe to call even when no
+ * listeners are attached — the promise rejection is intentionally
+ * swallowed so a missing popup doesn't look like a background error.
+ */
+function broadcastExportResult(detail) {
+  try {
+    browser.runtime.sendMessage({ type: 'EXPORT_RESULT', detail }).catch(() => {});
+  } catch (_) { /* no listener attached; expected when popup is closed */ }
 }
 
 const MESSAGE_TYPE_TO_PLATFORM = {
