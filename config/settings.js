@@ -59,6 +59,13 @@ export const EXTENSION_CONFIG = {
       enabled: true,
       contentScript: 'platforms/deepseek/content.js',
       injectScript: 'platforms/deepseek/inject.js'
+    },
+    m365_copilot: {
+      name: 'Microsoft 365 Copilot',
+      domains: ['m365.cloud.microsoft'],
+      enabled: true,
+      contentScript: 'platforms/m365_copilot/content.js',
+      injectScript: 'platforms/m365_copilot/inject.js'
     }
   },
 
