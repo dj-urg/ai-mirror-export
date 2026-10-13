@@ -227,10 +227,11 @@ Numbers match the tasks in the task list.
 | 11 | 6d: unified stuck-state copy | `popup.js`, `shared/errors.js` | all platforms share the message pattern |
 | 12 | 6e: in-popup confirm card | `popup.html`, `popup.css`, `popup.js` | replaces `window.confirm()` |
 | 13 | Microcopy sweep | `shared/errors.js`, `popup.html`, `popup.js` | all user-facing strings reviewed |
-| 14 | `docs/manual-tests.md` + `CLAUDE.md` | docs only | checklist runnable with `web-ext run` |
-| 15 | Google Search release gating (**pending**) | `manifest.json` strip for 2.2.0 release build | AMO existing users don't get re-prompt |
-| 16 | Independent final review | fresh subagent | fixes land in a final commit |
-| 17 | Version bump + changelog | `manifest.json`, `package.json`, `CHANGELOG.md` | 2.2.0 |
+| 14 | `docs/manual-tests.md` + `CLAUDE.md` (**done**, commit `94549c1`) | docs only | checklist runnable with `web-ext run` |
+| 15 | ~~Google Search release gating~~ (**cancelled** — Google ships in 3.0.0) | — | AMO reviewer note + release notes explain the re-prompt |
+| 16 | Independent final review (**scheduled separately** — runs in a fresh session with a different model) | fresh reviewer | — |
+| 17 | Version bump + changelog | `manifest.json`, `package.json`, `CHANGELOG.md` | **3.0.0** |
+| — | ~~Review-your-ZIP step~~ | **deferred to 3.1.0** — not shipping with 3.0.0 | — |
 
 ---
 
@@ -371,6 +372,19 @@ own test matrix and reviewer notes — larger scope than this UX pass.
 
 Ship 8c now; schedule option 1 as a dedicated follow-up PR with its own
 baseline captures.
+
+## 9b. Perplexity content_scripts injection — root cause TBD
+
+The `scripting` permission ships in 3.0.0 solely as a defensive fallback
+for a Perplexity content-script injection issue that was observed during
+development but not isolated. Reproduction notes are in
+`docs/amo-reviewer-notes.md`. Once the manifest-level fix is identified,
+drop `scripting` from `manifest.json` and the fallback blocks in
+`background.js:1354-1424` and ship the removal as a minor bump. A
+scratch branch `scratch/perplexity-no-scripting` is prepared for the
+5-minute verification test (temporarily disables the fallback so a
+reviewer can confirm whether `data-perplexity-exporter-content-loaded`
+appears on a Perplexity thread without `scripting`).
 
 ## 10. Risks and non-goals
 

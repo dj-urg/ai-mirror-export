@@ -134,8 +134,6 @@ The real risk is that your past chats may contain sensitive content you've forgo
 
 **Why ten Google locale permissions?** The Google Search content script only runs on `/search*` paths (and does nothing on the rest of Google) to read AI Overview text that is already visible in the page you're viewing; no search queries are sent anywhere by the extension. The locale set — `.com`, `.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au` — covers the European and English-speaking populations this release targets. Firefox will prompt existing users to re-approve on update because the host list is new; declining the prompt disables the Google capture only, the rest of the extension continues to work.
 
-**Before you send a ZIP, open it and look.** Reviewing the CSVs is the single most effective privacy step: a scrubber only catches patterns; your eyes catch *this specific message that mentions my employer's project*.
-
 ## For researchers
 
 - **[`METHODS.md`](METHODS.md)** — unit of analysis, content flattening rules, timestamp handling, Google selector fallback chain, and known limitations. Cite this in your methods section.

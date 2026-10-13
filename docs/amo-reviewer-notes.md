@@ -1,5 +1,47 @@
 # AMO reviewer notes — AI Chat Exporter 3.0.0
 
+### Why the `scripting` permission is needed
+
+Used in `background.js:1354-1424` for Perplexity only. Two call sites:
+
+1. `scripting.registerContentScripts` at background startup — re-registers
+   the Perplexity content scripts via the scripting API as a fallback
+   because the manifest `content_scripts` entries don't reliably take
+   effect on perplexity.ai (was observed during development).
+2. `scripting.executeScript` on `tabs.onUpdated(status: 'loading')` for
+   perplexity.ai URLs — belt-and-suspenders tab-navigation injector.
+
+Both call sites only inject files that are already declared in the
+manifest's `content_scripts` array (`shared/message-security.js`,
+`platforms/perplexity/inject.js`, `platforms/perplexity/content.js`).
+No file is fetched from the network; no code is generated at runtime.
+
+**Root cause status: not fully identified.** The code comment at
+`background.js:1357` notes "manifest content_scripts entries for
+Perplexity do not reliably take effect in some Firefox builds, even
+though structurally identical entries work for every other platform."
+Which Firefox version(s) show it and a reduced test case have not been
+isolated. The `scripting` fallback is a defensive measure that has
+worked reliably in dogfood use.
+
+**Reproduction notes** for anyone trying to isolate the underlying bug:
+
+1. `./node_modules/.bin/web-ext run --firefox=/path/to/firefox` from
+   the repo root
+2. Visit <https://www.perplexity.ai/> in the launched profile; sign in
+3. Open a thread
+4. In the page devtools console, check:
+   `document.documentElement.getAttribute('data-perplexity-exporter-content-loaded')`
+   — a null result means the content script didn't inject
+5. Also check `window.fetch.toString().startsWith('async function')` —
+   if false, the inject-world fetch hook isn't installed either
+
+The `scripting` permission can be dropped from a future release once the
+root cause is identified and the manifest entry fixed. Tracked in
+`docs/ux-audit.md` §10.
+
+
+
 Paste the sections below into the "Notes for reviewer" field when submitting
 the 3.0.0 build on AMO. They explain what's new and why the elevated
 permissions are needed.
