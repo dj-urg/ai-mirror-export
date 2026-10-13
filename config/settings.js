@@ -45,6 +45,13 @@ export const EXTENSION_CONFIG = {
       enabled: true,
       contentScript: 'platforms/perplexity/content.js',
       injectScript: 'platforms/perplexity/inject.js'
+    },
+    grok: {
+      name: 'Grok',
+      domains: ['grok.com'],
+      enabled: true,
+      contentScript: 'platforms/grok/content.js',
+      injectScript: 'platforms/grok/inject.js'
     }
   },
 
