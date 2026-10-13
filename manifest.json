@@ -23,7 +23,8 @@
     "https://chat.openai.com/*",
     "https://claude.ai/*",
     "https://copilot.microsoft.com/*",
-    "https://copilotstudio.microsoft.com/*"
+    "https://copilotstudio.microsoft.com/*",
+    "https://www.perplexity.ai/*"
   ],
   "content_scripts": [
     {
@@ -90,6 +91,27 @@
       "js": [
         "shared/message-security.js",
         "platforms/copilot/content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://www.perplexity.ai/*"
+      ],
+      "js": [
+        "shared/message-security.js",
+        "platforms/perplexity/inject.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.perplexity.ai/*"
+      ],
+      "js": [
+        "shared/message-security.js",
+        "platforms/perplexity/content.js"
       ],
       "run_at": "document_start"
     }

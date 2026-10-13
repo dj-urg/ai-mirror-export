@@ -38,6 +38,13 @@ export const EXTENSION_CONFIG = {
       enabled: true,
       contentScript: 'platforms/copilot/content.js',
       injectScript: 'platforms/copilot/inject.js'
+    },
+    perplexity: {
+      name: 'Perplexity',
+      domains: ['perplexity.ai'],
+      enabled: true,
+      contentScript: 'platforms/perplexity/content.js',
+      injectScript: 'platforms/perplexity/inject.js'
     }
   },
 
