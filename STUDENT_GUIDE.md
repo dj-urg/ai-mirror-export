@@ -23,7 +23,12 @@ The **AI Chat Exporter** is a browser extension (Firefox) that lets a user expor
 - **ChatGPT** — `chatgpt.com` and `chat.openai.com`
 - **Claude** — `claude.ai/chat/*`
 - **Copilot** — `copilot.microsoft.com` and `copilotstudio.microsoft.com`
-- **Google Search AI** — the AI Overview box and AI Mode conversations on `google.com`
+- **Microsoft 365 Copilot** — `m365.cloud.microsoft`
+- **Perplexity** — `www.perplexity.ai`
+- **Grok** — `grok.com`
+- **DeepSeek** — `chat.deepseek.com`
+- **Mistral** — `chat.mistral.ai`
+- **Google Search AI** — the AI Overview box and AI Mode conversations on `google.com` and nine other Google locales
 
 Everything runs **locally in the browser**. No data leaves the user's machine during extraction. The extension reads what the chat platform already sent to the user's browser, formats it as CSV, and triggers a download.
 
@@ -35,17 +40,17 @@ This matters for research: donors stay in control of what they share, and you (t
 
 Walk through this once yourself on your own account — it is the fastest way to understand the data.
 
-1. Install the extension (see `README.md` for the Firefox "Load Temporary Add-on" steps).
+1. Install the extension from [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/) (see `README.md`).
 2. Open a conversation on one of the supported platforms.
 3. Click the extension icon in the toolbar. A popup appears with the page's detected status.
-4. Click **Export this chat**.
+4. Click **Export ZIP**.
 5. A single ZIP file is downloaded.
 
 **Settings worth knowing about** (visible in the popup):
 
 - **PII scrubbing** — optional regex pass that redacts emails, phone numbers, IPs, tokens, SSNs, and credit card patterns in the text columns. Redactions appear as `<REDACTED:EMAIL>`, etc.
 - **Study salt** — optional string that hashes the donor ID per-study, so the same donor's exports across different studies cannot be joined.
-- **Include donor context** — ChatGPT only; includes the user's custom instructions ("About you" / "How ChatGPT should respond"). Sensitive, off by default.
+- **Include donor context** — ChatGPT only; includes the user's custom instructions ("About you" / "How ChatGPT should respond"). Sensitive; on by default, can be switched off in Privacy settings.
 
 The manifest inside each ZIP records which settings were on, so you always know what you are looking at.
 
@@ -86,7 +91,7 @@ The other platforms follow the same `{stem}_{conversation_id_short}_{timestamp}`
 **File characteristics worth knowing:**
 
 - Every CSV begins with a UTF-8 BOM so Excel opens it with the right encoding.
-- Field separator: `,` — line endings: `\r\n` — quoting: RFC 4180.
+- Field separator: `,` — quoting: RFC 4180 — line endings: `\r\n` in most files; the flat Copilot, M365 Copilot and Google CSVs and the ChatGPT metadata and donor-context CSVs use `\n`.
 - Empty "optional" CSVs (sources, attachments, donor context) are only emitted when there is at least one row. Don't assume every file is always present.
 
 ---
@@ -97,7 +102,7 @@ Each export has **two layers**:
 
 **(a) Platform-specific CSVs** — e.g. `claude_messages.csv`, `chatgpt_sources.csv`. These keep every detail the platform exposed: Claude's thinking blocks, ChatGPT's conversation tree, Google's follow-up questions, Copilot's channel ID. Shape and columns differ per platform.
 
-**(b) A canonical CSV per export** — `{platform}_messages_canonical.csv`. Every platform produces one, and they all share **the same 13 columns in the same order**. This is the layer to use when you want to pool exports across platforms into one dataset.
+**(b) A canonical CSV per export** — `{platform}_messages_canonical.csv`. Every platform produces one, and they all share **the same 14 columns in the same order**. This is the layer to use when you want to pool exports across platforms into one dataset.
 
 Rule of thumb:
 
@@ -119,7 +124,7 @@ Each table below lists columns, their meaning, type, and a **confidence score**:
 | Column | Type | Meaning | Confidence |
 |---|---|---|---|
 | `schema_version` | string | Version of the CSV schema, bumps on breaking changes. Current `1.0.0`. | High |
-| `extractor_version` | string | Version of the extension that produced the file. Current `2.1.1`. | High |
+| `extractor_version` | string | Version of the extension build that produced the file. | High |
 | `donor_id` | string | A UUID (or HMAC thereof) identifying the donor across their exports. **Not** a real-world identity. | High |
 | `donor_id_type` | string | `persistent` (stored in browser storage) or `session` (fallback if storage unavailable). | High |
 | `download_time` | ISO 8601 | UTC timestamp when the export was generated. | High |
@@ -325,18 +330,19 @@ Note: Copilot does not currently emit a dedicated sources CSV because the extrac
 
 ### 5.6 Canonical schema (all platforms)
 
-Every `*_messages_canonical.csv` has these 13 columns, in this order:
+Every `*_messages_canonical.csv` has these 14 columns, in this order:
 
 | Column | Meaning |
 |---|---|
 | `donor_id` | HMAC(donor UUID, study salt) if a salt is configured; raw UUID otherwise. |
-| `platform` | `chatgpt`, `claude`, `copilot`, `google_ai_overview`, or `google_ai_mode`. |
+| `platform` | `chatgpt`, `claude`, `copilot`, `m365_copilot`, `perplexity`, `grok`, `deepseek`, `mistral`, `google_ai_overview`, or `google_ai_mode`. |
 | `conversation_id` | Platform's native conversation ID. |
 | `message_id` | Platform's native message ID. |
 | `parent_message_id` | Parent in the conversation tree, if applicable. |
 | `turn_index` | Message position (BFS depth for ChatGPT, raw `index` for Claude, turn number for Google AI Mode). |
 | `role` | Normalized to `user` / `assistant` / `system` / `tool`. (Claude's `human` → `user`.) |
-| `text` | Full concatenated text of the message. |
+| `text` | Full concatenated text of the message. For Claude this joins every content block, including extended-thinking blocks and tool results. |
+| `text_cleaned` | `text` with whitespace and markup normalised (see `utils/text_cleaner.js`); the raw `text` is always kept alongside. |
 | `created_at_iso` | ISO 8601 UTC. |
 | `model_identifier` | Model slug if known; empty for Claude in the current version. |
 | `schema_version`, `extractor_version` | Provenance. |
@@ -348,12 +354,12 @@ Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_
 
 | Field | Meaning |
 |---|---|
-| `manifest_schema_version` | Currently `1.0.0`. |
+| `manifest_schema_version` | Currently `1.1.0`. |
 | `extractor_version` | Extension version that produced the export. |
 | `platform` | Which platform. |
 | `conversation_id` | Native conversation ID (same as the CSVs). |
 | `api_format` | ChatGPT only: `mapping` or `messages_array`. |
-| `donor_id_hashed` | SHA-256 of the donor UUID — useful for correlating exports without exposing the raw ID. |
+| `donor_id_hashed` | SHA-256 of the donor UUID when no study code is set; when a study code is set it is the same HMAC value as `donor_id` in the CSVs. |
 | `donor_id_type` | `persistent` or `session`. |
 | `download_time` | ISO 8601 UTC. |
 | `files[]` | One entry per CSV: filename, schema name, schema version, row count, byte size, SHA-256. |
