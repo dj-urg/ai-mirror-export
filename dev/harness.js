@@ -48,26 +48,50 @@
     stage.dataset.viewport = currentViewport();
   }
 
+  // Resolves when the mock inside the iframe has installed window.browser
+  // and popup.js has had a tick to render. Replaced on every reload so
+  // callers always get a Promise for the *current* reload.
+  window.__harnessReady = Promise.resolve();
+
+  function trackReady() {
+    window.__harnessReady = new Promise((resolve) => {
+      const handler = (ev) => {
+        if (ev.data?.type === 'HARNESS_MOCK_READY') {
+          window.removeEventListener('message', handler);
+          // Give popup.js's init() + the first checkAndUpdateUI a tick.
+          setTimeout(resolve, 400);
+        }
+      };
+      window.addEventListener('message', handler);
+    });
+  }
+
   async function reloadPopup() {
     const state = stateSelect.value;
     const outcome = outcomeSelect.value;
     const theme = currentTheme();
 
+    trackReady();
     const popupHtml = await originalPopupHtmlPromise;
 
     // Inject the mock and fixtures ahead of the shared scripts. Keep the
     // original popup.html untouched on disk.
     const injection = [
-      `<base href="${repoRoot}">`,
       `<script>window.__HARNESS_STATE__ = ${JSON.stringify(state)};` +
         `window.__HARNESS_EXPORT_OUTCOME__ = ${JSON.stringify(outcome)};</script>`,
-      `<script src="dev/fixtures.js"></script>`,
-      `<script src="dev/mock-browser.js"></script>`
+      `<script src="${repoRoot}dev/fixtures.js"></script>`,
+      `<script src="${repoRoot}dev/mock-browser.js"></script>`
     ].join('\n');
 
-    // The popup's <head> ends with the stylesheet; append our injection just
-    // before </head> so the mock is defined before shared/logger.js runs.
-    const modified = popupHtml.replace('</head>', `${injection}\n</head>`);
+    // Firefox's module loader ignores <base> inside srcdoc documents, so a
+    // simple <base href> is not enough: popup.js would still resolve to this
+    // file's directory and 404. Rewrite the four known relative references
+    // in popup.html to absolute URLs. Internal imports *inside* popup.js
+    // (e.g. ./config/settings.js) resolve correctly from the absolute URL.
+    const absolutified = popupHtml
+      .replace(/\b(src|href)="(popup\.(?:css|js)|shared\/[^"]+)"/g,
+        (_, attr, p) => `${attr}="${repoRoot}${p}"`);
+    const modified = absolutified.replace('<head>', `<head>\n${injection}`);
 
     // When the dark theme is forced, add a stylesheet override that bypasses
     // the host media query. Once the popup adds a real `prefers-color-scheme`
@@ -108,6 +132,28 @@
       default: return;
     }
   });
+
+  // Programmatic control surface for test automation (Playwright etc.).
+  // Setting values via .value/.checked bypasses the change-event listeners,
+  // so we trigger exactly one reload and return a Promise for completion.
+  window.__harness = {
+    async setState(state, theme = 'light', outcome = 'success') {
+      stateSelect.value = state;
+      outcomeSelect.value = outcome;
+      const themeInput = document.querySelector(`input[name="theme"][value="${theme}"]`);
+      if (themeInput) themeInput.checked = true;
+      await reloadPopup();
+      return window.__harnessReady;
+    },
+    setViewport(width) {
+      const v = String(width);
+      const vInput = document.querySelector(`input[name="viewport"][value="${v}"]`);
+      if (vInput) {
+        vInput.checked = true;
+        applyStage();
+      }
+    }
+  };
 
   // First render.
   applyStage();

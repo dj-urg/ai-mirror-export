@@ -1,0 +1,24 @@
+{
+  "name": "ai-chat-exporter",
+  "version": "2.1.1",
+  "description": "Export conversations from ChatGPT, Claude, and Co-pilot to CSV. All processing happens locally in your browser.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node testing/tests/run_all.js",
+    "lint": "eslint . --ext .js",
+    "build": "web-ext build",
+    "lint:web-ext": "web-ext lint",
+    "baseline": "node dev/baseline.mjs",
+    "baseline:compare": "node dev/baseline.mjs --compare"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "eslint": "^9.17.0",
+    "playwright": "^1.64.0",
+    "web-ext": "^8.3.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
