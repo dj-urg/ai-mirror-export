@@ -29,6 +29,7 @@
     "https://www.perplexity.ai/*",
     "https://grok.com/*",
     "https://chat.deepseek.com/*",
+    "https://chat.mistral.ai/*",
     "https://m365.cloud.microsoft/*",
     "https://www.google.com/*",
     "https://www.google.be/*",
@@ -169,6 +170,27 @@
       "js": [
         "shared/message-security.js",
         "platforms/deepseek/content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://chat.mistral.ai/*"
+      ],
+      "js": [
+        "shared/message-security.js",
+        "platforms/mistral/inject.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://chat.mistral.ai/*"
+      ],
+      "js": [
+        "shared/message-security.js",
+        "platforms/mistral/content.js"
       ],
       "run_at": "document_start"
     },

@@ -60,6 +60,13 @@ export const EXTENSION_CONFIG = {
       contentScript: 'platforms/deepseek/content.js',
       injectScript: 'platforms/deepseek/inject.js'
     },
+    mistral: {
+      name: 'Mistral',
+      domains: ['chat.mistral.ai'],
+      enabled: true,
+      contentScript: 'platforms/mistral/content.js',
+      injectScript: 'platforms/mistral/inject.js'
+    },
     m365_copilot: {
       name: 'Microsoft 365 Copilot',
       domains: ['m365.cloud.microsoft'],
