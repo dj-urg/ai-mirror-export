@@ -53,7 +53,14 @@ import {
   buildManifest,
   countRows
 } from './utils/manifest.js';
-import { scrubText, scrubRows, countRedactions, DEFAULT_SCRUB_COLUMNS } from './utils/pii.js';
+import {
+  scrubText,
+  scrubRows,
+  countRedactions,
+  DEFAULT_SCRUB_COLUMNS,
+  PII_RULESET_VERSION,
+  PII_SCRUB_OPTION_KEYS
+} from './utils/pii.js';
 import { cleanText } from './utils/text_cleaner.js';
 import { validateRows } from './utils/validators.js';
 import { buildZip } from './utils/zip.js';
@@ -120,6 +127,22 @@ function resolveConversationId(conversationData) {
 
 
 /**
+ * Normalize per-category scrub options from storage. Unknown keys are dropped
+ * and every advertised key is coerced to boolean, so `pii_scrub_options` in
+ * the manifest always has the same shape regardless of what was stored.
+ * Defaults: every advertised key is `false` so the published behavior stays
+ * byte-identical until a popup toggle is wired up.
+ */
+function normalizeScrubOptions(stored) {
+  const out = {};
+  const src = (stored && typeof stored === 'object') ? stored : {};
+  for (const key of PII_SCRUB_OPTION_KEYS) {
+    out[key] = Boolean(src[key]);
+  }
+  return out;
+}
+
+/**
  * Load per-donor privacy settings. Non-fatal if storage is unavailable.
  * `study_salt` is the HMAC key for donor_id anonymization; empty means use raw UUID.
  */
@@ -127,16 +150,23 @@ async function loadPrivacySettings() {
   try {
     const s = await browser.storage.local.get([
       'pii_scrub_enabled',
+      'pii_scrub_options',
       'include_donor_context',
       'study_salt'
     ]);
     return {
       piiScrubEnabled: Boolean(s.pii_scrub_enabled),
+      piiScrubOptions: normalizeScrubOptions(s.pii_scrub_options),
       includeDonorContext: s.include_donor_context !== false, // default: true
       studySalt: typeof s.study_salt === 'string' ? s.study_salt : ''
     };
   } catch {
-    return { piiScrubEnabled: false, includeDonorContext: true, studySalt: '' };
+    return {
+      piiScrubEnabled: false,
+      piiScrubOptions: normalizeScrubOptions(null),
+      includeDonorContext: true,
+      studySalt: ''
+    };
   }
 }
 
@@ -695,23 +725,59 @@ function generateVersionedCSV(rows, schemaName) {
 }
 
 /**
- * Scrub PII (optional) and count redactions across all scrub-targeted columns.
+ * Translate the manifest-shaped scrub options into the shape `scrubText` reads
+ * internally. Keeps `scrubText`'s existing `stripUrls` parameter name
+ * (unit-tested in test_pii.js) while the public manifest vocabulary (`URL`)
+ * matches the keys emitted by `countRedactions().byType`.
  */
-function scrubIfEnabled(rows, columns, enabled) {
-  if (!enabled || !columns || columns.length === 0) return { rows, redactionCount: 0 };
+function scrubOptionsForScrubText(options) {
+  if (!options) return undefined;
+  return { stripUrls: Boolean(options.URL) };
+}
+
+/**
+ * Scrub PII (optional) and count redactions across all scrub-targeted columns.
+ * Returns per-type counts alongside the total so callers can surface a
+ * `pii_redactions_by_type` map in the export manifest.
+ */
+function scrubIfEnabled(rows, columns, enabled, options) {
+  if (!enabled || !columns || columns.length === 0) {
+    return { rows, redactionCount: 0, redactionsByType: {} };
+  }
+  const scrubOptions = scrubOptionsForScrubText(options);
   let total = 0;
+  const byType = {};
   const scrubbed = rows.map(row => {
     const next = { ...row };
     for (const col of columns) {
       if (typeof next[col] === 'string' && next[col].length > 0) {
         const original = next[col];
-        next[col] = scrubText(original);
-        total += countRedactions(original, next[col]).total;
+        next[col] = scrubText(original, scrubOptions);
+        const counts = countRedactions(original, next[col]);
+        total += counts.total;
+        for (const [type, n] of Object.entries(counts.byType)) {
+          byType[type] = (byType[type] || 0) + n;
+        }
       }
     }
     return next;
   });
-  return { rows: scrubbed, redactionCount: total };
+  return { rows: scrubbed, redactionCount: total, redactionsByType: byType };
+}
+
+/**
+ * Fold the return value of `scrubIfEnabled` into a running `{ total, byType }`
+ * accumulator. Lets the per-platform code stay one line per CSV instead of
+ * repeating a four-line merge at every call site.
+ */
+function mergeScrubCounts(stats, result) {
+  if (!result) return;
+  stats.total += result.redactionCount || 0;
+  if (result.redactionsByType) {
+    for (const [type, n] of Object.entries(result.redactionsByType)) {
+      stats.byType[type] = (stats.byType[type] || 0) + n;
+    }
+  }
 }
 
 /**
@@ -775,7 +841,7 @@ async function handleConversationData(message) {
 
   try {
     const { id: donorIdRaw, type: donorIdType } = await getOrCreateDonorId();
-    const { piiScrubEnabled, includeDonorContext, studySalt } = await loadPrivacySettings();
+    const { piiScrubEnabled, piiScrubOptions, includeDonorContext, studySalt } = await loadPrivacySettings();
     const donorId = await hmacDonorId(donorIdRaw, studySalt);
     const donorIdHashed = studySalt ? donorId : await sha256Hex(donorIdRaw);
     const downloadTime = new Date().toISOString();
@@ -790,7 +856,7 @@ async function handleConversationData(message) {
 
     const csvFiles = []; // { innerName, schemaName, content, rowCount }
     const perSchemaValidation = {};
-    let totalPiiRedactions = 0;
+    const piiStats = { total: 0, byType: {} };
     let apiFormat = null;
     let orphanCount = 0;
     let extractionTelemetry = null;
@@ -800,10 +866,12 @@ async function handleConversationData(message) {
       apiFormat = result.apiFormat;
       orphanCount = result.orphanCount;
 
-      const { rows: msgRows, redactionCount: msgRed } = scrubIfEnabled(
-        result.messages, DEFAULT_SCRUB_COLUMNS.chatgpt_messages, piiScrubEnabled
+      const scrubChatGPTMsgs = scrubIfEnabled(
+        result.messages, DEFAULT_SCRUB_COLUMNS.chatgpt_messages, piiScrubEnabled, piiScrubOptions
       );
-      totalPiiRedactions += msgRed;
+      const msgRows = scrubChatGPTMsgs.rows;
+      const msgRed = scrubChatGPTMsgs.redactionCount;
+      mergeScrubCounts(piiStats, scrubChatGPTMsgs);
 
       pushCsv(csvFiles, 'chatgpt_metadata', 'chatgpt_metadata', result.metadataCSV, slug);
 
@@ -825,14 +893,14 @@ async function handleConversationData(message) {
       if (includeDonorContext && result.donorContext &&
           (result.donorContext.user_profile || result.donorContext.user_instructions)) {
         if (piiScrubEnabled) {
-          const dc = { ...result.donorContext };
-          for (const col of DEFAULT_SCRUB_COLUMNS.chatgpt_donor_context) {
-            if (typeof dc[col] === 'string' && dc[col].length > 0) {
-              const before = dc[col];
-              dc[col] = scrubText(before);
-              totalPiiRedactions += countRedactions(before, dc[col]).total;
-            }
-          }
+          const scrubDonor = scrubIfEnabled(
+            [result.donorContext],
+            DEFAULT_SCRUB_COLUMNS.chatgpt_donor_context,
+            piiScrubEnabled,
+            piiScrubOptions
+          );
+          mergeScrubCounts(piiStats, scrubDonor);
+          const dc = scrubDonor.rows[0] || result.donorContext;
           pushCsv(csvFiles, 'chatgpt_donor_context', 'chatgpt_donor_context', generateDonorContextCSV(dc), slug);
         } else {
           pushCsv(csvFiles, 'chatgpt_donor_context', 'chatgpt_donor_context', result.donorContextCSV, slug);
@@ -860,14 +928,14 @@ async function handleConversationData(message) {
       const result = extractClaudeConversation(conversationData, { donorId, donorIdType, downloadTime });
 
       // Optional PII scrub per CSV. Each schema has its own target columns.
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.claude_metadata, piiScrubEnabled);
-      totalPiiRedactions += scrubMetadata.redactionCount;
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.claude_messages, piiScrubEnabled);
-      totalPiiRedactions += scrubMessages.redactionCount;
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.claude_sources, piiScrubEnabled);
-      totalPiiRedactions += scrubSources.redactionCount;
-      const scrubAttachments = scrubIfEnabled(result.attachments, DEFAULT_SCRUB_COLUMNS.claude_attachments, piiScrubEnabled);
-      totalPiiRedactions += scrubAttachments.redactionCount;
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.claude_metadata, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMetadata);
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.claude_messages, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMessages);
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.claude_sources, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubSources);
+      const scrubAttachments = scrubIfEnabled(result.attachments, DEFAULT_SCRUB_COLUMNS.claude_attachments, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubAttachments);
 
       pushCsv(csvFiles, 'claude_metadata', 'claude_metadata',
         generateClaudeMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
@@ -889,12 +957,12 @@ async function handleConversationData(message) {
     } else if (platform === 'perplexity') {
       const result = extractPerplexityConversation(conversationData, { donorId, donorIdType, downloadTime });
 
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.perplexity_metadata, piiScrubEnabled);
-      totalPiiRedactions += scrubMetadata.redactionCount;
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.perplexity_messages, piiScrubEnabled);
-      totalPiiRedactions += scrubMessages.redactionCount;
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.perplexity_sources, piiScrubEnabled);
-      totalPiiRedactions += scrubSources.redactionCount;
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.perplexity_metadata, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMetadata);
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.perplexity_messages, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMessages);
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.perplexity_sources, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubSources);
 
       pushCsv(csvFiles, 'perplexity_metadata', 'perplexity_metadata',
         generatePerplexityMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
@@ -912,12 +980,12 @@ async function handleConversationData(message) {
     } else if (platform === 'grok') {
       const result = extractGrokConversation(conversationData, { donorId, donorIdType, downloadTime });
 
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.grok_metadata, piiScrubEnabled);
-      totalPiiRedactions += scrubMetadata.redactionCount;
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.grok_messages, piiScrubEnabled);
-      totalPiiRedactions += scrubMessages.redactionCount;
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.grok_sources, piiScrubEnabled);
-      totalPiiRedactions += scrubSources.redactionCount;
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.grok_metadata, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMetadata);
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.grok_messages, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMessages);
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.grok_sources, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubSources);
 
       pushCsv(csvFiles, 'grok_metadata', 'grok_metadata',
         generateGrokMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
@@ -935,12 +1003,12 @@ async function handleConversationData(message) {
     } else if (platform === 'deepseek') {
       const result = extractDeepSeekConversation(conversationData, { donorId, donorIdType, downloadTime });
 
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.deepseek_metadata, piiScrubEnabled);
-      totalPiiRedactions += scrubMetadata.redactionCount;
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.deepseek_messages, piiScrubEnabled);
-      totalPiiRedactions += scrubMessages.redactionCount;
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.deepseek_sources, piiScrubEnabled);
-      totalPiiRedactions += scrubSources.redactionCount;
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.deepseek_metadata, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMetadata);
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.deepseek_messages, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMessages);
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.deepseek_sources, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubSources);
 
       pushCsv(csvFiles, 'deepseek_metadata', 'deepseek_metadata',
         generateDeepSeekMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
@@ -990,8 +1058,9 @@ async function handleConversationData(message) {
         extractionTelemetry = conversationData.extraction_telemetry || null;
       }
 
-      const { rows: scrubbedRows, redactionCount } = scrubIfEnabled(rawRows, scrubColumns, piiScrubEnabled);
-      totalPiiRedactions += redactionCount;
+      const scrubFlat = scrubIfEnabled(rawRows, scrubColumns, piiScrubEnabled, piiScrubOptions);
+      const scrubbedRows = scrubFlat.rows;
+      mergeScrubCounts(piiStats, scrubFlat);
 
       pushCsv(csvFiles, innerPrefix, flatSchemaName, generateVersionedCSV(scrubbedRows, flatSchemaName), slug);
 
@@ -1030,8 +1099,8 @@ async function handleConversationData(message) {
           ...r
         }));
         if (sourceRows.length > 0) {
-          const scrubbedSources = scrubIfEnabled(sourceRows, DEFAULT_SCRUB_COLUMNS.m365_copilot_sources, piiScrubEnabled);
-          totalPiiRedactions += scrubbedSources.redactionCount;
+          const scrubbedSources = scrubIfEnabled(sourceRows, DEFAULT_SCRUB_COLUMNS.m365_copilot_sources, piiScrubEnabled, piiScrubOptions);
+          mergeScrubCounts(piiStats, scrubbedSources);
           pushCsv(csvFiles, 'm365_copilot_sources', 'm365_copilot_sources',
             generateM365CopilotSourcesCSV(scrubbedSources.rows), slug);
         }
@@ -1057,7 +1126,10 @@ async function handleConversationData(message) {
     // describes exactly what's in the zip the user downloads.
     const manifestExtras = {
       pii_scrub_enabled: piiScrubEnabled,
-      pii_redactions_total: totalPiiRedactions,
+      pii_scrub_options: piiScrubEnabled ? piiScrubOptions : {},
+      pii_ruleset_version: PII_RULESET_VERSION,
+      pii_redactions_total: piiStats.total,
+      pii_redactions_by_type: piiStats.byType,
       include_donor_context: includeDonorContext,
       orphaned_nodes: orphanCount,
       validation: summarizeValidation(perSchemaValidation),

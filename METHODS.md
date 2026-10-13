@@ -34,6 +34,22 @@ Classic AI Overview is parsed from a re-fetched HTML snapshot of the current sea
 
 If none match, the extractor falls back to locating a heading element whose exact text is one of the known AI Overview or AI Mode labels (English, Dutch, French, German, Spanish) and climbs up to five ancestors until it finds a container with 200–20000 characters of visible text.
 
+## Provenance manifest (`_manifest.json`)
+
+Every ZIP includes a sidecar `{platform}_manifest_{slug}.json` describing the files inside, so researchers can audit what was emitted without re-running the extension. The outer schema version is `manifest_schema_version`; the current value is `1.1.0` (additive change from `1.0.0` — the fields below were added, no field was renamed or removed, so parsers that ignore unknown keys stay compatible).
+
+The `telemetry` object carries PII-scrubbing provenance:
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `pii_scrub_enabled` | boolean | Whether the optional scrubber ran at all. If `false`, the next three fields describe an empty scrub pass. |
+| `pii_scrub_options` | `{ URL: boolean }` | Per-category toggles that were in effect. Currently only `URL` is individually togglable; the other scrub rules are always on when `pii_scrub_enabled: true`. Keys match the UPPERCASE vocabulary used by `pii_redactions_by_type`. When `pii_scrub_enabled` is `false`, this field is `{}`. |
+| `pii_ruleset_version` | string | SemVer tag of the regex set in [`utils/pii.js`](utils/pii.js) (`PII_RULESET_VERSION`). Bump when a pattern changes meaningfully — patch for tightening a bounded regex, minor for adding/removing a category, major for anything a downstream parser could break on. Lets an export be traced back to the exact rules that produced its redactions. |
+| `pii_redactions_total` | integer | Count of `<REDACTED:…>` markers added across every scrubbed column. |
+| `pii_redactions_by_type` | `{ EMAIL: n, URL: n, … }` | Same count broken out per marker type. Keys: `EMAIL`, `URL`, `PHONE`, `IP`, `JWT`, `TOKEN`, `CC`, `SSN`, `NAME`. Only non-zero types appear. |
+
+Default behavior ships `URL: false` so URLs are preserved in exports; news / sources studies rely on them. A researcher who wants URL stripping sets `pii_scrub_options.URL` to `true` in extension storage before participants export.
+
 ## Known limitations
 
 Orphaned ChatGPT nodes receive an empty `turn_number` but their count is not reported in the metadata CSV (TODO). Google selectors are brittle to Google's ongoing A/B tests of DOM structure and locale labels; a layout change may silently reduce the capture rate. The model identifier for Claude and Copilot is not yet recorded in the messages CSV (another team is adding this). Per-turn timestamps are not available on Google AI Mode.

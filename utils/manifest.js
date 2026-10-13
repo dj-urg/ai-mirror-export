@@ -44,7 +44,10 @@ export const SCHEMA_VERSIONS = Object.freeze({
   google_sources: '1.0.0'
 });
 
-export const MANIFEST_SCHEMA_VERSION = '1.0.0';
+// 1.1.0 added additive telemetry fields: pii_scrub_options, pii_ruleset_version,
+// pii_redactions_by_type. Downstream parsers that ignore unknown keys stay
+// compatible. Bump major when a field is renamed or removed.
+export const MANIFEST_SCHEMA_VERSION = '1.1.0';
 
 const CANONICAL_HEADERS = Object.freeze([
   'donor_id',

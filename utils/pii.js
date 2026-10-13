@@ -5,6 +5,19 @@
  * No external dependencies. No I/O. No globals.
  */
 
+// Bump when any pattern below changes meaningfully, so exports can be traced
+// back to the exact rules that produced them. Semver: patch for tightening a
+// bounded regex, minor for adding/removing a category, major for anything a
+// downstream parser could break on.
+export const PII_RULESET_VERSION = '1.0.0';
+
+// Option keys exposed in `_manifest.json` under `pii_scrub_options`.
+// Scrubbing is otherwise all-or-nothing (via `pii_scrub_enabled`); the keys
+// here are the ones that are individually togglable. Match the UPPERCASE
+// vocabulary emitted by `countRedactions().byType` so the two manifest fields
+// share one naming scheme.
+export const PII_SCRUB_OPTION_KEYS = Object.freeze(['URL']);
+
 // ---------------------------------------------------------------------------
 // Regex patterns (order below in scrubText matters: emails -> phones -> IPs ->
 // JWT -> URL -> CC -> SSN -> names -> generic token).
