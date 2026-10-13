@@ -201,6 +201,40 @@ function stopCaptureTicker() {
 // How long to show "loading" before switching to the "not captured" warning.
 const CAPTURE_LOADING_TIMEOUT_MS = 15000;
 
+/**
+ * Produce the detail-line for a stuck/loading status card. Centralises the
+ * two capture mechanisms the extension uses — "reload" (ChatGPT, Claude,
+ * Copilot: tab needs a fresh page load) and "reopen" (Google: content
+ * script keeps capturing in the background; popup reads state at open
+ * time, so closing + reopening the popup is the only way to see it). One
+ * consistent structure, with mechanism-specific wording and a visible
+ * elapsed counter so the user knows the popup hasn't frozen.
+ *
+ * @param {Object} opts
+ * @param {number} opts.elapsedMs
+ * @param {number} opts.threshold  — ms before switching to the "stuck" variant
+ * @param {'reload'|'reopen'} opts.mechanism
+ * @param {string} [opts.platformName]
+ * @param {boolean} [opts.stuck]   — true to use the past-threshold variant
+ * @returns {string}
+ */
+function formatStuckDetail({ elapsedMs, threshold, mechanism, platformName, stuck = false }) {
+  const secs = Math.max(0, Math.round(elapsedMs / 1000));
+  const prefix = platformName ? `${platformName}: ` : '';
+  if (!stuck) {
+    // Pre-threshold loading phase. Only surface the counter once we've been
+    // waiting a few seconds — showing "0s" or "1s" on first paint is noise.
+    const sinceLine = secs >= 3 ? ` (${secs}s)` : '';
+    return `${prefix}this usually takes a few seconds${sinceLine}.`;
+  }
+  const threshSecs = Math.round(threshold / 1000);
+  if (mechanism === 'reopen') {
+    return `${prefix}still no capture after ${threshSecs}s. The extension reads this page's state when the popup opens — close this popup, wait a second or two, then reopen it.`;
+  }
+  // 'reload' mechanism (default)
+  return `${prefix}still no data after ${threshSecs}s. The extension only captures as the page loads. Reload the tab in your browser, then reopen this popup.`;
+}
+
 // ============================================================================
 // RATE LIMITING CONFIGURATION
 // ============================================================================
@@ -1270,22 +1304,34 @@ async function checkAndUpdateUI() {
           const elapsed = now - (state.capture.waitingSince || now);
 
           if (elapsed < CAPTURE_LOADING_TIMEOUT_MS) {
-            // Brief loading phase — data may arrive any second
+            // Brief loading phase — data may arrive any second. Show an
+            // elapsed counter so the user knows the popup hasn't frozen.
             updateStatus(
               'loading',
-              'Capturing conversation data...',
-              'This usually takes a few seconds.'
+              'Capturing conversation data…',
+              formatStuckDetail({
+                elapsedMs: elapsed,
+                threshold: CAPTURE_LOADING_TIMEOUT_MS,
+                mechanism: 'reload',
+                platformName: platform.name
+              })
             );
           } else {
-            // Timed out — the extension only captures data on page load.
-            // Ask the user to reload the page themselves (we removed the
-            // in-popup reload button in the UX pass — reloading someone's
-            // tab from the popup bypasses browser affordances the user
-            // may have set, like confirm-on-reload or page-form state).
+            // Past the loading threshold — the extension only captures on
+            // page load, so the user needs to reload the tab themselves.
+            // The in-popup "Reload Page" button was removed in step 5
+            // because reloading someone's tab from the popup bypasses
+            // browser affordances (confirm-on-reload, scroll, form state).
             updateStatus(
               'info',
-              'Reload the page to export this conversation.',
-              'The extension captures data as the page loads. Reload the tab, then reopen this popup.'
+              'Still waiting on this page.',
+              formatStuckDetail({
+                elapsedMs: elapsed,
+                threshold: CAPTURE_LOADING_TIMEOUT_MS,
+                mechanism: 'reload',
+                platformName: platform.name,
+                stuck: true
+              })
             );
           }
           updateExportButton(false);
@@ -1449,11 +1495,14 @@ async function checkAndUpdateUI() {
           })();
           updateStatus(
             'info',
-            'Close and reopen this popup to see the capture.',
-            (isAIMode
-              ? 'Give the Google tab a few seconds to finish rendering the AI reply, then close this popup and open it again. '
-              : 'Give the Google tab a few seconds to render the AI Overview, then close this popup and open it again. ')
-              + 'After reopening, wait a second or two for the capture to show up — the popup reads the latest state at open time, not instantly.'
+            'Still waiting on this page.',
+            formatStuckDetail({
+              elapsedMs: CAPTURE_LOADING_TIMEOUT_MS, // past-threshold variant
+              threshold: CAPTURE_LOADING_TIMEOUT_MS,
+              mechanism: 'reopen',
+              platformName: isAIMode ? 'Google AI Mode' : 'Google AI Overview',
+              stuck: true
+            })
           );
           updateExportButton(false);
           hideFilePreview();
@@ -1466,8 +1515,14 @@ async function checkAndUpdateUI() {
         stopCaptureTicker();
         updateStatus(
           'info',
-          'Close and reopen this popup to see the capture.',
-          'The Google tab is still loading. Give it a few seconds, then close this popup and open it again. After reopening, wait a second or two for the capture to show up.'
+          'Still waiting on this page.',
+          formatStuckDetail({
+            elapsedMs: CAPTURE_LOADING_TIMEOUT_MS,
+            threshold: CAPTURE_LOADING_TIMEOUT_MS,
+            mechanism: 'reopen',
+            platformName: 'Google',
+            stuck: true
+          })
         );
         updateExportButton(false);
         hideFilePreview();
