@@ -762,6 +762,18 @@ async function handleConversationData(message) {
   const validation = validateConversationData(conversationData, platform);
   if (!validation.isValid) {
     _console.error(`[${platform}] Invalid conversation data:`, validation.error);
+    // Surface the failure instead of silently returning. Most "invalid"
+    // cases are actually empty conversations (chat_messages: []), which
+    // the user triggers by exporting a brand-new chat; a specific
+    // "no messages to export" message is far better than a hung spinner
+    // or a ZIP full of header-only CSVs. docs/ux-audit.md §3.1 B2.
+    const err = (validation.error || '').toLowerCase();
+    const isEmpty = /empty|no messages|missing .* array|chat_messages/.test(err);
+    broadcastExportResult({
+      platform,
+      outcome: isEmpty ? 'empty_export' : 'invalid_data',
+      reason: validation.error || 'Validation failed'
+    });
     return;
   }
 

@@ -1027,6 +1027,23 @@ function handleExportResultMessage(detail) {
       );
       updateExportButton(true);
       break;
+    case 'empty_export':
+      updateStatus(
+        'warning',
+        'No messages to export.',
+        'This conversation looks empty. Send at least one message, wait for the response to finish, then try again.'
+      );
+      updateExportButton(true);
+      break;
+    case 'invalid_data':
+      updateStatus(
+        'error',
+        'The conversation data looks incomplete.',
+        (detail.reason ? `${detail.reason}. ` : '') +
+        'Reload the tab and let the conversation finish loading before exporting.'
+      );
+      updateExportButton(true);
+      break;
     default:
       // Unknown outcome — no-op; forward compat.
       break;
