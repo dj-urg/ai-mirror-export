@@ -13,6 +13,7 @@ ENV/
 .venv/
 .env/
 data/
+test/
 *.pyc
 __pycache__/
 *.py[cod]
@@ -130,6 +131,13 @@ https:
 # Kiro
 .kiro/
 
+# Playwright MCP session logs (local interactive dev artifacts)
+.playwright-mcp/
+
+# Local test capture (synthetic WebSocket payload used while debugging
+# the M365 Copilot handler; not shippable, not for commit)
+dev/m365_ws_capture.json
+
 # JetBrains IDEs (WebStorm, IntelliJ, etc.)
 .idea/
 *.iml
@@ -201,11 +209,8 @@ yarn.lock
 # Testing and Coverage
 # ============================================================================
 
-# Test data and output folders
+# Test data and output folder
 testing/
-test/
-tests/
-**/*.csv
 /*.csv
 /conversation_*.csv
 /chatgpt_*.csv
