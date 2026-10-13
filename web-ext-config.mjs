@@ -28,6 +28,7 @@ export default {
     'eslint.config.mjs',
     'eslint.config.js',
     'eslint.config.cjs',
+    'CITATION.cff',
     'web-ext-config.cjs',
     'web-ext-config.mjs',
     'web-ext-config.js',
