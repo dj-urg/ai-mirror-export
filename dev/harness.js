@@ -93,14 +93,12 @@
         (_, attr, p) => `${attr}="${repoRoot}${p}"`);
     const modified = absolutified.replace('<head>', `<head>\n${injection}`);
 
-    // When the dark theme is forced, add a stylesheet override that bypasses
-    // the host media query. Once the popup adds a real `prefers-color-scheme`
-    // rule set, this hook lets us preview it without changing OS settings.
+    // popup.css carries the full dark palette under `[data-force-color-scheme="dark"]`.
+    // We just set the attribute; CSS does the rest. Playwright uses
+    // `emulateMedia({ colorScheme })` instead and relies on the @media branch.
     const withTheme = theme === 'dark'
-      ? modified.replace('</head>', `<style>:root { color-scheme: dark; }
-        html[data-force-color-scheme="dark"] { color-scheme: dark; }</style>
-        <script>document.documentElement.setAttribute('data-force-color-scheme','dark');</script>
-        </head>`)
+      ? modified.replace('<html lang="en">',
+          '<html lang="en" data-force-color-scheme="dark">')
       : modified;
 
     iframe.srcdoc = withTheme;

@@ -12,36 +12,64 @@
   --color-primary: #0060df;
   --color-primary-hover: #0250bb;
   --color-primary-active: #054096;
+  --color-primary-disabled: #757575;
+  --color-primary-tint-weak: rgba(0, 96, 223, 0.07);
+  --color-primary-tint-medium: rgba(0, 96, 223, 0.14);
 
-  /* Status Colors */
+  /* Status Colors — surface tokens */
   --color-success: #12bc00;
   --color-success-bg: #e3f7e1;
   --color-success-border: #a5d6a7;
+  --color-success-text: #2e7d32;
   --color-warning: #ff9400;
   --color-warning-bg: #fff4e5;
   --color-warning-border: #ffcc80;
+  --color-warning-text: #c44000;
   --color-error: #d70022;
   --color-error-bg: #ffe8e8;
   --color-error-border: #ef9a9a;
+  --color-error-text: #c62828;
   --color-info: #0060df;
   --color-info-bg: #e0f0ff;
   --color-info-border: #90caf9;
+  --color-info-text: #1565c0;
 
   /* Neutral Colors */
   --color-text-primary: #15141a;
   --color-text-secondary: #5b5b66;
-  --color-text-tertiary: #6e6e78; /* Darkened from #8f8f9d for WCAG AA compliance (4.5:1) */
+  --color-text-tertiary: #6e6e78;
   --color-border: #d7d7db;
   --color-background: #ffffff;
   --color-background-secondary: #f9f9fb;
+  --color-background-hover: #ededf0;
+
+  /* Platform Badge Palette — border + bg + text per platform */
+  --badge-chatgpt-strong: #10a37f;
+  --badge-chatgpt-bg: #e6f7f3;
+  --badge-chatgpt-text: #0a6b52;
+  --badge-claude-strong: #d97706;
+  --badge-claude-bg: #fef3c7;
+  --badge-claude-text: #b45309;
+  --badge-copilot-strong: #0078d4;
+  --badge-copilot-bg: #e6f2ff;
+  --badge-copilot-text: #005a9e;
+  --badge-deepseek-strong: #7c3aed;
+  --badge-deepseek-bg: #f3e8ff;
+  --badge-deepseek-text: #6d28d9;
+  --badge-gemini-strong: #4285f4;
+  --badge-gemini-bg: #e8f0fe;
+  --badge-gemini-text: #1967d2;
+  --badge-metadata-bg: #dbeafe;
+  --badge-metadata-text: #1d4ed8;
 
   /* Focus */
   --color-focus: #0060df;
   --focus-ring: 0 0 0 2px rgba(0, 96, 223, 0.3);
 
-  /* Font Stack */
-  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, 
-                 "Helvetica Neue", Arial, sans-serif;
+  /* Font Stack — `-moz-system-ui` lets Firefox render the popup in the
+     same font as the surrounding browser chrome. */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", -moz-system-ui,
+                 system-ui, Roboto, "Helvetica Neue", Arial, sans-serif;
 
   /* Font Sizes */
   --font-size-xs: 11px;
@@ -84,6 +112,153 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.15);
+
+  color-scheme: light;
+}
+
+/* ============================================
+   DARK THEME
+   ============================================
+   Activates automatically when the user's OS / Firefox is set to dark.
+   Only the color tokens are overridden — spacing, typography, radii, and
+   component rules stay the same, so every surface inherits the dark
+   palette through its existing var() references. The accent lightens
+   from #0060df to #4891ff to stay above 4.5:1 against the dark surface
+   (#1b1b1f).
+   ============================================ */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Primary */
+    --color-primary: #4891ff;
+    --color-primary-hover: #6ba6ff;
+    --color-primary-active: #80b4ff;
+    --color-primary-disabled: #4a4a52;
+    --color-primary-tint-weak: rgba(72, 145, 255, 0.12);
+    --color-primary-tint-medium: rgba(72, 145, 255, 0.22);
+
+    /* Status surfaces (dark) with high-contrast text pairs */
+    --color-success: #4ed24a;
+    --color-success-bg: #1a3d1a;
+    --color-success-border: #2d6b2d;
+    --color-success-text: #a7e5a3;
+    --color-warning: #ffb34d;
+    --color-warning-bg: #3d2a0a;
+    --color-warning-border: #7a5c22;
+    --color-warning-text: #ffb37a;
+    --color-error: #ff6b7a;
+    --color-error-bg: #3d1515;
+    --color-error-border: #7a2c33;
+    --color-error-text: #ff9b9b;
+    --color-info: #4891ff;
+    --color-info-bg: #15293d;
+    --color-info-border: #2d4c7a;
+    --color-info-text: #a3c8ff;
+
+    /* Neutral — Firefox-native dark surfaces */
+    --color-text-primary: #ededed;
+    --color-text-secondary: #c0c0c7;
+    --color-text-tertiary: #8b8b93;
+    --color-border: #52525e;
+    --color-background: #1b1b1f;
+    --color-background-secondary: #2a2a30;
+    --color-background-hover: #353541;
+
+    /* Platform badges — lighter strokes + dark surfaces */
+    --badge-chatgpt-strong: #4ad8a4;
+    --badge-chatgpt-bg: #1a3d31;
+    --badge-chatgpt-text: #a8e8d0;
+    --badge-claude-strong: #ffb84d;
+    --badge-claude-bg: #3d2b0a;
+    --badge-claude-text: #ffd48a;
+    --badge-copilot-strong: #5aa8e8;
+    --badge-copilot-bg: #15293d;
+    --badge-copilot-text: #a3c8ff;
+    --badge-deepseek-strong: #a97aff;
+    --badge-deepseek-bg: #2a1a3d;
+    --badge-deepseek-text: #c4a3ff;
+    --badge-gemini-strong: #7aa8ff;
+    --badge-gemini-bg: #15293d;
+    --badge-gemini-text: #a3c8ff;
+    --badge-metadata-bg: #1a2b4d;
+    --badge-metadata-text: #a3c8ff;
+
+    /* Focus — brighter and more opaque so the ring reads on dark */
+    --color-focus: #4891ff;
+    --focus-ring: 0 0 0 2px rgba(72, 145, 255, 0.55);
+
+    /* Shadows — deeper on dark surfaces */
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5);
+
+    color-scheme: dark;
+  }
+}
+
+/* Also activate the dark palette when the preview harness forces it
+   explicitly via `data-force-color-scheme="dark"`. CSS does not let us
+   combine a selector rule with an `@media` rule in one block, so the
+   dark-palette body is duplicated here. Keep the two blocks in sync. */
+html[data-force-color-scheme="dark"] {
+  --color-primary: #4891ff;
+  --color-primary-hover: #6ba6ff;
+  --color-primary-active: #80b4ff;
+  --color-primary-disabled: #4a4a52;
+  --color-primary-tint-weak: rgba(72, 145, 255, 0.12);
+  --color-primary-tint-medium: rgba(72, 145, 255, 0.22);
+
+  --color-success: #4ed24a;
+  --color-success-bg: #1a3d1a;
+  --color-success-border: #2d6b2d;
+  --color-success-text: #a7e5a3;
+  --color-warning: #ffb34d;
+  --color-warning-bg: #3d2a0a;
+  --color-warning-border: #7a5c22;
+  --color-warning-text: #ffb37a;
+  --color-error: #ff6b7a;
+  --color-error-bg: #3d1515;
+  --color-error-border: #7a2c33;
+  --color-error-text: #ff9b9b;
+  --color-info: #4891ff;
+  --color-info-bg: #15293d;
+  --color-info-border: #2d4c7a;
+  --color-info-text: #a3c8ff;
+
+  --color-text-primary: #ededed;
+  --color-text-secondary: #c0c0c7;
+  --color-text-tertiary: #8b8b93;
+  --color-border: #52525e;
+  --color-background: #1b1b1f;
+  --color-background-secondary: #2a2a30;
+  --color-background-hover: #353541;
+
+  --badge-chatgpt-strong: #4ad8a4;
+  --badge-chatgpt-bg: #1a3d31;
+  --badge-chatgpt-text: #a8e8d0;
+  --badge-claude-strong: #ffb84d;
+  --badge-claude-bg: #3d2b0a;
+  --badge-claude-text: #ffd48a;
+  --badge-copilot-strong: #5aa8e8;
+  --badge-copilot-bg: #15293d;
+  --badge-copilot-text: #a3c8ff;
+  --badge-deepseek-strong: #a97aff;
+  --badge-deepseek-bg: #2a1a3d;
+  --badge-deepseek-text: #c4a3ff;
+  --badge-gemini-strong: #7aa8ff;
+  --badge-gemini-bg: #15293d;
+  --badge-gemini-text: #a3c8ff;
+  --badge-metadata-bg: #1a2b4d;
+  --badge-metadata-text: #a3c8ff;
+
+  --color-focus: #4891ff;
+  --focus-ring: 0 0 0 2px rgba(72, 145, 255, 0.55);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.5);
+
+  color-scheme: dark;
 }
 
 /* ============================================
@@ -361,70 +536,54 @@ strong {
   white-space: nowrap;
 }
 
-/* Platform-specific color variants */
+/* Platform-specific color variants — colors live in :root as `--badge-*`
+   tokens with dark-theme overrides. Keep the per-platform rules thin. */
 .platform-badge--chatgpt {
-  border-color: #10a37f;
-  background-color: #e6f7f3;
+  border-color: var(--badge-chatgpt-strong);
+  background-color: var(--badge-chatgpt-bg);
 }
-
-.platform-badge--chatgpt .platform-badge__icon {
-  color: #10a37f;
-}
-
-.platform-badge--chatgpt .platform-badge__name {
-  color: #0a6b52; /* Darkened from #0d8968 for WCAG AA compliance (4.5:1) */
-}
+.platform-badge--chatgpt .platform-badge__icon { color: var(--badge-chatgpt-strong); }
+.platform-badge--chatgpt .platform-badge__name { color: var(--badge-chatgpt-text); }
 
 .platform-badge--claude {
-  border-color: #d97706;
-  background-color: #fef3c7;
+  border-color: var(--badge-claude-strong);
+  background-color: var(--badge-claude-bg);
 }
-
-.platform-badge--claude .platform-badge__icon {
-  color: #d97706;
-}
-
-.platform-badge--claude .platform-badge__name {
-  color: #b45309;
-}
+.platform-badge--claude .platform-badge__icon { color: var(--badge-claude-strong); }
+.platform-badge--claude .platform-badge__name { color: var(--badge-claude-text); }
 
 .platform-badge--copilot {
-  border-color: #0078d4;
-  background-color: #e6f2ff;
+  border-color: var(--badge-copilot-strong);
+  background-color: var(--badge-copilot-bg);
 }
-
-.platform-badge--copilot .platform-badge__icon {
-  color: #0078d4;
-}
-
-.platform-badge--copilot .platform-badge__name {
-  color: #005a9e;
-}
+.platform-badge--copilot .platform-badge__icon { color: var(--badge-copilot-strong); }
+.platform-badge--copilot .platform-badge__name { color: var(--badge-copilot-text); }
 
 .platform-badge--deepseek {
-  border-color: #7c3aed;
-  background-color: #f3e8ff;
+  border-color: var(--badge-deepseek-strong);
+  background-color: var(--badge-deepseek-bg);
 }
-
-.platform-badge--deepseek .platform-badge__icon {
-  color: #7c3aed;
-}
-
-.platform-badge--deepseek .platform-badge__name {
-  color: #6d28d9;
-}
+.platform-badge--deepseek .platform-badge__icon { color: var(--badge-deepseek-strong); }
+.platform-badge--deepseek .platform-badge__name { color: var(--badge-deepseek-text); }
 
 .platform-badge--gemini {
-  border-color: #4285f4;
-  background-color: #e8f0fe;
+  border-color: var(--badge-gemini-strong);
+  background-color: var(--badge-gemini-bg);
+}
+.platform-badge--gemini .platform-badge__icon { color: var(--badge-gemini-strong); }
+.platform-badge--gemini .platform-badge__name { color: var(--badge-gemini-text); }
+
+.platform-badge--perplexity {
+  border-color: #20808d;
+  background-color: #e6f4f5;
 }
 
-.platform-badge--gemini .platform-badge__icon {
-  color: #4285f4;
+.platform-badge--perplexity .platform-badge__icon {
+  color: #20808d;
 }
 
-.platform-badge--gemini .platform-badge__name {
-  color: #1967d2;
+.platform-badge--perplexity .platform-badge__name {
+  color: #175a63;
 }
 
 /* ============================================
@@ -507,7 +666,7 @@ strong {
 }
 
 .status-card--success .status-card__message {
-  color: #2e7d32; /* Dark green for WCAG AA contrast (7.5:1 on light bg) */
+  color: var(--color-success-text);
 }
 
 /* Warning State - Orange with Warning Triangle */
@@ -517,7 +676,7 @@ strong {
 }
 
 .status-card--warning .status-card__icon {
-  color: #c44000; /* Darkened from #e65100 for WCAG AA compliance (4.5:1) */
+  color: var(--color-warning-text);
 }
 
 .status-card--warning .icon--warning {
@@ -525,7 +684,7 @@ strong {
 }
 
 .status-card--warning .status-card__message {
-  color: #c44000; /* Darkened from #e65100 for WCAG AA compliance (4.5:1) */
+  color: var(--color-warning-text);
 }
 
 /* Error State - Red with X Circle */
@@ -543,7 +702,7 @@ strong {
 }
 
 .status-card--error .status-card__message {
-  color: #c62828; /* Dark red for WCAG AA contrast (6.5:1 on light bg) */
+  color: var(--color-error-text);
 }
 
 /* Loading State - Blue with Spinner */
@@ -561,7 +720,7 @@ strong {
 }
 
 .status-card--loading .status-card__message {
-  color: #1565c0; /* Dark blue for WCAG AA contrast (5.8:1 on light bg) */
+  color: var(--color-info-text);
 }
 
 /* Info State - Blue with Info Circle */
@@ -579,7 +738,7 @@ strong {
 }
 
 .status-card--info .status-card__message {
-  color: #1565c0; /* Dark blue for WCAG AA contrast (5.8:1 on light bg) */
+  color: var(--color-info-text);
 }
 
 /* ============================================
@@ -730,7 +889,7 @@ strong {
 
 /* Disabled State - Gray with reduced opacity */
 .btn--primary:disabled {
-  background-color: #757575; /* Darkened from #bdbdbd for WCAG AA compliance (4.5:1) */
+  background-color: var(--color-primary-disabled);
   cursor: not-allowed;
   opacity: 1; /* Removed opacity to maintain contrast */
 }
@@ -743,11 +902,11 @@ strong {
 }
 
 .btn--secondary:hover:not(:disabled) {
-  background-color: rgba(0, 96, 223, 0.07);
+  background-color: var(--color-primary-tint-weak);
 }
 
 .btn--secondary:active:not(:disabled) {
-  background-color: rgba(0, 96, 223, 0.14);
+  background-color: var(--color-primary-tint-medium);
   transform: translateY(1px);
 }
 
@@ -787,7 +946,9 @@ strong {
   gap: var(--space-xs);
   padding: var(--space-sm) var(--space-md);
   border-bottom: 1px solid var(--color-info-border);
-  background-color: rgba(0, 96, 223, 0.06);
+  /* No inner tint — the border-bottom already distinguishes the header, and
+     adding a tint on top of --color-info-bg drops the heading text contrast
+     from 5.8:1 to 4.49:1 (axe reports it as serious). */
 }
 
 .file-list__header-icon {
@@ -798,7 +959,7 @@ strong {
 .file-list__heading {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
-  color: #1565c0;
+  color: var(--color-info-text);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -814,7 +975,7 @@ strong {
   align-items: flex-start;
   gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
-  border-bottom: 1px solid rgba(0, 96, 223, 0.08);
+  border-bottom: 1px solid var(--color-primary-tint-weak);
 }
 
 .file-list__item:last-child {
@@ -836,18 +997,18 @@ strong {
 }
 
 .file-list__badge--metadata {
-  background-color: #dbeafe;
-  color: #1d4ed8;
+  background-color: var(--badge-metadata-bg);
+  color: var(--badge-metadata-text);
 }
 
 .file-list__badge--messages {
   background-color: var(--color-success-bg);
-  color: #2e7d32;
+  color: var(--color-success-text);
 }
 
 .file-list__badge--sources {
   background-color: var(--color-warning-bg);
-  color: #c44000;
+  color: var(--color-warning-text);
 }
 
 .file-list__badge--default {
@@ -881,7 +1042,10 @@ strong {
 
 .file-list__desc--optional {
   font-style: italic;
-  color: var(--color-text-tertiary);
+  /* Was var(--color-text-tertiary) at 11 px on --color-info-bg (#e0f0ff) —
+     measured 4.34:1 by axe, below the 4.5:1 AA floor. Use the secondary
+     tier instead; measures 7.0:1 against the same background. */
+  color: var(--color-text-secondary);
 }
 
 /* Responsive adjustments */
@@ -935,14 +1099,14 @@ strong {
 
 /* Hover state for better interactivity */
 .info-section__toggle:hover {
-  background-color: #ededf0; /* Slightly darker than secondary background */
+  background-color: var(--color-background-hover);
 }
 
 /* Focus state for keyboard navigation */
 .info-section__toggle:focus-visible {
   outline: none;
   box-shadow: inset var(--focus-ring);
-  background-color: #ededf0;
+  background-color: var(--color-background-hover);
 }
 
 /* Info icon on the left */
@@ -1057,6 +1221,44 @@ strong {
   font-size: var(--font-size-xs);
   color: var(--color-text-secondary);
   text-align: center;
+}
+
+/* ============================================
+   FORM FIELD COMPONENT (BEM)
+   Thin, token-driven form field used for text inputs that live inside
+   the privacy settings panel (e.g. the research study code input).
+   ============================================ */
+
+.form-field {
+  display: block;
+}
+
+.form-field__label {
+  display: block;
+  margin-bottom: var(--space-xs);
+}
+
+.form-field__input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+  background-color: var(--color-background);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.form-field__input:hover:not(:disabled) {
+  border-color: var(--color-text-secondary);
+}
+
+.form-field__input:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+  border-color: var(--color-focus);
 }
 
 /* ============================================
@@ -1227,17 +1429,78 @@ a:focus-visible {
   border-radius: var(--radius-md);
 }
 
+/* The class selector above shares specificity with the UA `[hidden]` rule
+   but wins by order, so `hidden` would otherwise be ignored. */
+.data-notice[hidden] {
+  display: none;
+}
+
 .data-notice__icon {
   flex-shrink: 0;
   margin-top: 2px;
-  color: #c44000;
+  color: var(--color-warning-text);
 }
 
 .data-notice__text {
   font-size: var(--font-size-xs);
-  color: #c44000;
+  color: var(--color-warning-text);
   line-height: var(--line-height-relaxed);
   margin: 0;
+}
+
+/* ============================================
+   GOOGLE TIP COMPONENT (BEM)
+   Only shown when the user is on google.com/search — explains Google's
+   asynchronous AI capture and the "close + reopen the popup" workflow.
+   ============================================ */
+
+.google-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  margin-bottom: clamp(var(--space-md), 3vw, var(--space-lg));
+  background-color: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: var(--radius-md);
+}
+
+/* The class selector above has equal specificity to the UA `[hidden]` rule
+   but comes later, so it would otherwise override `display: none` and make
+   the tip visible on every platform. */
+.google-tip[hidden] {
+  display: none;
+}
+
+.google-tip__icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--color-info);
+}
+
+.google-tip__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.google-tip__title {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-info);
+  line-height: var(--line-height-relaxed);
+  margin: 0 0 2px 0;
+}
+
+.google-tip__text {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-relaxed);
+  margin: 0;
+}
+
+.google-tip__text strong {
+  color: var(--color-info);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* ============================================

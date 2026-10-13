@@ -128,6 +128,12 @@ function withTimeout(promise, ms, label) {
 }
 
 async function captureOne(page, state, theme, outDir) {
+  // Emulate the real `prefers-color-scheme` so the @media (prefers-color-scheme: dark)
+  // branch in popup.css fires exactly as it would in production Firefox.
+  // The harness also mirrors the theme via `data-force-color-scheme` for
+  // interactive dev; either path produces the same palette.
+  await page.emulateMedia({ colorScheme: theme });
+
   // One atomic setState + one reload, with an awaitable ready-signal.
   await page.evaluate(
     ({ state, theme }) => window.__harness.setState(state, theme),
