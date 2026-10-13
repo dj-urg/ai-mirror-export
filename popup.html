@@ -243,7 +243,7 @@
         </div>
         <div class="info-section__block">
           <label class="form-field" for="studySaltInput">
-            <span class="form-field__label">Study code (optional). If your researcher gave you a code, enter it here. It helps them group your files together while keeping your identity hidden. Leave this blank if you don't have one.</span>
+            <span class="form-field__label">Study code (optional). If your researcher gave you a code, enter it here. It lets them group the files you share for their study. The extension never sends it anywhere. Leave this blank if you don't have one.</span>
             <input type="text" id="studySaltInput" class="form-field__input" autocomplete="off" spellcheck="false">
           </label>
         </div>
@@ -315,15 +315,15 @@
         </div>
         <div class="info-section__block">
           <h3 class="info-section__heading">What's in the file?</h3>
-          <p class="info-section__paragraph">Exports are saved to your Downloads folder as a ZIP named <code class="info-section__code">&lt;platform&gt;_&lt;conversation-id&gt;_&lt;timestamp&gt;.zip</code>. Inside is a <code class="info-section__code">_manifest.json</code> describing the files, plus one or more CSVs:</p>
+          <p class="info-section__paragraph">Exports are saved to your Downloads folder as a ZIP named <code class="info-section__code">&lt;platform&gt;_&lt;conversation-id&gt;_&lt;timestamp&gt;.zip</code>. Inside is a <code class="info-section__code">&lt;platform&gt;_manifest_&hellip;.json</code> describing the files, plus one or more CSVs (each name starts with the platform and ends with the same id and timestamp):</p>
           <dl class="info-section__defs">
-            <dt><code class="info-section__code">metadata.csv</code></dt>
+            <dt><code class="info-section__code">&lt;platform&gt;_metadata_&hellip;.csv</code></dt>
             <dd>Title, model, message count, platform, extraction timestamp.</dd>
-            <dt><code class="info-section__code">messages.csv</code></dt>
+            <dt><code class="info-section__code">&lt;platform&gt;_messages_&hellip;.csv</code></dt>
             <dd>One row per turn: role (user/assistant), text, timestamp, model if known.</dd>
-            <dt><code class="info-section__code">sources.csv</code></dt>
+            <dt><code class="info-section__code">&lt;platform&gt;_sources_&hellip;.csv</code></dt>
             <dd>Cited web results — only if the conversation used search.</dd>
-            <dt><code class="info-section__code">canonical.csv</code></dt>
+            <dt><code class="info-section__code">&lt;platform&gt;_messages_canonical_&hellip;.csv</code></dt>
             <dd>A shared schema across platforms so cross-platform analysis is possible.</dd>
           </dl>
         </div>
