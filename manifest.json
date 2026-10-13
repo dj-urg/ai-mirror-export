@@ -25,7 +25,8 @@
     "https://copilot.microsoft.com/*",
     "https://copilotstudio.microsoft.com/*",
     "https://www.perplexity.ai/*",
-    "https://grok.com/*"
+    "https://grok.com/*",
+    "https://chat.deepseek.com/*"
   ],
   "content_scripts": [
     {
@@ -134,6 +135,27 @@
       "js": [
         "shared/message-security.js",
         "platforms/grok/content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://chat.deepseek.com/*"
+      ],
+      "js": [
+        "shared/message-security.js",
+        "platforms/deepseek/inject.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://chat.deepseek.com/*"
+      ],
+      "js": [
+        "shared/message-security.js",
+        "platforms/deepseek/content.js"
       ],
       "run_at": "document_start"
     }

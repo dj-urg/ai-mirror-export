@@ -52,6 +52,13 @@ export const EXTENSION_CONFIG = {
       enabled: true,
       contentScript: 'platforms/grok/content.js',
       injectScript: 'platforms/grok/inject.js'
+    },
+    deepseek: {
+      name: 'DeepSeek',
+      domains: ['chat.deepseek.com'],
+      enabled: true,
+      contentScript: 'platforms/deepseek/content.js',
+      injectScript: 'platforms/deepseek/inject.js'
     }
   },
 
