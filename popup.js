@@ -1620,18 +1620,68 @@ async function checkAndUpdateUI() {
  * if we don't have one, we skip the warning.
  */
 const LARGE_CONVERSATION_THRESHOLD = 500;
+/**
+ * Prompt the user to confirm a large-conversation export. Replaces the
+ * previous window.confirm with an in-popup confirmation card that:
+ *   - matches the popup's visual language (warning card styling),
+ *   - can't be suppressed by Firefox's "disable future dialogs" button,
+ *   - keeps keyboard focus inside the popup (Esc cancels, Enter confirms
+ *     because focus starts on the "Export anyway" button),
+ *   - returns a Promise instead of a sync bool so callers compose cleanly.
+ * Resolves true if the user clicks "Export anyway" (or the conversation
+ * isn't large), false if they click "Cancel" or press Esc.
+ */
 function confirmLargeExport() {
   const captured = state.capture?.conversations || [];
   const selectedId = state.platform?.conversationId;
   const selected = captured.find(c => c.id === selectedId);
   const size = selected?.messageCount ?? selected?.message_count ?? null;
-  if (size === null || size < LARGE_CONVERSATION_THRESHOLD) return true;
-  const msg = `This conversation has ~${size} messages. Export anyway?\n\nLarge exports may take a few seconds and will include every turn.`;
-  return window.confirm(msg);
+  if (size === null || size < LARGE_CONVERSATION_THRESHOLD) return Promise.resolve(true);
+
+  const card = document.getElementById('largeExportConfirm');
+  const bodyText = document.getElementById('largeExportConfirmBodyText');
+  const proceedBtn = document.getElementById('largeExportConfirmProceed');
+  const cancelBtn = document.getElementById('largeExportConfirmCancel');
+  if (!card || !proceedBtn || !cancelBtn) return Promise.resolve(true);
+
+  if (bodyText) {
+    bodyText.textContent =
+      `This conversation has about ${size} messages. Exporting may take a few seconds and the ZIP will include every turn.`;
+  }
+
+  return new Promise((resolve) => {
+    const previouslyFocused = document.activeElement;
+    const cleanup = (result) => {
+      card.hidden = true;
+      proceedBtn.removeEventListener('click', onProceed);
+      cancelBtn.removeEventListener('click', onCancel);
+      card.removeEventListener('keydown', onKeydown);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') {
+        previouslyFocused.focus();
+      }
+      resolve(result);
+    };
+    const onProceed = () => cleanup(true);
+    const onCancel = () => cleanup(false);
+    const onKeydown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation(); // don't let handlePopupEscape close the whole popup
+        cleanup(false);
+      }
+    };
+    proceedBtn.addEventListener('click', onProceed);
+    cancelBtn.addEventListener('click', onCancel);
+    card.addEventListener('keydown', onKeydown);
+    card.hidden = false;
+    // Focus the destructive-ish primary so Enter confirms, matching the
+    // native-confirm default. Cancel is one Tab away.
+    proceedBtn.focus();
+  });
 }
 
 async function handleExportClick() {
-  if (!confirmLargeExport()) return;
+  if (!(await confirmLargeExport())) return;
   const now = Date.now();
 
   // Rate limiting check 1: Minimum interval between exports

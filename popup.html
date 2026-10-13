@@ -250,6 +250,21 @@
       </div>
     </details>
 
+    <!-- Large-export confirmation card. Hidden until a Big conversation is
+         about to be exported; replaces the native window.confirm so the
+         popup's visual language stays consistent and the browser's
+         "disable future dialogs on this page" option can't suppress it. -->
+    <div class="confirm-card" id="largeExportConfirm" role="alertdialog" aria-labelledby="largeExportConfirmTitle" aria-describedby="largeExportConfirmBody" hidden>
+      <h2 class="confirm-card__title" id="largeExportConfirmTitle">Export this large conversation?</h2>
+      <p class="confirm-card__body" id="largeExportConfirmBody">
+        <span id="largeExportConfirmBodyText">This conversation has many messages. Exporting may take a few seconds and the ZIP will include every turn.</span>
+      </p>
+      <div class="confirm-card__actions">
+        <button class="btn btn--secondary" id="largeExportConfirmCancel" type="button">Cancel</button>
+        <button class="btn btn--primary" id="largeExportConfirmProceed" type="button">Export anyway</button>
+      </div>
+    </div>
+
     <!-- Primary Action Button -->
     <button class="btn btn--primary btn--large" id="exportBtn" type="button"
       aria-label="Export conversation to ZIP file" disabled>
