@@ -72,8 +72,9 @@
       <h3 class="consent-panel__section-heading">How it works</h3>
       <ul class="consent-panel__list">
         <li>All processing is done locally in your browser</li>
-        <li>Data is saved as CSV files to your computer only</li>
+        <li>Data is saved as a ZIP of CSV files to your computer only</li>
         <li>Nothing is sent to any server automatically</li>
+        <li>A random identifier is stored in your browser so that any files you later choose to share can be grouped together. It is not sent anywhere automatically and is regenerated after one year.</li>
       </ul>
     </div>
 
@@ -149,6 +150,20 @@
       </div>
     </div>
 
+    <!-- Google-specific capture tip (shown only on google.com/search pages) -->
+    <div class="google-tip" id="googleTip" hidden role="note" aria-live="polite">
+      <svg class="google-tip__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none"
+        xmlns="http://www.w3.org/2000/svg">
+        <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+          fill="currentColor" />
+      </svg>
+      <div class="google-tip__content">
+        <p class="google-tip__title">How Google capture works</p>
+        <p class="google-tip__text">Google renders AI replies gradually. The extension keeps capturing in the background even when this popup is closed. <strong>If the status looks stuck, close this popup and reopen it in a few seconds — then wait a second or two for the capture to appear.</strong></p>
+      </div>
+    </div>
+
     <!-- File List Section -->
     <div id="fileList" class="file-list" style="display: none;" role="status" aria-live="polite">
       <div class="file-list__header">
@@ -180,9 +195,46 @@
       <span class="btn__text">Reload Page</span>
     </button>
 
+    <!-- Privacy & Research Settings -->
+    <details class="info-section" id="privacySettings" role="group" aria-label="Privacy and research settings">
+      <summary class="info-section__toggle" aria-label="Toggle privacy settings">
+        <svg class="info-section__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
+          xmlns="http://www.w3.org/2000/svg">
+          <path fill-rule="evenodd" clip-rule="evenodd"
+            d="M8 1a2.5 2.5 0 00-2.5 2.5V5H4a1 1 0 00-1 1v7a1 1 0 001 1h8a1 1 0 001-1V6a1 1 0 00-1-1h-1.5V3.5A2.5 2.5 0 008 1zm1.5 4V3.5a1.5 1.5 0 00-3 0V5h3z"
+            fill="currentColor" />
+        </svg>
+        <span class="info-section__title">Privacy settings</span>
+        <svg class="info-section__chevron" aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none"
+          xmlns="http://www.w3.org/2000/svg">
+          <path d="M2.5 4.5L6 8l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      </summary>
+      <div class="info-section__content">
+        <div class="info-section__block">
+          <label class="consent-panel__label">
+            <input type="checkbox" id="piiScrubCheckbox" class="consent-panel__checkbox">
+            <span class="consent-panel__label-text">Scrub emails, phone numbers, and credentials from exported text (recommended for sharing).</span>
+          </label>
+        </div>
+        <div class="info-section__block">
+          <label class="consent-panel__label">
+            <input type="checkbox" id="donorContextCheckbox" class="consent-panel__checkbox" checked>
+            <span class="consent-panel__label-text">Include custom instructions / user profile file (ChatGPT only). Uncheck to omit it from the export.</span>
+          </label>
+        </div>
+        <div class="info-section__block">
+          <label class="form-field" for="studySaltInput">
+            <span class="form-field__label">Study code (optional). Enter a code provided by the researcher to anonymize your donor ID for this study.</span>
+            <input type="text" id="studySaltInput" class="form-field__input" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+      </div>
+    </details>
+
     <!-- Primary Action Button -->
     <button class="btn btn--primary btn--large" id="exportBtn" type="button"
-      aria-label="Export conversation to CSV file" disabled>
+      aria-label="Export conversation to ZIP file" disabled>
       <svg class="btn__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
         xmlns="http://www.w3.org/2000/svg">
         <path
@@ -192,7 +244,7 @@
           d="M3.5 9.75a.75.75 0 00-1.5 0v1.5A2.75 2.75 0 004.75 14h6.5A2.75 2.75 0 0014 11.25v-1.5a.75.75 0 00-1.5 0v1.5c0 .69-.56 1.25-1.25 1.25h-6.5c-.69 0-1.25-.56-1.25-1.25v-1.5z"
           fill="currentColor" />
       </svg>
-      <span class="btn__text">Export to CSV</span>
+      <span class="btn__text">Export ZIP</span>
     </button>
 
     <!-- Collapsible Info Section -->
@@ -216,7 +268,7 @@
           <h3 class="info-section__heading">What this does</h3>
           <ul class="info-section__list">
             <li>Extracts conversations from the current page</li>
-            <li>Converts data to CSV format locally</li>
+            <li>Bundles the data into a ZIP of CSV files, locally</li>
             <li>Downloads file to your computer</li>
           </ul>
         </div>

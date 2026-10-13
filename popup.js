@@ -48,6 +48,68 @@ const PLATFORMS = {
       return match ? match[1] : null;
     }
   },
+  m365_copilot: {
+    name: 'M365 Copilot',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" fill="currentColor"/><circle cx="8.5" cy="11" r="1.5" fill="currentColor"/><circle cx="15.5" cy="11" r="1.5" fill="currentColor"/><path d="M12 17c2.21 0 4-1.79 4-4h-8c0 2.21 1.79 4 4 4z" fill="currentColor"/></svg>',
+    // The conversation id lives in the Chathub WebSocket query string, not in
+    // the page URL — inject.js reads it there. Treat the platform like Claude:
+    // whichever conversation has been captured most recently is what we export.
+    requiresConversationId: false,
+    extractConversationId: () => null
+  },
+
+  perplexity: {
+    name: 'Perplexity',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7v10l10 5 10-5V7L12 2zm0 2.18L19.82 8 12 11.82 4.18 8 12 4.18zM4 9.73l7 3.5v7.54l-7-3.5V9.73zm9 11.04v-7.54l7-3.5v7.54l-7 3.5z" fill="currentColor"/></svg>',
+    requiresConversationId: true,
+    extractConversationId: (url) => {
+      const match = url.match(/\/search\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      return match ? match[1] : null;
+    }
+  },
+
+  grok: {
+    name: 'Grok',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 4h3l5 8-5 8H4l5-8-5-8zm9 0h3l5 8-5 8h-3l5-8-5-8z" fill="currentColor"/></svg>',
+    requiresConversationId: true,
+    extractConversationId: (url) => {
+      const match = url.match(/\/c\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      return match ? match[1] : null;
+    }
+  },
+
+  deepseek: {
+    name: 'DeepSeek',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm5.5 11.5a1 1 0 01-1 1h-9a1 1 0 010-2h9a1 1 0 011 1zm0-4a1 1 0 01-1 1h-9a1 1 0 010-2h9a1 1 0 011 1z" fill="currentColor"/></svg>',
+    requiresConversationId: true,
+    extractConversationId: (url) => {
+      const match = url.match(/\/a\/chat\/s\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      return match ? match[1] : null;
+    }
+  },
+
+  google_search: {
+    name: 'Google AI Overview',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="currentColor"/><circle cx="12" cy="18" r="2" fill="currentColor"/></svg>',
+    requiresConversationId: false,
+    // The "conversation" is the current search query; we don't derive it from
+    // URL path like other platforms. The content script picks it off ?q=... .
+    // Key format is `${query}::${mode}` where mode is 'ai_mode' or
+    // 'ai_overview'. We deliberately exclude the full URL because Google
+    // rewrites it client-side after load (adds sei=, sclient=, etc.), which
+    // used to make the popup's ID drift away from the content script's
+    // stored key between captures.
+    extractConversationId: (url) => {
+      try {
+        const u = new URL(url);
+        if (u.pathname !== '/search') return null;
+        const q = u.searchParams.get('q');
+        if (!q || !q.trim()) return null;
+        const mode = u.searchParams.get('udm') === '50' ? 'ai_mode' : 'ai_overview';
+        return `${q.trim()}::${mode}`;
+      } catch { return null; }
+    }
+  },
 
 };
 
@@ -99,9 +161,26 @@ const state = {
   // Capture wait state — tracks how long we've been waiting for a conversation
   capture: {
     waitingSince: null,   // timestamp when we first found no data for this ID
-    waitingForId: null    // which conversationId we're waiting for
+    waitingForId: null,   // which conversationId we're waiting for
+    lastTurnCount: 0,     // highest turn count reported by content scripts
+    tickerId: null        // interval id for the loading-phase ticker
   }
 };
+
+// Fast ticker that keeps the loading status fresh (elapsed seconds, "Captured
+// N turns so far…" etc.) without blasting the content script with queries.
+// Runs only while a wait is in progress.
+function startCaptureTicker() {
+  if (state.capture.tickerId) return;
+  state.capture.tickerId = setInterval(() => {
+    debouncedCheckAndUpdateUI();
+  }, 1000);
+}
+function stopCaptureTicker() {
+  if (!state.capture.tickerId) return;
+  clearInterval(state.capture.tickerId);
+  state.capture.tickerId = null;
+}
 
 // How long to show "loading" before switching to the "not captured" warning.
 const CAPTURE_LOADING_TIMEOUT_MS = 15000;
@@ -195,14 +274,25 @@ function detectPlatform(url) {
  * @returns {Object} Object with hasConversationId and conversationId properties
  */
 function checkConversationId(platform, url) {
-  if (!platform || !platform.requiresConversationId) {
-    return { hasConversationId: true, conversationId: null };
+  if (!platform) {
+    return { hasConversationId: false, conversationId: null };
   }
 
-  const conversationId = platform.extractConversationId(url);
+  // Always attempt to extract an id when the platform defines one, even when
+  // requiresConversationId is false — some platforms (e.g. Google AI Overview)
+  // need the id to show the right popup state but don't block export without
+  // it being present in the URL at popup-open time.
+  const conversationId = typeof platform.extractConversationId === 'function'
+    ? platform.extractConversationId(url)
+    : null;
+
+  if (!platform.requiresConversationId) {
+    return { hasConversationId: true, conversationId };
+  }
+
   return {
     hasConversationId: conversationId !== null,
-    conversationId: conversationId
+    conversationId
   };
 }
 
@@ -507,7 +597,7 @@ function updateExportButton(enabled, text = null, showSpinner = false) {
   // Check if button state has actually changed (efficient DOM updates)
   const hasStateChanged = state.export.canExport !== enabled;
   const currentText = buttonText ? buttonText.textContent : '';
-  const targetText = text || 'Export to CSV';
+  const targetText = text || 'Export ZIP';
   const hasTextChanged = currentText !== targetText;
   const hasSpinnerChanged = buttonIcon.classList.contains('spinner') !== showSpinner;
 
@@ -515,10 +605,11 @@ function updateExportButton(enabled, text = null, showSpinner = false) {
   const previousCanExport = state.export.canExport;
   state.export.canExport = enabled;
 
-  // Stop polling when export button becomes enabled
-  if (enabled && !previousCanExport) {
-    stopPolling();
-  }
+  // Keep polling running at all times so the popup can detect in-place tab
+  // reloads (user hits Cmd+R while the popup is open). Previously we stopped
+  // polling once the export button became enabled, which left the popup
+  // stuck on "Ready" even after the underlying page had been reloaded.
+  // (Polling runs at 2s intervals; cost is negligible while the popup is up.)
 
   // Update DOM only if changed
   if (hasStateChanged) {
@@ -625,6 +716,72 @@ function updateFilePreview(title) {
         optional: true
       }
     ];
+  } else if (platformId === 'perplexity') {
+    files = [
+      {
+        badge: 'Metadata',
+        badgeClass: 'metadata',
+        name: 'Thread overview',
+        desc: 'Title, timestamps, turn count'
+      },
+      {
+        badge: 'Messages',
+        badgeClass: 'messages',
+        name: 'Full message log',
+        desc: 'User prompts and assistant answers per turn'
+      },
+      {
+        badge: 'Sources',
+        badgeClass: 'sources',
+        name: 'Cited web results',
+        desc: 'Sources cited by Perplexity \u2014 only if present',
+        optional: true
+      }
+    ];
+  } else if (platformId === 'grok') {
+    files = [
+      {
+        badge: 'Metadata',
+        badgeClass: 'metadata',
+        name: 'Conversation overview',
+        desc: 'Title, timestamps, turn count'
+      },
+      {
+        badge: 'Messages',
+        badgeClass: 'messages',
+        name: 'Full message log',
+        desc: 'User prompts, assistant answers, timestamps'
+      },
+      {
+        badge: 'Sources',
+        badgeClass: 'sources',
+        name: 'Cited web + X results',
+        desc: 'Sources cited by Grok \u2014 only if present',
+        optional: true
+      }
+    ];
+  } else if (platformId === 'deepseek') {
+    files = [
+      {
+        badge: 'Metadata',
+        badgeClass: 'metadata',
+        name: 'Conversation overview',
+        desc: 'Title, model, turn count'
+      },
+      {
+        badge: 'Messages',
+        badgeClass: 'messages',
+        name: 'Full message log',
+        desc: 'User prompts, assistant answers, reasoning (if any)'
+      },
+      {
+        badge: 'Sources',
+        badgeClass: 'sources',
+        name: 'Cited web results',
+        desc: 'Sources cited by DeepSeek Search \u2014 only if present',
+        optional: true
+      }
+    ];
   } else {
     const sanitizedTitle = (title || 'conversation')
       .replace(/[^a-z0-9\u00a0-\uffff_-]/gi, '_').trim();
@@ -693,6 +850,23 @@ function hideFilePreview() {
 }
 
 /**
+ * Show the Google-specific capture tip (close + reopen workflow).
+ * Idempotent — safe to call every UI tick.
+ */
+function showGoogleTip() {
+  const el = document.getElementById('googleTip');
+  if (el) el.hidden = false;
+}
+
+/**
+ * Hide the Google-specific capture tip.
+ */
+function hideGoogleTip() {
+  const el = document.getElementById('googleTip');
+  if (el) el.hidden = true;
+}
+
+/**
  * Show the reload-page prompt button
  */
 function showReloadPrompt() {
@@ -723,7 +897,10 @@ async function handleReloadClick() {
   updateStatus('loading', 'Reloading page...', 'Capturing conversation data — this takes a moment.');
 
   try {
-    await browser.tabs.reload(tab.id);
+    // bypassCache mirrors Cmd+Shift+R — a cached reload often doesn't
+    // re-render dynamic sections (e.g. Google AI Overview) and leaves the
+    // popup stuck on the loading state.
+    await browser.tabs.reload(tab.id, { bypassCache: true });
   } catch (e) {
     // Reload failed — restore the prompt
     showReloadPrompt();
@@ -754,15 +931,40 @@ function setupEventDrivenUpdates() {
 
     _console.log('[Popup] Conversation ready notification received', {
       platform: message.platform,
-      conversationId: message.conversationId ? message.conversationId.substring(0, 8) + '...' : 'unknown'
+      conversationId: message.conversationId ? message.conversationId.substring(0, 8) + '...' : 'unknown',
+      turnCount: message.turnCount
     });
+
+    // Track live progress so the loading status card can show "N turns
+    // captured so far…" while the user waits.
+    if (typeof message.turnCount === 'number' && message.turnCount > state.capture.lastTurnCount) {
+      state.capture.lastTurnCount = message.turnCount;
+    }
 
     // Update UI immediately when notified
     debouncedCheckAndUpdateUI();
-
-    // Stop polling once we receive data (export button will be enabled)
-    // Polling will be stopped by updateExportButton when button becomes enabled
   });
+
+  // Re-check the UI whenever the active tab finishes loading. This handles the
+  // "clicked reload / Cmd+R" case where tab.url is briefly about:blank or the
+  // destination URL is already set but the content script hasn't injected yet.
+  if (browser.tabs && browser.tabs.onUpdated && browser.tabs.onUpdated.addListener) {
+    browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
+      if (!state.currentTab || tabId !== state.currentTab.id) return;
+      // On any navigation start (new URL or status flip to loading) clear the
+      // capture-wait timer so the "stuck after 15 s timeout" case can't
+      // persist across a reload while the popup stays open. Also reset the
+      // live turn counter so the progress UI starts from 0.
+      if (changeInfo.status === 'loading' || changeInfo.url) {
+        state.capture.waitingSince = null;
+        state.capture.waitingForId = null;
+        state.capture.lastTurnCount = 0;
+      }
+      if (changeInfo.status === 'complete' || changeInfo.url) {
+        debouncedCheckAndUpdateUI();
+      }
+    });
+  }
 
   _console.log('[Popup] Event-driven updates enabled');
 }
@@ -864,7 +1066,8 @@ async function checkConversationData(tab, platform, conversationId) {
       const conversation = response.conversations.find(c => c.id === conversationId);
       return {
         hasData: !!conversation,
-        title: conversation ? conversation.title : null
+        title: conversation ? conversation.title : null,
+        noOverviewForThisPage: !!response.noOverviewForThisPage
       };
     }
 
@@ -872,12 +1075,13 @@ async function checkConversationData(tab, platform, conversationId) {
     if (response.conversationIds) {
       return {
         hasData: response.conversationIds.includes(conversationId),
-        title: null
+        title: null,
+        noOverviewForThisPage: !!response.noOverviewForThisPage
       };
     }
   }
 
-  return { hasData: false, title: null };
+  return { hasData: false, title: null, noOverviewForThisPage: false };
 }
 
 /**
@@ -885,6 +1089,7 @@ async function checkConversationData(tab, platform, conversationId) {
  */
 async function checkAndUpdateUI() {
   hideReloadPrompt(); // Reset on every check; shown explicitly when needed
+  hideGoogleTip();    // Only re-shown below when the active tab is Google
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
@@ -900,8 +1105,37 @@ async function checkAndUpdateUI() {
     // Store current tab in state
     state.currentTab = tab;
 
+    // Tab is mid-navigation (reload in progress, DNS lookup, etc.). Show a
+    // "waiting" state and let the next debounced check re-evaluate once the
+    // navigation settles. We treat any of these as navigating:
+    //   - tab.status === 'loading'
+    //   - URL is blank / about: / file: — nothing we support
+    // The tabs.onUpdated listener will re-fire checkAndUpdateUI when the tab
+    // reaches 'complete'.
+    const urlLooksTemporary = !url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('data:');
+    if (tab.status === 'loading' || urlLooksTemporary) {
+      hideReloadPrompt();
+      updateStatus('loading', 'Waiting for page to load…', 'The page is still loading.');
+      updateExportButton(false);
+      hideFilePreview();
+      return;
+    }
+
     // Detect platform
     const platform = detectPlatform(url);
+
+    // For google_search, show AI Mode vs AI Overview distinctly in the badge
+    // and surface the "close + reopen the popup" workflow tip. Google's AI
+    // output renders asynchronously and the content script keeps capturing
+    // in the background — making this behaviour visible saves users from
+    // thinking the extension is stuck when it is actually mid-capture.
+    if (platform && platform.id === 'google_search') {
+      try {
+        const isAIMode = new URL(url).searchParams.get('udm') === '50';
+        if (isAIMode) platform.name = 'Google AI Mode';
+      } catch { /* ignore */ }
+      showGoogleTip();
+    }
 
     // Update platform badge
     updatePlatformBadge(platform);
@@ -943,7 +1177,7 @@ async function checkAndUpdateUI() {
           updateStatus(
             'success',
             `Ready to export ${platform.name} conversation.`,
-            'Click the button below to download as CSV.'
+            'Click the button below to download the ZIP.'
           );
           updateExportButton(true);
           updateFilePreview(title || 'conversation');
@@ -1005,12 +1239,167 @@ async function checkAndUpdateUI() {
         updateFilePreview('conversation');
       }
 
+    } else if (platform.id === 'perplexity') {
+      updateStatus(
+        'success',
+        'Ready to export Perplexity thread.',
+        'Data is captured locally as the thread loads. Click below to export.'
+      );
+      updateExportButton(true);
+      try {
+        const { title } = await checkConversationData(tab, platform, state.platform.conversationId);
+        updateFilePreview(title || 'thread');
+      } catch (e) {
+        updateFilePreview('thread');
+      }
+
+    } else if (platform.id === 'm365_copilot') {
+      // M365 Copilot captures over SignalR WebSocket. The conversationId isn't
+      // in the page URL — content.js tracks it per-socket and reports the
+      // latest capture. Export is gated on `isComplete` so a mid-stream export
+      // can't ship a half-written reply.
+      try {
+        const response = await browser.tabs.sendMessage(tab.id, { type: 'GET_CAPTURED_CONVERSATIONS' });
+        const conversations = (response && Array.isArray(response.conversations))
+          ? response.conversations
+          : [];
+        if (conversations.length === 0) {
+          updateStatus(
+            'info',
+            'Waiting for M365 Copilot conversation.',
+            'Open or start a chat and send a message — the extension captures as the response streams.'
+          );
+          updateExportButton(false);
+          hideFilePreview();
+        } else {
+          // Pick the latest (array is in insertion order; last entry is newest).
+          const latest = conversations[conversations.length - 1];
+          if (latest.isComplete) {
+            updateStatus(
+              'success',
+              'Ready to export M365 Copilot conversation.',
+              'Click below to export the completed turn.'
+            );
+            updateExportButton(true);
+            updateFilePreview(latest.title || 'conversation');
+          } else {
+            updateStatus(
+              'loading',
+              'Copilot is still replying…',
+              'Export unlocks when the response finishes streaming.'
+            );
+            updateExportButton(false);
+            hideFilePreview();
+          }
+        }
+      } catch (error) {
+        popupLogError('m365_copilot GET_CAPTURED_CONVERSATIONS', error, { platformId: platform.id });
+        displayError('CONTENT_SCRIPT_NOT_LOADED', {
+          platformId: platform.id,
+          originalError: error
+        });
+        hideFilePreview();
+      }
+
+    } else if (platform.id === 'google_search') {
+      // Google AI Overview / AI Mode: content script captures via DOM reads
+      // and a MutationObserver — reloading the page actively hurts (clears
+      // state, forces a race against client-side rendering). Keep the Reload
+      // button hidden here regardless of state.
+      hideReloadPrompt();
+      try {
+        const query = state.platform.conversationId
+          ? state.platform.conversationId.split('::')[0]
+          : null;
+
+        if (!query) {
+          updateStatus(
+            'info',
+            'Run a search first.',
+            'Open google.com/search and enter a query that returns an AI Overview.'
+          );
+          updateExportButton(false);
+          hideFilePreview();
+          return;
+        }
+
+        const { hasData, title, noOverviewForThisPage } = await checkConversationData(
+          tab, platform, state.platform.conversationId
+        );
+
+        if (hasData) {
+          stopCaptureTicker();
+          const isAIMode = (() => {
+            try { return new URL(tab.url).searchParams.get('udm') === '50'; } catch { return false; }
+          })();
+          updateStatus(
+            'success',
+            isAIMode ? 'Ready to export AI Mode conversation.' : 'Ready to export AI Overview.',
+            isAIMode
+              ? 'Each turn exports as a separate row. Click refresh to re-capture.'
+              : `Query: "${query}"`
+          );
+          updateExportButton(true);
+          updateFilePreview(title || (isAIMode
+            ? `ai_mode_${query.slice(0, 32)}`
+            : `ai_overview_${query.slice(0, 32)}`));
+        } else if (noOverviewForThisPage) {
+          const isAIMode = (() => {
+            try { return new URL(tab.url).searchParams.get('udm') === '50'; } catch { return false; }
+          })();
+          updateStatus(
+            'info',
+            isAIMode ? 'No AI Mode turns detected yet.' : 'No AI Overview on this page.',
+            isAIMode
+              ? 'Ask a question in AI Mode, wait for the reply, then close and reopen this popup. After reopening, wait a second or two for the capture to show up.'
+              : 'Try AI Mode (tab at top of results) or a query that triggers one.'
+          );
+          updateExportButton(false);
+          hideFilePreview();
+        } else {
+          // No "loading" spinner here. The popup does not reliably flip from
+          // loading → ready while it stays open — the content script captures
+          // Google's AI output in the background and the popup only reads the
+          // state at the moment it opens. Showing a progress UI would promise
+          // something we don't deliver. Instead, give the user the single
+          // instruction that actually works: close and reopen.
+          stopCaptureTicker();
+          const isAIMode = (() => {
+            try { return new URL(tab.url).searchParams.get('udm') === '50'; } catch { return false; }
+          })();
+          updateStatus(
+            'info',
+            'Close and reopen this popup to see the capture.',
+            (isAIMode
+              ? 'Give the Google tab a few seconds to finish rendering the AI reply, then close this popup and open it again. '
+              : 'Give the Google tab a few seconds to render the AI Overview, then close this popup and open it again. ')
+              + 'After reopening, wait a second or two for the capture to show up — the popup reads the latest state at open time, not instantly.'
+          );
+          updateExportButton(false);
+          hideFilePreview();
+        }
+      } catch (error) {
+        // Content script hasn't responded (e.g., page is reloading and the
+        // script is still re-injecting). Same honest instruction: the popup
+        // won't recover on its own while it stays open.
+        popupLogError('checkConversationData', error, { platformId: platform.id });
+        hideReloadPrompt();
+        stopCaptureTicker();
+        updateStatus(
+          'info',
+          'Close and reopen this popup to see the capture.',
+          'The Google tab is still loading. Give it a few seconds, then close this popup and open it again. After reopening, wait a second or two for the capture to show up.'
+        );
+        updateExportButton(false);
+        hideFilePreview();
+      }
+
     } else {
       // Fallback for any other platforms
       updateStatus(
         'success',
         `Ready to export ${platform.name} conversation.`,
-        'Click the button below to download as CSV.'
+        'Click the button below to download the ZIP.'
       );
       updateExportButton(true);
       updateFilePreview('conversation');
@@ -1032,7 +1421,25 @@ async function checkAndUpdateUI() {
 /**
  * Handle export button click with rate limiting
  */
+/**
+ * Warn the donor before exporting a very large conversation. Returns true
+ * when the user wants to proceed, false to cancel. We rely on the content
+ * script's conversation list already in state for an approximate size signal;
+ * if we don't have one, we skip the warning.
+ */
+const LARGE_CONVERSATION_THRESHOLD = 500;
+function confirmLargeExport() {
+  const captured = state.capture?.conversations || [];
+  const selectedId = state.platform?.conversationId;
+  const selected = captured.find(c => c.id === selectedId);
+  const size = selected?.messageCount ?? selected?.message_count ?? null;
+  if (size === null || size < LARGE_CONVERSATION_THRESHOLD) return true;
+  const msg = `This conversation has ~${size} messages. Export anyway?\n\nLarge exports may take a few seconds and will include every turn.`;
+  return window.confirm(msg);
+}
+
 async function handleExportClick() {
+  if (!confirmLargeExport()) return;
   const now = Date.now();
 
   // Rate limiting check 1: Minimum interval between exports
@@ -1108,14 +1515,17 @@ async function handleExportClick() {
       platform: platform.id
     };
 
-    // Add conversation ID if required
-    if (platform.requiresConversationId) {
-      const conversationId = state.platform.conversationId;
-
-      if (!conversationId) {
-        throw new Error('NO_CONVERSATION_ID');
-      }
-
+    // Attach the conversation ID when we have one. We previously only did
+    // this for platforms where `requiresConversationId` is true, which left
+    // Google Search exports with `conversationId: undefined` — the content
+    // script then couldn't look up the already-captured data and fell back
+    // to re-scanning the live DOM, which fails whenever the AI Mode page
+    // has drifted since capture.
+    const conversationId = state.platform.conversationId;
+    if (platform.requiresConversationId && !conversationId) {
+      throw new Error('NO_CONVERSATION_ID');
+    }
+    if (conversationId) {
       exportMessage.conversationId = conversationId;
     }
 
@@ -1160,7 +1570,7 @@ async function handleExportClick() {
       );
 
       // Reset button to normal state (no spinner)
-      updateExportButton(false, 'Export to CSV', false);
+      updateExportButton(false, 'Export ZIP', false);
 
       // Auto-close after 3 seconds
       setTimeout(() => {
@@ -1192,7 +1602,7 @@ async function handleExportClick() {
     state.export.isExporting = false;
 
     // Reset button to normal state (remove spinner)
-    updateExportButton(true, 'Export to CSV', false);
+    updateExportButton(true, 'Export ZIP', false);
 
     // Handle specific error types
     if (errorMessage === 'NO_ACTIVE_TAB') {
@@ -1432,6 +1842,44 @@ function showConsentPanel() {
 }
 
 /**
+ * Load privacy settings from storage and apply them to the UI controls.
+ */
+async function hydratePrivacySettings() {
+  try {
+    const s = await browser.storage.local.get([
+      'pii_scrub_enabled',
+      'include_donor_context',
+      'study_salt'
+    ]);
+    const scrub = document.getElementById('piiScrubCheckbox');
+    const donorCtx = document.getElementById('donorContextCheckbox');
+    const salt = document.getElementById('studySaltInput');
+    if (scrub) scrub.checked = Boolean(s.pii_scrub_enabled);
+    if (donorCtx) donorCtx.checked = s.include_donor_context !== false;
+    if (salt && typeof s.study_salt === 'string') salt.value = s.study_salt;
+  } catch { /* storage unavailable — leave defaults */ }
+}
+
+/**
+ * Wire change handlers so toggles persist immediately.
+ */
+function wirePrivacySettings() {
+  const scrub = document.getElementById('piiScrubCheckbox');
+  const donorCtx = document.getElementById('donorContextCheckbox');
+  const salt = document.getElementById('studySaltInput');
+  if (scrub) scrub.addEventListener('change', () => {
+    browser.storage.local.set({ pii_scrub_enabled: scrub.checked }).catch(() => {});
+  });
+  if (donorCtx) donorCtx.addEventListener('change', () => {
+    browser.storage.local.set({ include_donor_context: donorCtx.checked }).catch(() => {});
+  });
+  if (salt) salt.addEventListener('change', () => {
+    const v = salt.value.trim().slice(0, 256);
+    browser.storage.local.set({ study_salt: v }).catch(() => {});
+  });
+}
+
+/**
  * Initialize popup UI (runs only after consent is confirmed).
  */
 function initMainUI() {
@@ -1447,6 +1895,9 @@ function initMainUI() {
   verifyNoKeyboardTraps();
   setupEventDrivenUpdates();
   checkAndUpdateUI();
+
+  hydratePrivacySettings();
+  wirePrivacySettings();
 
   startPolling(2000);
   verifyRuntimeIntegrity();
