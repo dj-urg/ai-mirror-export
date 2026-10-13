@@ -303,7 +303,42 @@ ready to paste into AMO reviewer notes:
 
 ---
 
-## 9. Risks and non-goals
+## 9. Release implications (noted for later; no action taken here)
+
+The uncommitted WIP on `main` substantially expands the extension beyond
+what's shipping as 2.1.1 on AMO. If any of this merges into the next
+release, there are three downstream decisions to make. **This section
+records them; it does not act on them.**
+
+- **New permissions trigger a user re-approval prompt.** The WIP adds
+  `tabs` to `permissions` and ten Google locale hosts (`.com, .be, .nl,
+  .fr, .de, .co.uk, .es, .it, .ca, .com.au`) to `host_permissions`. Firefox
+  will **disable the extension on update** until each existing user
+  explicitly re-approves the elevated scope. Expect a measurable drop-off
+  on the dialog. Mitigation: time the release deliberately, call it out in
+  the release notes, and consider shipping two releases — a UX-only pass
+  (no new permissions, no re-prompt) followed by a feature release that
+  earns the re-prompt in exchange for new platforms.
+- **AMO reviewer notes need updating.** The new release surface includes
+  four platforms not in the 2.1.1 listing (Perplexity, Grok, Microsoft 365
+  Copilot, Google Search AI Overview). The M365 Copilot handler uses a
+  **WebSocket interception** path rather than `window.fetch`-only hooks;
+  AMO reviewers will question that. Prepare a short justification: what
+  it does, why it's needed, and that nothing leaves the browser. The
+  draft reviewer note for the Google locale hosts (§8 above) is a
+  starting template.
+- **Version should be 3.0.0, not 2.2.0.** The planned UX-only release
+  was framed as a minor bump. The WIP goes well beyond that: new
+  platforms, new permissions, new privacy pipeline (PII scrubbing,
+  per-row validation, HMAC donor-ID anonymization), new export format
+  (ZIP with manifest sidecar), new `tabs` permission. Semver says
+  major bump. Whether you ship the WIP in one release (3.0.0) or split
+  it into two (2.2.0 UX-only, 3.0.0 platforms + pipeline) is a
+  release-strategy call for you to make, not a technical one — this
+  note just flags that the current `manifest.json: 2.1.1 → 2.2.0`
+  plan under-reflects the scope.
+
+## 10. Risks and non-goals
 
 - **Not touching parsing / fetch hooks.** If any step appears to need
   changes under `platforms/*/inject.js` or `platforms/*/extractor.js`,
