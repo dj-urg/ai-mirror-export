@@ -126,7 +126,7 @@ export const STRUCTURAL_COLUMNS = Object.freeze(new Set([
   'product_type', 'reaction', 'input_method', 'content_origin', 'offense', 'conversation_mode', 'chunk_types',
   'tool_name', 'tool_names', 'tools_used', 'provider', 'provider_name', 'site_name', 'domain', 'attribution',
   'features', 'integrations', 'libraries', 'reasoning_effort', 'memory_scope', 'message_stop_reason',
-  'incomplete_message', 'moderation_category', 'moderation_blocked_category', 'feedback_labels',
+  'incomplete_message', 'moderation_category', 'moderation_blocked_category', 'feedback_labels', 'thinking_mode', 'on_visible_path',
   'system_prompt_name', 'media_types', 'end_turn', 'manual', 'partial', 'pinned', 'shared', 'temporary',
   'ban_regenerate', 'search_enabled', 'search_triggered', 'thinking_enabled', 'message_truncated',
   'enabled_web_search', 'enabled_monkeys_in_a_barrel', 'preview_feature_uses_artifacts'
@@ -140,7 +140,7 @@ export const URL_COLUMNS = Object.freeze(new Set([
 ]));
 
 export const TEXT_COLUMNS = Object.freeze(new Set([
-  'text', 'text_cleaned', 'thinking_text', 'thinking_text_cleaned', 'reasoning_text', 'reasoning_text_cleaned',
+  'text', 'text_cleaned', 'thinking_text', 'thinking_text_cleaned', 'thinking_summary', 'reasoning_text', 'reasoning_text_cleaned',
   'code_text', 'title', 'generated_title', 'user_title', 'conversation_name', 'conversation_title', 'summary',
   'snippet', 'query', 'search_query', 'ai_overview_text', 'ai_overview_text_cleaned', 'follow_up_questions',
   'source_titles', 'spoken_text', 'user_instructions', 'user_profile', 'file_name', 'extracted_text'

@@ -16,10 +16,13 @@ export const SCHEMA_VERSIONS = Object.freeze({
   chatgpt_donor_context: '1.0.0',
   chatgpt_messages_canonical: '1.0.0',
   claude_metadata: '1.0.0',
-  claude_messages: '1.0.0',
+  // 1.1.0: thinking_summary, thinking_mode and on_visible_path columns.
+  claude_messages: '1.1.0',
   claude_sources: '1.0.0',
   claude_attachments: '1.0.0',
-  claude_messages_canonical: '1.0.0',
+  // 1.1.0: text = text blocks only; thinking / summaries / tool results and
+  // on_visible_path / thinking_mode moved into platform_specific_json.
+  claude_messages_canonical: '1.1.0',
   copilot_conversation: '1.0.0',
   copilot_messages_canonical: '1.0.0',
   m365_copilot_conversation: '1.0.0',

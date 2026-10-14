@@ -117,6 +117,48 @@ function extractBlockText(block) {
 }
 
 /**
+ * Claude's web API sends extended thinking as `thinking: ""` with
+ * `thinking_hidden: true` and a `summaries[]` list; the full reasoning text
+ * is not exposed, only these summaries (verified on real captures,
+ * 2026-10-14). Join them so they land in their own column.
+ */
+function thinkingSummary(block) {
+  if (!block || block.type !== 'thinking') return '';
+  const parts = Array.isArray(block.summaries)
+    ? block.summaries.map(s => (s && typeof s.summary === 'string') ? s.summary : '').filter(Boolean)
+    : [];
+  if (parts.length === 0 && typeof block.summary === 'string') parts.push(block.summary);
+  return parts.join('\n\n');
+}
+
+/**
+ * The set of message uuids on the conversation's visible path: the chain
+ * from `current_leaf_message_uuid` up through `parent_message_uuid`. Claude
+ * exports every branch (edited prompts and regenerated answers); this lets
+ * researchers filter to what the user last saw. Returns null when the
+ * payload carries no leaf, in which case every message counts as visible.
+ */
+function visiblePathSet(conversationData) {
+  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const leaf = conversationData.current_leaf_message_uuid;
+  const byId = new Map();
+  for (const m of messages) if (m && typeof m.uuid === 'string') byId.set(m.uuid, m);
+  if (typeof leaf !== 'string' || !byId.has(leaf)) return null;
+  const path = new Set();
+  let cur = byId.get(leaf);
+  let guard = 0;
+  while (cur && !path.has(cur.uuid) && guard++ < 100000) {
+    path.add(cur.uuid);
+    cur = typeof cur.parent_message_uuid === 'string' ? byId.get(cur.parent_message_uuid) : null;
+  }
+  return path;
+}
+
+function isOnVisiblePath(pathSet, uuid) {
+  return pathSet === null ? true : pathSet.has(uuid);
+}
+
+/**
  * Collect per-content-block rows from one Claude message.
  */
 function flattenMessageBlocks(msg) {
@@ -128,6 +170,7 @@ function flattenMessageBlocks(msg) {
       block_index: 0,
       content_type: '',
       text: typeof msg.text === 'string' ? msg.text : '',
+      thinking_summary: '',
       tool_name: '',
       tool_input_json: '',
       tool_use_id: '',
@@ -143,6 +186,7 @@ function flattenMessageBlocks(msg) {
       block_index: idx,
       content_type: contentType,
       text: extractBlockText(block),
+      thinking_summary: thinkingSummary(block),
       tool_name: contentType === 'tool_use' ? (block.name || '') : '',
       tool_input_json: contentType === 'tool_use' ? toJsonCell(block.input) : '',
       tool_use_id: (contentType === 'tool_use' || contentType === 'tool_result')
@@ -254,6 +298,7 @@ function extractConversationMessages(conversationData) {
   const rows = [];
   const conversationId = conversationData.uuid || '';
   const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const visible = visiblePathSet(conversationData);
 
   for (const msg of messages) {
     const blockRows = flattenMessageBlocks(msg);
@@ -268,6 +313,7 @@ function extractConversationMessages(conversationData) {
         content_type: b.content_type,
         text: b.text,
         text_cleaned: cleanText(b.text),
+        thinking_summary: b.thinking_summary,
         tool_name: b.tool_name,
         tool_input_json: b.tool_input_json,
         tool_use_id: b.tool_use_id,
@@ -277,6 +323,8 @@ function extractConversationMessages(conversationData) {
         message_updated_at: toIsoUtc(msg.updated_at) || msg.updated_at || '',
         message_truncated: Boolean(msg.truncated),
         message_stop_reason: msg.stop_reason || '',
+        thinking_mode: typeof msg.thinking_mode === 'string' ? msg.thinking_mode : '',
+        on_visible_path: isOnVisiblePath(visible, msg.uuid),
         raw_block_json: b.raw_block_json
       });
     }
@@ -300,6 +348,7 @@ function generateMessagesCSV(messages) {
     'content_type',
     'text',
     'text_cleaned',
+    'thinking_summary',
     'tool_name',
     'tool_input_json',
     'tool_use_id',
@@ -309,6 +358,8 @@ function generateMessagesCSV(messages) {
     'message_updated_at',
     'message_truncated',
     'message_stop_reason',
+    'thinking_mode',
+    'on_visible_path',
     'raw_block_json'
   ];
   const rows = [headers.join(',')];
@@ -469,20 +520,29 @@ function generateAttachmentsCSV(attachments) {
 // ============================================================================
 
 /**
- * One row per message (not per block). Text is the concatenation of all
- * block texts in document order; non-text block signals surface in
- * platform_specific_json.
+ * One row per message (not per block). `text` is the concatenation of the
+ * message's `text` blocks only, in document order; thinking (and its
+ * summaries) and tool results are kept apart in platform_specific_json so
+ * the answer text is never silently mixed with reasoning (1.1.0; before,
+ * every block's text was joined).
  */
 function generateMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime, scrubCell = null }) {
   const headers = canonicalHeaders();
   const schemaVersion = SCHEMA_VERSIONS.claude_messages_canonical;
   const conversationId = conversationData.uuid || '';
   const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const visible = visiblePathSet(conversationData);
 
   const rows = [headers.join(',')];
   for (const msg of messages) {
     const blocks = Array.isArray(msg.content) ? msg.content : [];
-    const text = blocks.map(extractBlockText).filter(Boolean).join('\n\n');
+    const joinText = (pred) => blocks.filter(pred).map(extractBlockText).filter(Boolean).join('\n\n');
+    const text = blocks.length === 0 && typeof msg.text === 'string'
+      ? msg.text
+      : joinText(b => b && b.type === 'text');
+    const thinkingText = joinText(b => b && b.type === 'thinking');
+    const thinkingSummaries = blocks.map(thinkingSummary).filter(Boolean).join('\n\n');
+    const toolResultText = joinText(b => b && b.type === 'tool_result');
     const contentTypes = blocks.map(b => (b && b.type) || '').filter(Boolean);
     const row = {
       donor_id: donorId,
@@ -503,6 +563,11 @@ function generateMessagesCanonicalCSV(conversationData, { donorId, donorIdType, 
         download_time: downloadTime,
         sender: msg.sender || '',
         content_types: contentTypes,
+        on_visible_path: isOnVisiblePath(visible, msg.uuid),
+        thinking_mode: typeof msg.thinking_mode === 'string' ? msg.thinking_mode : '',
+        thinking_text: thinkingText,
+        thinking_summary: thinkingSummaries,
+        tool_result_text: toolResultText,
         has_thinking: contentTypes.includes('thinking'),
         has_tool_use: contentTypes.includes('tool_use'),
         has_tool_result: contentTypes.includes('tool_result'),

@@ -19,18 +19,18 @@
     {
       "filename": "claude_messages_11111111-2222-3333-4444-555555555555_2026-04-13T12-00-00Z.csv",
       "schema": "claude_messages",
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "rows": 2,
-      "bytes": 1292,
-      "sha256": "b709ca2d63cd997d089775127d771ffeb3dc412b0e510ff616cfdc566f5b6571"
+      "bytes": 1353,
+      "sha256": "f0cbff9481c7ae4c3c0815a1c602b339d16b9c1c08c3f33bde7fd7b33536811c"
     },
     {
       "filename": "claude_messages_canonical_11111111-2222-3333-4444-555555555555_2026-04-13T12-00-00Z.csv",
       "schema": "claude_messages_canonical",
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "rows": 2,
-      "bytes": 1418,
-      "sha256": "dc04050637fb5e910cea6322d7d8ee49c2c5be80a78b89419a2a4ebb4720807c"
+      "bytes": 1664,
+      "sha256": "7affdcc44ece4902ee393eb3bd18d0373bd1f8052008d48f987b7fe5b876d176"
     }
   ],
   "telemetry": {
