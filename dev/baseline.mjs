@@ -58,6 +58,7 @@ const STATES = [
   'auth_failed_claude',
   'auth_failed_deepseek',
   'export_result_success',
+  'export_result_success_study_code',
   'export_result_download_failed',
   'export_result_processing_failed',
   'export_result_empty_export',
@@ -200,11 +201,14 @@ async function captureOne(page, state, theme, outDir) {
       w.scrollTo(0, 0);
       const card = d.querySelector('.status-card');
       const text = (id) => (d.getElementById(id)?.textContent || '').trim();
+      const review = d.getElementById('reviewCard');
       const status = {
         type: card ? [...card.classList].find((c) => c.startsWith('status-card--'))?.replace('status-card--', '') : null,
         message: text('statusMessage'),
         detail: text('statusDetail'),
-        exportDisabled: d.getElementById('exportBtn')?.disabled ?? null
+        exportDisabled: d.getElementById('exportBtn')?.disabled ?? null,
+        reviewCard: review && !review.hidden ? text('reviewCardBody') : null,
+        focused: d.activeElement && d.activeElement.id ? d.activeElement.id : (d.activeElement ? d.activeElement.tagName : null)
       };
       const axe = await w.axe.run(d, {
         runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'] }

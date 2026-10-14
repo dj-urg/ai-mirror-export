@@ -174,6 +174,25 @@
       </div>
     </div>
 
+    <!-- Review-your-export step. Shown once background.js confirms the
+         download; invites the participant to look at the ZIP before
+         sharing it and reveals it in the Downloads list. -->
+    <section class="review-card" id="reviewCard" role="region" aria-labelledby="reviewCardTitle" hidden>
+      <svg class="review-card__icon" aria-hidden="true" width="18" height="18" viewBox="0 0 20 20" fill="none"
+        xmlns="http://www.w3.org/2000/svg">
+        <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M3 4a1 1 0 011-1h4l2 2h6a1 1 0 011 1v9a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm2 3v7h10V7H5z"
+          fill="currentColor" />
+      </svg>
+      <div class="review-card__content">
+        <h2 class="review-card__title" id="reviewCardTitle">Review your export</h2>
+        <p class="review-card__body" id="reviewCardBody">Open the ZIP and check what's in it before sharing it.</p>
+        <div class="review-card__actions">
+          <button class="btn btn--secondary review-card__button" id="reviewShowBtn" type="button">Show in Downloads</button>
+        </div>
+      </div>
+    </section>
+
     <!-- Google-specific capture tip (shown only on google.com/search pages) -->
     <div class="google-tip" id="googleTip" hidden role="note" aria-live="polite">
       <svg class="google-tip__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none"

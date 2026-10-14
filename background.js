@@ -1258,9 +1258,15 @@ async function handleConversationData(message) {
     const zipFilename = `${platform}_${slug}.zip`;
 
     browser.downloads.download({ url, filename: zipFilename, saveAs: false })
-      .then(() => {
+      .then((downloadId) => {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-        broadcastExportResult({ platform, outcome: 'success', filename: zipFilename });
+        // downloadId lets the popup's review step call downloads.show().
+        broadcastExportResult({
+          platform,
+          outcome: 'success',
+          filename: zipFilename,
+          downloadId: typeof downloadId === 'number' ? downloadId : null
+        });
       })
       .catch(error => {
         _console.error(`[${platform}] Download failed:`, error);

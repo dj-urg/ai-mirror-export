@@ -1005,8 +1005,9 @@ function handleExportResultMessage(detail) {
   if (!detail || typeof detail.outcome !== 'string') return;
   switch (detail.outcome) {
     case 'success':
-      // Background confirmed the download. The sync-path "Export complete!"
-      // card may already be showing; re-affirm with the real filename.
+      // Background confirmed the download. The sync-path "Export complete."
+      // card may already be showing; re-affirm with the real filename and
+      // open the review step.
       updateStatus(
         'success',
         'Export complete.',
@@ -1015,6 +1016,7 @@ function handleExportResultMessage(detail) {
           : 'Check your Downloads folder.'
       );
       updateExportButton(true);
+      showReviewCard(detail);
       break;
     case 'download_failed':
       updateStatus(
@@ -1063,6 +1065,58 @@ function handleExportResultMessage(detail) {
       // Unknown outcome — no-op; forward compat.
       break;
   }
+}
+
+// ============================================================================
+// REVIEW-YOUR-EXPORT STEP
+// ============================================================================
+
+const reviewState = { downloadId: null };
+
+/**
+ * Show the post-export review card. The copy mentions the researcher only
+ * when a study code is set, because only then is the participant exporting
+ * for someone else. The "Show in Downloads" button reveals the ZIP via
+ * browser.downloads.show(downloadId) when background supplied an id.
+ *
+ * @param {{filename?: string, downloadId?: number|null}} detail
+ */
+function showReviewCard(detail) {
+  const card = document.getElementById('reviewCard');
+  const body = document.getElementById('reviewCardBody');
+  const showBtn = document.getElementById('reviewShowBtn');
+  if (!card || !body || !showBtn) return;
+
+  reviewState.downloadId = (detail && typeof detail.downloadId === 'number') ? detail.downloadId : null;
+
+  const saltInput = document.getElementById('studySaltInput');
+  const hasStudyCode = Boolean(saltInput && saltInput.value.trim());
+  body.textContent = hasStudyCode
+    ? "Open the ZIP and check what's in it before sharing it with the researcher."
+    : "Open the ZIP and check what's in it before sharing it.";
+
+  showBtn.hidden = reviewState.downloadId === null
+    || !(browser.downloads && typeof browser.downloads.show === 'function');
+  card.hidden = false;
+  // The review step is the next action; put keyboard focus on it.
+  if (!showBtn.hidden) showBtn.focus();
+}
+
+function hideReviewCard() {
+  const card = document.getElementById('reviewCard');
+  if (card) card.hidden = true;
+  reviewState.downloadId = null;
+}
+
+function wireReviewCard() {
+  const showBtn = document.getElementById('reviewShowBtn');
+  if (!showBtn) return;
+  showBtn.addEventListener('click', () => {
+    if (reviewState.downloadId === null) return;
+    try {
+      browser.downloads.show(reviewState.downloadId).catch(() => {});
+    } catch (_) { /* downloads.show unavailable; the file is still in Downloads */ }
+  });
 }
 
 /**
@@ -1677,6 +1731,7 @@ async function handleExportClick() {
 
   state.export.isExporting = true;
   state.export.lastError = null; // Clear previous error
+  hideReviewCard();
 
   // Show loading state with spinner in button
   updateExportButton(false, 'Exporting...', true);
@@ -1749,19 +1804,17 @@ async function handleExportClick() {
         conversationId: exportMessage.conversationId
       });
 
+      // The content script handed the data to background; background's
+      // EXPORT_RESULT follows with the real outcome, the file name and the
+      // review step. The popup stays open so the user can read it.
       updateStatus(
         'success',
-        'Export complete!',
+        'Export complete.',
         'Check your Downloads folder.'
       );
 
       // Reset button to normal state (no spinner)
       updateExportButton(false, 'Export ZIP', false);
-
-      // Auto-close after 3 seconds
-      setTimeout(() => {
-        window.close();
-      }, 3000);
     } else {
       // Export failed with error from content script
       const errorMessage = response?.error || 'Unknown error occurred';
@@ -1786,6 +1839,7 @@ async function handleExportClick() {
 
     // Reset export state
     state.export.isExporting = false;
+    hideReviewCard();
 
     // Reset button to normal state (remove spinner)
     updateExportButton(true, 'Export ZIP', false);
@@ -2089,6 +2143,7 @@ function initMainUI() {
 
   hydratePrivacySettings();
   wirePrivacySettings();
+  wireReviewCard();
 
   wirePreviewBanner();
 

@@ -147,6 +147,13 @@
       conversationsResponse: FIXTURES.conversations.chatgpt,
       autoExport: 'success_result'
     },
+    export_result_success_study_code: {
+      // Same, with a study code set: the review copy mentions the researcher.
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      storage: { study_salt: 'STUDY-42' },
+      autoExport: 'success_result'
+    },
     export_result_download_failed: {
       tab: FIXTURES.tabs.chatgpt,
       conversationsResponse: FIXTURES.conversations.chatgpt,
@@ -308,7 +315,7 @@
         broadcastExportResult({ platform: 'chatgpt', outcome: 'invalid_data', reason: 'ChatGPT mapping is not a plain object' });
         return ok();
       case 'success_result':
-        broadcastExportResult({ platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip' });
+        broadcastExportResult({ platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip', downloadId: 1 });
         return ok();
       case 'success':
       default:
@@ -390,6 +397,10 @@
       download: (details) => {
         try { window.parent?.postMessage({ type: 'HARNESS_DOWNLOAD', details }, '*'); } catch (_) {}
         return Promise.resolve(1);
+      },
+      show: (downloadId) => {
+        try { window.parent?.postMessage({ type: 'HARNESS_DOWNLOADS_SHOW', downloadId }, '*'); } catch (_) {}
+        return Promise.resolve();
       }
     },
     action: {

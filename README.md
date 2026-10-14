@@ -35,7 +35,8 @@ If a researcher asked you to install this extension, here is the whole process:
 2. **Open the AI chat you want to share** on one of the [supported sites](#supported-platforms).
 3. **Click the extension icon.** The popup tells you what will be exported.
 4. **(Optional) Open "Privacy settings"** to turn on PII scrubbing or enter a study code before you export.
-5. **Click "Export ZIP."** A single ZIP file is saved to your Downloads folder. Send it to the researcher by whatever channel they told you to use.
+5. **Click "Export ZIP."** A single ZIP file is saved to your Downloads folder.
+6. **Review the export.** The popup then asks you to open the ZIP and check what's in it before sharing it; "Show in Downloads" reveals the file. Send it to the researcher by whatever channel they told you to use.
 
 Nothing is uploaded anywhere by the extension. The ZIP sits in your Downloads folder until you decide what to do with it.
 

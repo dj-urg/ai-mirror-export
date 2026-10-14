@@ -164,6 +164,7 @@
       case 'HARNESS_POPUP_CLOSE': return logEvent('popup requested window.close()');
       case 'HARNESS_TAB_RELOAD':  return logEvent('popup requested tabs.reload');
       case 'HARNESS_DOWNLOAD':    return logEvent(`downloads.download → ${d.details?.filename || '?'}`);
+      case 'HARNESS_DOWNLOADS_SHOW': return logEvent(`downloads.show(${d.downloadId})`);
       case 'HARNESS_ICON_UPDATE': return logEvent(`action icon/title → ${d.iconState?.title || '(empty)'}`);
       default: return;
     }
