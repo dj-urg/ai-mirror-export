@@ -7,31 +7,9 @@
   <title>AI Chat Exporter</title>
 
   <!--
-    SECURITY MODEL & INTEGRITY PROTECTION
-
-    This extension uses a multi-layer security approach:
-
-    1. Firefox Extension Signing (Primary Protection)
-       - All files are cryptographically signed by Mozilla
-       - Any tampering breaks the signature and disables the extension
-       - Automatic verification on installation and startup
-
-    2. No External Resources (Subresource Integrity Not Needed)
-       - All JavaScript, CSS, and assets are bundled with the extension
-       - No CDN dependencies or third-party scripts
-       - Content Security Policy blocks any external resource loading
-
-    3. Runtime Integrity Checks (Defense-in-Depth)
-       - Critical functions are fingerprinted at initialization
-       - Periodic verification detects runtime tampering
-       - Implemented in background.js
-
-    4. Content Security Policy (CSP)
-       - Blocks inline scripts and external resources
-       - Prevents XSS and code injection attacks
-       - Defined in manifest.json
-
-    For complete security documentation, see SECURITY.md
+    Popup for AI Chat Exporter. All scripts and styles are bundled with the
+    extension (no remote resources); the extension-page CSP in manifest.json
+    forbids inline scripts and any network request from this page.
   -->
 
   <link rel="stylesheet" href="popup.css">
@@ -238,7 +216,7 @@
     </div>
 
     <!-- Privacy & Research Settings -->
-    <details class="info-section" id="privacySettings" role="group" aria-label="Privacy and research settings">
+    <details class="info-section" role="group" aria-label="Privacy and research settings">
       <summary class="info-section__toggle" aria-label="Toggle privacy settings">
         <svg class="info-section__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none"
           xmlns="http://www.w3.org/2000/svg">

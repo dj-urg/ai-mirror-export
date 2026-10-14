@@ -1904,69 +1904,6 @@ function focusInitialTarget() {
   });
 }
 
-/**
- * Verify no keyboard traps exist
- * Ensures all focusable elements can be reached and exited via keyboard
- * @returns {boolean} True if no keyboard traps detected
- */
-function verifyNoKeyboardTraps() {
-  const focusableElements = document.querySelectorAll(
-    'button:not([disabled]), summary, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-  );
-
-  if (focusableElements.length === 0) {
-    _console.warn('No focusable elements found');
-    return false;
-  }
-
-  // Check that all focusable elements are reachable
-  let allReachable = true;
-  focusableElements.forEach((element) => {
-    // Check if element is visible and not hidden
-    const style = window.getComputedStyle(element);
-    if (style.display === 'none' || style.visibility === 'hidden') {
-      return; // Skip hidden elements
-    }
-
-    // Check if element has proper tabindex
-    const tabindex = element.getAttribute('tabindex');
-    if (tabindex && parseInt(tabindex) < 0) {
-      _console.warn(`Element ${element.tagName} has negative tabindex:`, element);
-      allReachable = false;
-    }
-  });
-
-  _console.log(`Keyboard navigation check: ${focusableElements.length} focusable elements found`);
-  return allReachable;
-}
-
-/**
- * Set up proper tab order for all interactive elements
- * Ensures logical navigation flow through the popup
- */
-function setupTabOrder() {
-  // Get all interactive elements in the desired tab order
-  const exportBtn = document.getElementById('exportBtn');
-  const infoSection = document.getElementById('infoSection');
-  const infoToggle = infoSection?.querySelector('summary');
-
-  // Ensure elements have proper tabindex (0 for natural tab order)
-  // Native elements like button and summary already have proper tab order
-  // This is just a verification step
-
-  if (exportBtn) {
-    // Button already has natural tab order
-    exportBtn.setAttribute('tabindex', '0');
-  }
-
-  if (infoToggle) {
-    // Summary already has natural tab order
-    infoToggle.setAttribute('tabindex', '0');
-  }
-
-  _console.log('Tab order configured for keyboard navigation');
-}
-
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
@@ -2073,8 +2010,6 @@ function initMainUI() {
   // Enter/Space on buttons is native; no synthetic click() (it double-fired
   // with key repeat).
 
-  setupTabOrder();
-  verifyNoKeyboardTraps();
   setupEventDrivenUpdates();
 
   hydratePrivacySettings();
@@ -2084,7 +2019,6 @@ function initMainUI() {
   wirePreviewBanner();
 
   startPolling(2000);
-  verifyRuntimeIntegrity();
 
   // Focus the primary action only once the first status check has resolved:
   // before that the export button is still disabled and focus would stay on
@@ -2138,68 +2072,6 @@ async function init() {
     return;
   }
   initMainUI();
-}
-
-// ============================================================================
-// RUNTIME INTEGRITY VERIFICATION
-// ============================================================================
-
-/**
- * Verify critical browser APIs and functions haven't been tampered with
- * This provides defense-in-depth against runtime manipulation
- */
-function verifyRuntimeIntegrity() {
-  const results = {
-    passed: [],
-    failed: []
-  };
-
-  // Check critical browser APIs
-  const criticalAPIs = [
-    { name: 'browser.tabs.query', obj: browser?.tabs, prop: 'query' },
-    { name: 'browser.runtime.sendMessage', obj: browser?.runtime, prop: 'sendMessage' },
-    { name: 'browser.downloads.download', obj: browser?.downloads, prop: 'download' },
-    { name: 'document.createElement', obj: document, prop: 'createElement' },
-    { name: 'JSON.parse', obj: JSON, prop: 'parse' },
-    { name: 'JSON.stringify', obj: JSON, prop: 'stringify' }
-  ];
-
-  for (const api of criticalAPIs) {
-    if (!api.obj) {
-      results.failed.push({ name: api.name, reason: 'Parent object not found' });
-      continue;
-    }
-
-    const value = api.obj[api.prop];
-    if (typeof value !== 'function') {
-      results.failed.push({ name: api.name, reason: 'API not found or not a function' });
-    } else {
-      results.passed.push(api.name);
-    }
-  }
-
-  // Check critical functions exist
-  const criticalFunctions = [
-    'detectPlatform',
-    'sanitizeErrorMessage'
-  ];
-
-  for (const funcName of criticalFunctions) {
-    if (typeof window[funcName] === 'function') {
-      results.passed.push(funcName);
-    } else {
-      results.failed.push({ name: funcName, reason: 'Function not found' });
-    }
-  }
-
-  // Log results
-  if (results.failed.length === 0) {
-    _console.log('[Integrity] Runtime integrity verified:', results.passed.length, 'checks passed');
-  } else {
-    _console.error('[Integrity] Runtime integrity check failed:', results.failed);
-  }
-
-  return results.failed.length === 0;
 }
 
 // Initialize when DOM is ready
