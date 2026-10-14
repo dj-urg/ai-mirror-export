@@ -297,6 +297,20 @@
   /**
    * Verify HMAC-SHA256 signature
    */
+  // Replay protection: each signed message carries a random nonce; accept a
+  // nonce once within the 30 s timestamp window and remember it until the
+  // window has passed.
+  const seenNonces = new Map();
+  function isReplayedNonce(nonce) {
+    const now = Date.now();
+    for (const [n, ts] of seenNonces) {
+      if (now - ts > 30000) seenNonces.delete(n);
+    }
+    if (typeof nonce !== 'string' || !nonce || seenNonces.has(nonce)) return true;
+    seenNonces.set(nonce, now);
+    return false;
+  }
+
   async function verifySignature(message, signature, secret) {
     const encoder = new TextEncoder();
     const keyData = encoder.encode(secret);
@@ -362,6 +376,10 @@
 
     if (!isValid) {
       logWarn('Invalid message signature - possible injection attempt');
+      return;
+    }
+    if (isReplayedNonce(event.data.nonce)) {
+      logWarn('Replayed message nonce');
       return;
     }
 

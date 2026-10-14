@@ -293,6 +293,20 @@
   // SIGNED MESSAGE VERIFICATION
   // ==========================================================================
 
+  // Replay protection: each signed message carries a random nonce; accept a
+  // nonce once within the 30 s timestamp window and remember it until the
+  // window has passed.
+  const seenNonces = new Map();
+  function isReplayedNonce(nonce) {
+    const now = Date.now();
+    for (const [n, ts] of seenNonces) {
+      if (now - ts > 30000) seenNonces.delete(n);
+    }
+    if (typeof nonce !== 'string' || !nonce || seenNonces.has(nonce)) return true;
+    seenNonces.set(nonce, now);
+    return false;
+  }
+
   async function verifySignature(message, signature, secret) {
     const encoder = new TextEncoder();
     const key = await crypto.subtle.importKey(
@@ -336,6 +350,10 @@
     const isValid = await verifySignature(messageString, signature, SECRET_KEY);
     if (!isValid) {
       logWarn('Invalid message signature');
+      return;
+    }
+    if (isReplayedNonce(event.data.nonce)) {
+      logWarn('Replayed message nonce');
       return;
     }
 

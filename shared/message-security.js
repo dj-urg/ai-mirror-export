@@ -28,6 +28,21 @@
   const _ArrayFrom = Array.from;
   const _DateNow = Date.now.bind(Date);
 
+  // Replay protection. Every signed message carries a random nonce; a nonce
+  // is accepted once within the timestamp window and remembered until the
+  // window has passed, so a captured message cannot be replayed within the
+  // 30 s its timestamp stays valid.
+  const _seenNonces = new Map();
+  function rememberNonce(nonce, now, maxAge) {
+    for (const [n, ts] of _seenNonces) {
+      if (now - ts > maxAge) _seenNonces.delete(n);
+    }
+    if (typeof nonce !== 'string' || nonce.length === 0) return false;
+    if (_seenNonces.has(nonce)) return false;
+    _seenNonces.set(nonce, now);
+    return true;
+  }
+
   /**
    * Generate a cryptographic secret key for message signing
    * This is generated once per page load and shared between inject and content scripts
@@ -166,6 +181,11 @@
 
     if (!isValid) {
       return { isValid: false, error: 'Invalid signature' };
+    }
+
+    // Reject a replay of an already-accepted message (same nonce).
+    if (!rememberNonce(message.nonce, now, maxAge)) {
+      return { isValid: false, error: 'Replayed or missing nonce' };
     }
 
     return { isValid: true, error: null };
