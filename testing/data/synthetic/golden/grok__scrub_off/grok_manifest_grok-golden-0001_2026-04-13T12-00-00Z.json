@@ -1,0 +1,55 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "grok",
+  "conversation_id": "grok-golden-0001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "grok_metadata_grok-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "grok_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 509,
+      "sha256": "1774b6d724e51d0abd966b1053891ff2c3f32dbd1024754261e83769edbaca87"
+    },
+    {
+      "filename": "grok_messages_grok-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "grok_messages",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1469,
+      "sha256": "fc32b235fb952809e3d454de1709e6e26a01c5187d87429f9999f8ce6c8a8d35"
+    },
+    {
+      "filename": "grok_messages_canonical_grok-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "grok_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1198,
+      "sha256": "6d0da93478eb0eac06525d7af54406aeb5b084def260eaf74b295f4a8176118a"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "grok_messages": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

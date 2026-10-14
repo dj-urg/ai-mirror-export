@@ -1,0 +1,55 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "deepseek",
+  "conversation_id": "deepseek-golden-0001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "deepseek_metadata_deepseek-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "deepseek_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 476,
+      "sha256": "6bdba6e3433fa668146d55c4dcfde808d8b3a4bfba59d73996b8290ba9379f90"
+    },
+    {
+      "filename": "deepseek_messages_deepseek-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "deepseek_messages",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1728,
+      "sha256": "070377e2dc4c1eed30dd70043be607fb6980f52920e1361b986da3dd65a79658"
+    },
+    {
+      "filename": "deepseek_messages_canonical_deepseek-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "deepseek_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1393,
+      "sha256": "c06b74418663c8bd1e34efaf36a27b1cc64cae0c9208a42926fec7f230dfb19e"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "deepseek_messages": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

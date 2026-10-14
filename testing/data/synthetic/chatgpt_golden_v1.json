@@ -1,0 +1,8 @@
+{"conversation_id":"00000000-0000-4000-8000-0000000000c1","title":"Synthetic tides chat","create_time":1767225600,"update_time":1767225700,"default_model_slug":"gpt-4o",
+ "mapping":{
+  "root":{"id":"root","message":null,"parent":null,"children":["sys1"]},
+  "sys1":{"id":"sys1","message":{"id":"sys1","author":{"role":"system"},"content":{"content_type":"text","parts":[""]},"create_time":null,"metadata":{}},"parent":"root","children":["ctx1"]},
+  "ctx1":{"id":"ctx1","message":{"id":"ctx1","author":{"role":"user"},"content":{"content_type":"user_editable_context","user_profile":"User profile:\n```I am a synthetic researcher, email me at donor@example.org```","user_instructions":"```Answer briefly, cite https://example.org/style?utm_source=x```"},"create_time":1767225600,"metadata":{"is_visually_hidden_from_conversation":true}},"parent":"sys1","children":["u1"]},
+  "u1":{"id":"u1","message":{"id":"u1","author":{"role":"user"},"content":{"content_type":"text","parts":["How do tides work? My number is 555-123-4567."]},"create_time":1767225610,"metadata":{}},"parent":"ctx1","children":["a1"]},
+  "a1":{"id":"a1","message":{"id":"a1","author":{"role":"assistant"},"content":{"content_type":"text","parts":["Tides are caused by the Moon's gravity, \"mostly\".\nSee https://example.org/tides?utm_medium=m"]},"create_time":1767225620,"metadata":{"model_slug":"gpt-4o"}},"parent":"u1","children":[]}
+ }}

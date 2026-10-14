@@ -1,0 +1,9 @@
+﻿schema_version,extractor_version,donor_id,donor_id_type,download_time,conversation_id,message_id,role,text,text_cleaned,created_at,channel,mode,part_ids,author_type
+1.0.0,2.1.1,00000000-0000-4000-8000-00000000d0e0,persistent,2026-04-13T12:00:00.000Z,cop-synthetic-0001,m1,user,"Hello, my email is donor@example.org and see https://example.org/x?utm_source=t","Hello, my email is donor@example.org and see https://example.org/x?utm_source=t",2026-01-01T00:00:00.000Z,web,chat,p1,human
+1.0.0,2.1.1,00000000-0000-4000-8000-00000000d0e0,persistent,2026-04-13T12:00:00.000Z,cop-synthetic-0001,m2,assistant,"Hi ""there""
+line two, call 555-123-4567
+
+Second part.","Hi ""there""
+line two, call 555-123-4567
+
+Second part.",2026-01-01T00:00:05.000Z,web,chat,"p2,p3",ai

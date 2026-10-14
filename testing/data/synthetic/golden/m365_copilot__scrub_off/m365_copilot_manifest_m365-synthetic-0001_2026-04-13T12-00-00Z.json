@@ -1,0 +1,55 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "m365_copilot",
+  "conversation_id": "m365-synthetic-0001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "m365_copilot_conversation_m365-synthetic-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "m365_copilot_conversation",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1924,
+      "sha256": "1bdf3e55c5d640db7c30731066bd92ffef07055e502dbd8247ad2b8eacd23d2b"
+    },
+    {
+      "filename": "m365_copilot_messages_canonical_m365-synthetic-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "m365_copilot_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 2607,
+      "sha256": "f1b2725bf51769a7712e596b57baec2d39297c4af5f70df26c8971acc0ae12ae"
+    },
+    {
+      "filename": "m365_copilot_sources_m365-synthetic-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "m365_copilot_sources",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 949,
+      "sha256": "ce6c8aa78f67c55b3e59a13bcf16119527f10e6ea452094abebdcd9b09a8c783"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "m365_copilot_conversation": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

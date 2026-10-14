@@ -1,0 +1,2 @@
+﻿schema_version,extractor_version,donor_id,donor_id_type,download_time,conversation_id,title,create_time,modify_time,temporary,system_prompt_name,media_types,num_messages,num_user_messages,num_assistant_messages,num_messages_with_web_search,num_messages_with_attachments,num_messages_with_generated_images
+1.0.0,2.1.1,00000000-0000-4000-8000-00000000d0e0,persistent,2026-04-13T12:00:00.000Z,grok-golden-0001,Synthetic Grok golden fixture,2026-01-01T00:00:00.000Z,2026-01-01T00:00:30.000Z,false,,,2,1,1,0,0,0

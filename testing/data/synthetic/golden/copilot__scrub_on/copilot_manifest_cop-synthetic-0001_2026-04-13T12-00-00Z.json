@@ -1,0 +1,52 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "copilot",
+  "conversation_id": "cop-synthetic-0001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "copilot_conversation_cop-synthetic-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "copilot_conversation",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 765,
+      "sha256": "60754a81721954939207eaaa8457e6d73f1f67c0f9c996cd5373cf0e00d38719"
+    },
+    {
+      "filename": "copilot_messages_canonical_cop-synthetic-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "copilot_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1117,
+      "sha256": "fab5b878a0eff73a6a43a58f25e3d50f43c1d0276beeba51b8a7eb7715d28caa"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": true,
+    "pii_scrub_options": {
+      "URL": false
+    },
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 4,
+    "pii_redactions_by_type": {
+      "EMAIL": 2,
+      "PHONE": 2
+    },
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "copilot_conversation": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

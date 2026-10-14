@@ -1,0 +1,57 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "claude",
+  "conversation_id": "11111111-2222-3333-4444-555555555555",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "claude_metadata_11111111-2222-3333-4444-555555555555_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 778,
+      "sha256": "1e050a66faa1998ff4abfb50a840175574089436d5e8d77282ee427286397422"
+    },
+    {
+      "filename": "claude_messages_11111111-2222-3333-4444-555555555555_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_messages",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1236,
+      "sha256": "aab677bba1dd1d72302ddcea9d8e6bd8c76e83e577c9f3f0e7b9ee647cc10fea"
+    },
+    {
+      "filename": "claude_messages_canonical_11111111-2222-3333-4444-555555555555_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1362,
+      "sha256": "08e64fb929fe5528aee17c4041f0b89b54b850456d83bffee5a78bc223b0d8d4"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": true,
+    "pii_scrub_options": {
+      "URL": false
+    },
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "claude_messages": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

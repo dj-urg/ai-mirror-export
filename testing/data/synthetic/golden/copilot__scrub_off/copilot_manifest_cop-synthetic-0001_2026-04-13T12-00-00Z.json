@@ -1,0 +1,47 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "copilot",
+  "conversation_id": "cop-synthetic-0001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "copilot_conversation_cop-synthetic-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "copilot_conversation",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 759,
+      "sha256": "52e24aded67557745b9317d17117eb698737fb5fa68fb84687dba598cc0f5fdb"
+    },
+    {
+      "filename": "copilot_messages_canonical_cop-synthetic-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "copilot_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1111,
+      "sha256": "0e2579f696053cdc6bc1c05f1ba6d60471b61658a7c7873f7374d9724045f503"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "copilot_conversation": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

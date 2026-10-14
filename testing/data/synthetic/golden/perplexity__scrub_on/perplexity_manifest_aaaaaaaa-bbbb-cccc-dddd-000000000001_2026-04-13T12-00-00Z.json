@@ -1,0 +1,65 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "perplexity",
+  "conversation_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "perplexity_metadata_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
+      "schema": "perplexity_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 363,
+      "sha256": "5b7cd5dd3f75e53d81689c07c9a774142f1c7c4824d8eab01f29e475e74b91ec"
+    },
+    {
+      "filename": "perplexity_messages_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
+      "schema": "perplexity_messages",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 906,
+      "sha256": "093b04c696a4c9935dd85c97fb4b817705e7d4577602e02bd74b370fce490260"
+    },
+    {
+      "filename": "perplexity_sources_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
+      "schema": "perplexity_sources",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 571,
+      "sha256": "38f9fc87af6ac899bf8ca629fc2e9b6e7cb987ac98d4ffd80972363de2cfeafb"
+    },
+    {
+      "filename": "perplexity_messages_canonical_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
+      "schema": "perplexity_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1168,
+      "sha256": "d79b3639df0548982b6bce90e95a9ca0451d6b7916cf9dd82278656c417b82ee"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": true,
+    "pii_scrub_options": {
+      "URL": false
+    },
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "perplexity_messages": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "chatgpt",
+  "conversation_id": "00000000-0000-4000-8000-0000000000c1",
+  "api_format": "mapping",
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "chatgpt_metadata_00000000-0000-4000-8000-0000000000c1_2026-04-13T12-00-00Z.csv",
+      "schema": "chatgpt_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 493,
+      "sha256": "2d289bbd5b959ca2d464afd57a66073e85ad2eda68b4ce6ca42201c771ff89e4"
+    },
+    {
+      "filename": "chatgpt_messages_00000000-0000-4000-8000-0000000000c1_2026-04-13T12-00-00Z.csv",
+      "schema": "chatgpt_messages",
+      "schema_version": "1.0.0",
+      "rows": 3,
+      "bytes": 983,
+      "sha256": "e498373d0710e83c54fe6bba257d73e245c229d07df111658267a76f0aa3dbe5"
+    },
+    {
+      "filename": "chatgpt_messages_canonical_00000000-0000-4000-8000-0000000000c1_2026-04-13T12-00-00Z.csv",
+      "schema": "chatgpt_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 3,
+      "bytes": 1564,
+      "sha256": "cc20e184b9e9ec0fa6fc2da235e42d6824a71894c188d9d34e6400249c84429c"
+    },
+    {
+      "filename": "chatgpt_donor_context_00000000-0000-4000-8000-0000000000c1_2026-04-13T12-00-00Z.csv",
+      "schema": "chatgpt_donor_context",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 361,
+      "sha256": "89f2840ad2289640c72fc4aea8dbde8ec1e0ab7a1debd67a39fcf3eb67e69ec3"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "chatgpt_messages": {
+        "valid": true,
+        "total_rows": 3,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

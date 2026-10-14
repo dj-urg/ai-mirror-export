@@ -1,0 +1,59 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "2.1.1",
+  "platform": "google_search",
+  "conversation_id": "how do tides work",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "google_ai_overview_howdotideswork_2026-04-13T12-00-00Z.csv",
+      "schema": "google_ai_overview",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 717,
+      "sha256": "3a959b50764a970466e85a4ae878eb296eb3ade731b5fe18c74c08f281bdc877"
+    },
+    {
+      "filename": "google_ai_overview_canonical_howdotideswork_2026-04-13T12-00-00Z.csv",
+      "schema": "google_ai_overview_canonical",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 942,
+      "sha256": "b154b57deb791399138cfbb094e7e77d0c846f0ca880ed35570985a209840c22"
+    },
+    {
+      "filename": "google_sources_howdotideswork_2026-04-13T12-00-00Z.csv",
+      "schema": "google_sources",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 685,
+      "sha256": "ab0615200b80509ddc58c21b92b8acc3fe27a2e23630997de589c9ee70dab43a"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "google_ai_overview": {
+        "valid": true,
+        "total_rows": 1,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    },
+    "extraction_telemetry": {
+      "dom_version": "synthetic",
+      "selector_hits": 3
+    }
+  }
+}

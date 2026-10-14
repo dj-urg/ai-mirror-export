@@ -1,0 +1,5 @@
+{"mode":"ai_overview","query":"how do tides work","source_page_url":"https://www.google.com/search?q=how+do+tides+work","captured_at":"2026-01-01T00:00:00Z",
+ "ai_overview_text":"Tides are caused by the Moon. Contact 555-123-4567 or https://example.org/t?utm_source=g for details.",
+ "sources":[{"url":"https://example.org/a?utm_campaign=c","title":"Source A"},{"url":"https://example.org/b","title":"Source B"}],
+ "follow_up_questions":["Why two tides a day?","What is a spring tide?"],
+ "extraction_telemetry":{"dom_version":"synthetic","selector_hits":3}}

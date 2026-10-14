@@ -1,0 +1,6 @@
+{"conversationId":"m365-synthetic-0001","metadata":{"source":"synthetic"},"results":[
+ {"author":"user","text":"Question about https://example.org/doc?utm_medium=m","messageId":"mm1","requestId":"r1","messageType":"Chat","createdAt":"2026-01-01T00:00:00Z","inputMethod":"Keyboard"},
+ {"author":"bot","text":"Answer mentioning jane@example.com and 10.0.0.1","messageId":"mm2","requestId":"r1","messageType":"Chat","contentOrigin":"DeepLeo","turnState":"Done","turnCount":1,"createdAt":"2026-01-01T00:00:05Z",
+  "sourceAttributions":[{"providerDisplayName":"Example","title":"Example doc","snippet":"Snippet with bob@example.com","seeMoreUrl":"https://example.org/s?utm_source=x","searchQuery":"q"},{"providerDisplayName":"Other","name":"Other doc","description":"Desc","url":"https://example.org/o"}],
+  "suggestedResponses":["Tell me more","Thanks"],"adaptiveCards":[{"type":"AdaptiveCard","body":[{"type":"TextBlock","text":"card text"}]}]}
+]}

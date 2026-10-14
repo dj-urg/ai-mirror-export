@@ -1,0 +1,4 @@
+{"conversationId":"cop-synthetic-0001","results":[
+ {"id":"m1","author":{"type":"human"},"content":[{"type":"text","text":"Hello, my email is donor@example.org and see https://example.org/x?utm_source=t","partId":"p1"}],"createdAt":"2026-01-01T00:00:00Z","channel":"web","mode":"chat"},
+ {"id":"m2","author":{"type":"ai"},"content":[{"type":"text","text":"Hi \"there\"\nline two, call 555-123-4567","partId":"p2"},{"type":"text","text":"Second part.","partId":"p3"}],"createdAt":"2026-01-01T00:00:05Z","channel":"web","mode":"chat"}
+]}

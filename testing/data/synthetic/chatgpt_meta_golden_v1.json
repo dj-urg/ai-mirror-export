@@ -1,0 +1,7 @@
+{"conversation_id":"00000000-0000-4000-8000-0000000000c2","title":"Synthetic chat with metadata context","create_time":1767225600,"update_time":1767225700,
+ "mapping":{
+  "root":{"id":"root","message":null,"parent":null,"children":["ctx1"]},
+  "ctx1":{"id":"ctx1","message":{"id":"ctx1","author":{"role":"user"},"content":{"content_type":"user_editable_context","user_profile":"","user_instructions":""},"create_time":1767225600,"metadata":{"user_context_message_data":{"about_user_message":"Lives in Ghent, reach me at donor2@example.org","about_model_message":"Be terse. Never link https://example.org/no?utm_source=q"}}},"parent":"root","children":["u1"]},
+  "u1":{"id":"u1","message":{"id":"u1","author":{"role":"user"},"content":{"content_type":"text","parts":["Short question"]},"create_time":1767225610,"metadata":{}},"parent":"ctx1","children":["a1"]},
+  "a1":{"id":"a1","message":{"id":"a1","author":{"role":"assistant"},"content":{"content_type":"text","parts":["Short answer, 192.168.1.1"]},"create_time":1767225620,"metadata":{"resolved_model_slug":"gpt-4o-mini"}},"parent":"u1","children":[]}
+ }}

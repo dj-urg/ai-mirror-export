@@ -1,0 +1,4 @@
+{"mode":"ai_mode","conversation_title":"explain plate tectonics","source_page_url":"https://www.google.com/search?q=explain+plate+tectonics&udm=50","captured_at":"2026-01-01T00:00:00Z",
+ "turns":[{"index":0,"role":"user","text":"explain plate tectonics","sources":[]},
+  {"index":1,"role":"assistant","text":"Plates move slowly. Email me x@y.co, see https://example.org/p?utm_term=z","sources":[{"url":"https://example.org/p?utm_term=z","title":"Plates"}],"captured_at":"2026-01-01T00:00:03Z"}],
+ "extraction_telemetry":{"dom_version":"synthetic"}}
