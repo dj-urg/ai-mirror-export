@@ -14,6 +14,7 @@
     }
   },
   "description": "Export conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral and Google Search AI Overview to CSV. All processing happens locally in your browser.",
+  "homepage_url": "https://github.com/dj-urg/ai-mirror-export",
   "permissions": [
     "activeTab",
     "downloads",
