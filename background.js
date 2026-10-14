@@ -1293,8 +1293,13 @@ browser.runtime.onMessage.addListener((message, sender) => {
   // failure?" Popup uses this on open so it can show the sign-in message
   // without needing to wait for a fresh 401 round-trip.
   if (message.type === 'GET_AUTH_STATE') {
-    // Popup doesn't have sender.tab, which is how we tell it apart from a
-    // content script. We trust sender.id === runtime.id (checked above).
+    // Only the popup asks this, and the popup has no sender.tab. A content
+    // script always has one and must not be able to read another tab's
+    // auth state, so reject anything that arrives from a tab.
+    if (sender.tab) {
+      _console.warn('[Background] GET_AUTH_STATE from a tab rejected');
+      return false;
+    }
     const tabId = typeof message.tabId === 'number' ? message.tabId : null;
     const state = (tabId != null) ? authFailureByTab.get(tabId) : null;
     return Promise.resolve(state
