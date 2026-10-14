@@ -722,9 +722,127 @@ function updateExportButton(enabled, text = null, showSpinner = false) {
 }
 
 /**
- * Build and show the file list panel.
- * Renders one row per platform (3 for ChatGPT, 1 for others).
- * @param {string} title - Conversation title (used for non-ChatGPT label)
+ * Files inside the ZIP for one platform. Names are the real file-name stems
+ * (the export appends `_<conversation-id>_<timestamp>` and the extension);
+ * `optional` rows appear only when the conversation has that kind of data.
+ * Mirrors the pushCsv calls in background.js: keep the two in step.
+ *
+ * @param {string} platformId
+ * @param {{isAIMode?: boolean, includeDonorContext?: boolean}} opts
+ * @returns {Array<{badge: string, badgeClass: string, name: string, desc: string, optional?: boolean}>}
+ */
+function zipContentsFor(platformId, { isAIMode = false, includeDonorContext = true } = {}) {
+  const canonical = (stem) => ({
+    badge: 'Canonical', badgeClass: 'metadata',
+    name: `${stem}_messages_canonical_….csv`,
+    desc: 'One row per message in the shared cross-platform layout'
+  });
+  const manifest = (stem) => ({
+    badge: 'Manifest', badgeClass: 'default',
+    name: `${stem}_manifest_….json`,
+    desc: 'What is in the ZIP: file list, checksums, row counts, settings used'
+  });
+  const metadata = (stem, desc) => ({ badge: 'Metadata', badgeClass: 'metadata', name: `${stem}_metadata_….csv`, desc });
+  const messages = (stem, desc) => ({ badge: 'Messages', badgeClass: 'messages', name: `${stem}_messages_….csv`, desc });
+  const sources = (stem, desc) => ({ badge: 'Sources', badgeClass: 'sources', name: `${stem}_sources_….csv`, desc, optional: true });
+
+  switch (platformId) {
+    case 'chatgpt':
+      return [
+        metadata('chatgpt', 'Title, model, message counts'),
+        messages('chatgpt', 'One row per message node: role, text, timestamps, model'),
+        sources('chatgpt', 'Web sources cited by ChatGPT — only if web searches were made'),
+        { badge: 'URLs', badgeClass: 'default', name: 'chatgpt_message_urls_….csv',
+          desc: 'Links that appear in messages — only if any were present', optional: true },
+        ...(includeDonorContext ? [{
+          badge: 'Profile', badgeClass: 'metadata', name: 'chatgpt_donor_context_….csv',
+          desc: 'Your custom instructions and profile text — only if you set them up', optional: true
+        }] : []),
+        canonical('chatgpt'),
+        manifest('chatgpt')
+      ];
+    case 'claude':
+      return [
+        metadata('claude', 'Title, settings, message counts'),
+        messages('claude', 'One row per content block: text, thinking, tool use and tool results'),
+        sources('claude', 'Citations — only if present'),
+        { badge: 'Files', badgeClass: 'default', name: 'claude_attachments_….csv',
+          desc: 'Uploaded files, including extracted text — only if present', optional: true },
+        canonical('claude'),
+        manifest('claude')
+      ];
+    case 'copilot':
+      return [
+        { badge: 'Messages', badgeClass: 'messages', name: 'copilot_conversation_….csv', desc: 'One row per message' },
+        canonical('copilot'),
+        manifest('copilot')
+      ];
+    case 'm365_copilot':
+      return [
+        { badge: 'Messages', badgeClass: 'messages', name: 'm365_copilot_conversation_….csv',
+          desc: 'One row per message, with the raw chat frame' },
+        sources('m365_copilot', 'Documents and web sources cited by Copilot — only if present'),
+        canonical('m365_copilot'),
+        manifest('m365_copilot')
+      ];
+    case 'perplexity':
+      return [
+        metadata('perplexity', 'Title, timestamps, turn count'),
+        messages('perplexity', 'One row per turn: question, answer, reasoning and code'),
+        sources('perplexity', 'Web results cited by Perplexity — only if present'),
+        canonical('perplexity'),
+        manifest('perplexity')
+      ];
+    case 'grok':
+      return [
+        metadata('grok', 'Title, timestamps, turn count'),
+        messages('grok', 'One row per message: prompts, answers, timestamps'),
+        sources('grok', 'Web and X results cited by Grok — only if present'),
+        canonical('grok'),
+        manifest('grok')
+      ];
+    case 'deepseek':
+      return [
+        metadata('deepseek', 'Title, model, turn count'),
+        messages('deepseek', 'One row per message: prompts, answers, thinking text'),
+        sources('deepseek', 'Web results cited by DeepSeek Search — only if present'),
+        canonical('deepseek'),
+        manifest('deepseek')
+      ];
+    case 'mistral':
+      return [
+        metadata('mistral', 'Title, model, feature flags, turn count'),
+        messages('mistral', 'One row per message: prompts, answers, reasoning, tool calls'),
+        sources('mistral', 'Web results cited by Mistral — only if present'),
+        canonical('mistral'),
+        manifest('mistral')
+      ];
+    case 'google_search':
+      return isAIMode
+        ? [
+          { badge: 'Messages', badgeClass: 'messages', name: 'google_ai_mode_….csv', desc: 'One row per turn: your question and the reply' },
+          { badge: 'Sources', badgeClass: 'sources', name: 'google_sources_….csv', desc: 'Links cited in the replies — only if present', optional: true },
+          { badge: 'Canonical', badgeClass: 'metadata', name: 'google_ai_mode_canonical_….csv', desc: 'One row per turn in the shared cross-platform layout' },
+          manifest('google_search')
+        ]
+        : [
+          { badge: 'Overview', badgeClass: 'messages', name: 'google_ai_overview_….csv', desc: 'One row: the overview text, its sources and follow-up questions' },
+          { badge: 'Sources', badgeClass: 'sources', name: 'google_sources_….csv', desc: 'Links cited in the overview — only if present', optional: true },
+          { badge: 'Canonical', badgeClass: 'metadata', name: 'google_ai_overview_canonical_….csv', desc: 'The overview as one row in the shared cross-platform layout' },
+          manifest('google_search')
+        ];
+    default:
+      return [
+        { badge: 'Messages', badgeClass: 'messages', name: `${platformId}_messages_….csv`, desc: 'One row per message' },
+        canonical(platformId),
+        manifest(platformId)
+      ];
+  }
+}
+
+/**
+ * Build and show the "Your ZIP will contain" panel for the current platform.
+ * @param {string} title - Conversation title (part of the diff key only)
  */
 function updateFilePreview(title) {
   const fileList = document.getElementById('fileList');
@@ -732,10 +850,12 @@ function updateFilePreview(title) {
   const fileListItems = document.getElementById('fileListItems');
 
   const platformId = state.platform.id;
-  const platformName = state.platform.name || platformId || 'conversation';
+  const isAIMode = state.platform.name === 'Google AI Mode';
+  const donorCtx = document.getElementById('donorContextCheckbox');
+  const includeDonorContext = donorCtx ? donorCtx.checked : true;
 
-  // Diff before write: the list depends only on platform + title.
-  const key = `${platformId}|${title || ''}`;
+  // Diff before write: the list depends on platform, mode and the donor-context setting.
+  const key = `${platformId}|${isAIMode}|${includeDonorContext}|${title || ''}`;
   if (key === state.ui.fileListKey) {
     fileList.style.display = 'block';
     const notice = document.getElementById('dataNotice');
@@ -744,147 +864,9 @@ function updateFilePreview(title) {
   }
   state.ui.fileListKey = key;
 
-  let files;
-  if (platformId === 'chatgpt') {
-    files = [
-      {
-        badge: 'Metadata',
-        badgeClass: 'metadata',
-        name: 'Conversation overview',
-        desc: 'Title, model, statistics'
-      },
-      {
-        badge: 'Messages',
-        badgeClass: 'messages',
-        name: 'Full message log',
-        desc: 'All turns with timestamps and model info'
-      },
-      {
-        badge: 'Sources',
-        badgeClass: 'sources',
-        name: 'Web search results',
-        desc: 'Cited sources \u2014 only if web searches were made',
-        optional: true
-      },
-      {
-        badge: 'URLs',
-        badgeClass: 'default',
-        name: 'In-message links',
-        desc: 'Links shared in messages \u2014 only if any were present',
-        optional: true
-      },
-      {
-        badge: 'Profile',
-        badgeClass: 'metadata',
-        name: 'User profile & instructions',
-        desc: 'Custom instructions or user profile \u2014 only if configured',
-        optional: true
-      }
-    ];
-  } else if (platformId === 'perplexity') {
-    files = [
-      {
-        badge: 'Metadata',
-        badgeClass: 'metadata',
-        name: 'Thread overview',
-        desc: 'Title, timestamps, turn count'
-      },
-      {
-        badge: 'Messages',
-        badgeClass: 'messages',
-        name: 'Full message log',
-        desc: 'User prompts and assistant answers per turn'
-      },
-      {
-        badge: 'Sources',
-        badgeClass: 'sources',
-        name: 'Cited web results',
-        desc: 'Sources cited by Perplexity \u2014 only if present',
-        optional: true
-      }
-    ];
-  } else if (platformId === 'grok') {
-    files = [
-      {
-        badge: 'Metadata',
-        badgeClass: 'metadata',
-        name: 'Conversation overview',
-        desc: 'Title, timestamps, turn count'
-      },
-      {
-        badge: 'Messages',
-        badgeClass: 'messages',
-        name: 'Full message log',
-        desc: 'User prompts, assistant answers, timestamps'
-      },
-      {
-        badge: 'Sources',
-        badgeClass: 'sources',
-        name: 'Cited web + X results',
-        desc: 'Sources cited by Grok \u2014 only if present',
-        optional: true
-      }
-    ];
-  } else if (platformId === 'deepseek') {
-    files = [
-      {
-        badge: 'Metadata',
-        badgeClass: 'metadata',
-        name: 'Conversation overview',
-        desc: 'Title, model, turn count'
-      },
-      {
-        badge: 'Messages',
-        badgeClass: 'messages',
-        name: 'Full message log',
-        desc: 'User prompts, assistant answers, reasoning (if any)'
-      },
-      {
-        badge: 'Sources',
-        badgeClass: 'sources',
-        name: 'Cited web results',
-        desc: 'Sources cited by DeepSeek Search \u2014 only if present',
-        optional: true
-      }
-    ];
-  } else if (platformId === 'mistral') {
-    files = [
-      {
-        badge: 'Metadata',
-        badgeClass: 'metadata',
-        name: 'Conversation overview',
-        desc: 'Title, model, feature flags, turn count'
-      },
-      {
-        badge: 'Messages',
-        badgeClass: 'messages',
-        name: 'Full message log',
-        desc: 'User prompts, assistant answers, reasoning + tool calls'
-      },
-      {
-        badge: 'Sources',
-        badgeClass: 'sources',
-        name: 'Cited web results',
-        desc: 'Sources cited by Mistral \u2014 only if present',
-        optional: true
-      }
-    ];
-  } else {
-    const sanitizedTitle = (title || 'conversation')
-      .replace(/[^a-z0-9\u00a0-\uffff_-]/gi, '_').trim();
-    files = [
-      {
-        badge: platformName,
-        badgeClass: 'default',
-        name: sanitizedTitle || 'conversation',
-        desc: `${platformName} conversation export`
-      }
-    ];
-  }
+  const files = zipContentsFor(platformId, { isAIMode, includeDonorContext });
 
-  fileListHeading.textContent = files.length === 1
-    ? '1 file will be downloaded'
-    : `${files.length} files will be downloaded`;
+  fileListHeading.textContent = 'Your ZIP will contain';
 
   // Rebuild the list using DOM methods (no innerHTML for security)
   while (fileListItems.firstChild) {
@@ -2123,6 +2105,9 @@ function wirePrivacySettings() {
   });
   if (donorCtx) donorCtx.addEventListener('change', () => {
     browser.storage.local.set({ include_donor_context: donorCtx.checked }).catch(() => {});
+    // The ChatGPT file list shows the custom-instructions file only when
+    // this is on; refresh it if the list is visible.
+    if (state.export.canExport) updateFilePreview(state.ui.fileListKey ? state.ui.fileListKey.split('|').pop() : '');
   });
   if (salt) salt.addEventListener('change', () => {
     const v = salt.value.trim().slice(0, 256);
