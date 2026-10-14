@@ -16,12 +16,25 @@
 (function () {
   'use strict';
 
+  // Idempotency guard. background.js registers this file through the
+  // scripting API as well as manifest.json, so it can be evaluated more
+  // than once in the same page. A second evaluation must not wrap fetch
+  // and XMLHttpRequest again or mint a second signing secret. The marker is
+  // a non-enumerable boolean; it carries no data.
+  const INSTALL_MARKER = '__aiChatExporterPerplexityInjectInstalled';
+  if (window[INSTALL_MARKER] === true) return;
+  try {
+    Object.defineProperty(window, INSTALL_MARKER, {
+      value: true, enumerable: false, configurable: false, writable: false
+    });
+  } catch (_) { /* defineProperty refused: fall through and install once anyway */ }
+
   const PLATFORM = 'Perplexity';
   const MESSAGE_TYPE = 'PERPLEXITY_CONVERSATION_DATA';
   const SOURCE_ID = 'perplexity-exporter-inject';
 
-  const IS_PRODUCTION = false;
-  const DEBUG_MODE = true;
+  const IS_PRODUCTION = true;
+  const DEBUG_MODE = false;
   const MAX_RESPONSE_SIZE = 100 * 1024 * 1024; // 100MB
 
   const originalFetch = window.fetch;
@@ -29,18 +42,6 @@
   const originalXhrSend = XMLHttpRequest.prototype.send;
   const originalPostMessage = window.postMessage.bind(window);
   const originalMessageSecurity = window.MessageSecurity;
-
-  // Always-on install breadcrumb so we can tell from the console whether
-  // the MAIN-world script loaded. Carries no page data.
-  console.log('[Perplexity Exporter] inject.js installed in MAIN world');
-  // Expose a tiny probe so the user can run a one-liner in the console to
-  // confirm this file is active and verify URL-matching.
-  window.__perplexityExporterProbe = {
-    installed: true,
-    testUrl(url) {
-      return UUID_RE.test(String(url));
-    }
-  };
 
   // Generate the signing secret in the MAIN world before any page scripts run,
   // then stash it in a documentElement attribute so content.js can read it once
@@ -168,20 +169,17 @@
       const threadUuid = extractThreadUuid(url);
       if (!threadUuid) return response;
 
-      console.log('[Perplexity Exporter] fetch matched thread URL', {
-        uuid: threadUuid.substring(0, 8) + '...',
-        status: response.status
-      });
+      logDebug('fetch matched thread URL', { uuid: threadUuid, status: response.status });
 
       const validation = validateResponse(response);
       if (!validation.isValid) {
-        console.warn('[Perplexity Exporter] fetch rejected:', validation.error);
+        logWarn('fetch rejected', { error: validation.error });
         return response;
       }
 
       const ctype = response.headers.get('content-type') || '';
       if (!ctype.toLowerCase().includes('application/json')) {
-        console.warn('[Perplexity Exporter] fetch rejected: not JSON (' + ctype + ')');
+        logWarn('fetch rejected: not JSON', { contentType: ctype });
         return response;
       }
 
@@ -200,7 +198,7 @@
           await sendDataToContentScript(threadUuid, data);
         })
         .catch(error => {
-          console.warn('[Perplexity Exporter] failed to parse response', error.message);
+          logWarn('failed to parse response', { error: error.message });
         });
     } catch (_) {
       // Never interrupt the original fetch return.
@@ -230,14 +228,11 @@
             let data;
             try { data = JSON.parse(text); } catch (_) { return; }
             if (!data || typeof data !== 'object') return;
-            console.log('[Perplexity Exporter] XHR matched thread URL', {
-              uuid: threadUuid.substring(0, 8) + '...',
-              status: this.status
-            });
+            logDebug('XHR matched thread URL', { uuid: threadUuid, status: this.status });
             stripTokens(data);
             sendDataToContentScript(threadUuid, data).catch(() => {});
           } catch (e) {
-            console.warn('[Perplexity Exporter] XHR load handler failed', e.message);
+            logWarn('XHR load handler failed', { error: e.message });
           }
         });
       }
@@ -245,6 +240,6 @@
     return originalXhrSend.apply(this, args);
   };
 
-  console.log('[Perplexity Exporter] fetch + XHR interceptors installed');
+  logDebug('fetch + XHR interceptors installed');
 
 })();

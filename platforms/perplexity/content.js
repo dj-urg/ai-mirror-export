@@ -11,24 +11,22 @@
 (function () {
   'use strict';
 
+  // Idempotency guard. background.js registers this file through the
+  // scripting API as well as manifest.json, and every copy of an
+  // extension's content scripts in a frame shares one isolated-world
+  // global, so a second evaluation would otherwise add a second
+  // runtime.onMessage listener and produce two ZIPs per export. The marker
+  // lives in the isolated world and is not visible to the page.
+  const INSTALL_MARKER = '__aiChatExporterPerplexityContentInstalled';
+  if (globalThis[INSTALL_MARKER] === true) return;
+  globalThis[INSTALL_MARKER] = true;
+
   const PLATFORM = 'Perplexity';
   const MESSAGE_TYPE = 'PERPLEXITY_CONVERSATION_DATA';
   const SOURCE_ID = 'perplexity-exporter-inject';
 
-  const IS_PRODUCTION = false;
-  const DEBUG_MODE = true;
-
-  console.log('[Perplexity Exporter] content.js loaded (isolated world)');
-
-  // DOM marker readable from the page world. Lets us verify from the page
-  // console (where isolated-world logs are invisible) whether this script
-  // actually got injected into the Perplexity tab.
-  try {
-    document.documentElement.setAttribute(
-      'data-perplexity-exporter-content-loaded',
-      new Date().toISOString()
-    );
-  } catch (_) {}
+  const IS_PRODUCTION = true;
+  const DEBUG_MODE = false;
 
   const MAX_STORED_CONVERSATIONS = 50;
   const MAX_CONVERSATION_AGE_MS = 3600000; // 1 hour
