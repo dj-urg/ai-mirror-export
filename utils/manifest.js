@@ -43,7 +43,9 @@ export const SCHEMA_VERSIONS = Object.freeze({
   mistral_messages: '1.0.0',
   mistral_sources: '1.0.0',
   mistral_messages_canonical: '1.0.0',
-  google_ai_mode: '1.0.0',
+  // 1.1.0: `conversation_id` column added (the search query), so AI Mode
+  // exports stop being named `unknown` and canonical rows carry a real id.
+  google_ai_mode: '1.1.0',
   google_ai_mode_canonical: '1.0.0',
   google_ai_overview: '1.0.0',
   google_ai_overview_canonical: '1.0.0',

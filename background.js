@@ -129,6 +129,8 @@ function resolveConversationId(conversationData) {
     || conversationData.id
     || conversationData.conversationId
     || conversationData.query
+    // Google AI Mode payloads from before 3.0.0 carried only a title.
+    || conversationData.conversation_title
     || null;
 }
 
@@ -379,10 +381,12 @@ const GoogleSearchHandler = {
     }
     if (data.mode === 'ai_mode') {
       if (!Array.isArray(data.turns) || data.turns.length === 0) return [];
+      const aiModeConversationId = data.conversation_id || data.conversation_title || '';
       return data.turns.map((turn, i) => {
         const sources = Array.isArray(turn.sources) ? turn.sources : [];
         const turnText = turn.text || '';
         return {
+          conversation_id: aiModeConversationId,
           conversation_title: data.conversation_title || '',
           source_page_url: data.source_page_url || '',
           captured_at: turn.captured_at || data.captured_at || '',
@@ -430,13 +434,14 @@ const GoogleSearchHandler = {
     const rows = [];
     if (data.mode === 'ai_mode') {
       const turns = Array.isArray(data.turns) ? data.turns : [];
+      const aiModeConversationId = data.conversation_id || data.conversation_title || '';
       turns.forEach((turn, i) => {
         const srcs = Array.isArray(turn.sources) ? turn.sources : [];
         for (const s of srcs) {
           if (!s || !s.url) continue;
           rows.push({
             mode: 'ai_mode',
-            conversation_id: data.conversation_title || '',
+            conversation_id: aiModeConversationId,
             turn_index: typeof turn.index === 'number' ? turn.index : i,
             source_page_url: data.source_page_url || '',
             captured_at: turn.captured_at || data.captured_at || '',
@@ -702,8 +707,8 @@ const CANONICAL_MAPPINGS = {
     model_identifier: r => r.message_type || ''
   },
   google_ai_mode: {
-    consumed: new Set(['conversation_title', 'turn_index', 'role', 'text', 'text_cleaned', 'captured_at']),
-    conversation_id: r => r.conversation_title,
+    consumed: new Set(['conversation_id', 'turn_index', 'role', 'text', 'text_cleaned', 'captured_at']),
+    conversation_id: r => r.conversation_id,
     message_id: r => `turn_${r.turn_index}`,
     parent_message_id: () => '',
     turn_index: r => r.turn_index,

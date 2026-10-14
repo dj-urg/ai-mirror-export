@@ -677,6 +677,7 @@ export const SCHEMAS = {
         required: ['donor_id'],
         columns: {
             ...DONOR_COLUMNS,
+            conversation_id: { type: 'string', optional: true },
             conversation_title: { type: 'string', optional: true },
             source_page_url: { type: 'string', optional: true },
             captured_at: { type: 'iso_timestamp', optional: true },

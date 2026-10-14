@@ -58,6 +58,7 @@ Every CSV carries a `schema_version` column (per file type) next to `extractor_v
 |---|---|---|
 | `deepseek_messages` | 1.1.0 | `model_class` and `model_name` (always empty: DeepSeek's API carries the model under `model`) replaced by a single `model` column. The canonical `model_identifier` is read from the same field. |
 | `deepseek_sources` | 1.1.0 | `cite_index` added (DeepSeek's citation number for the result, when present); `fragment_id` is now always a string. |
+| `google_ai_mode` | 1.1.0 | `conversation_id` column added: the search query from the page URL, the same identifier classic AI Overview uses. It names the ZIP and the files (previously `unknown`), is the manifest's `conversation_id`, and is the `conversation_id` in the canonical and sources rows (previously the first user turn's text, via `conversation_title`, which is kept as a column). |
 
 All other schemas remain at 1.0.0.
 

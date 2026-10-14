@@ -2,30 +2,30 @@
   "manifest_schema_version": "1.1.0",
   "extractor_version": "3.0.0",
   "platform": "google_search",
-  "conversation_id": null,
+  "conversation_id": "explain plate tectonics",
   "api_format": null,
   "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
   "donor_id_type": "persistent",
   "download_time": "2026-04-13T12:00:00.000Z",
   "files": [
     {
-      "filename": "google_ai_mode_unknown_2026-04-13T12-00-00Z.csv",
+      "filename": "google_ai_mode_explainplatetectonics_2026-04-13T12-00-00Z.csv",
       "schema": "google_ai_mode",
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "rows": 2,
-      "bytes": 823,
-      "sha256": "53e571f324319cf01c17c0d6509abc474a5e659184dedf69e8fbef4a3471a921"
+      "bytes": 907,
+      "sha256": "9f72b46fb127364e7cfcc801c48ce7d85f9655031ad5523ae40c7a1ccb846d56"
     },
     {
-      "filename": "google_ai_mode_canonical_unknown_2026-04-13T12-00-00Z.csv",
+      "filename": "google_ai_mode_canonical_explainplatetectonics_2026-04-13T12-00-00Z.csv",
       "schema": "google_ai_mode_canonical",
       "schema_version": "1.0.0",
       "rows": 2,
-      "bytes": 1219,
-      "sha256": "503e27bcdd96410f770eba6be2eb2893646e628195e8ee2389f747ddbe5a5ecb"
+      "bytes": 1341,
+      "sha256": "8e79adf252cb84dd7c3aeab837ee4682e605cd1a980d3365f625579d0778aece"
     },
     {
-      "filename": "google_sources_unknown_2026-04-13T12-00-00Z.csv",
+      "filename": "google_sources_explainplatetectonics_2026-04-13T12-00-00Z.csv",
       "schema": "google_sources",
       "schema_version": "1.0.0",
       "rows": 1,
@@ -34,11 +34,15 @@
     }
   ],
   "telemetry": {
-    "pii_scrub_enabled": false,
-    "pii_scrub_options": {},
+    "pii_scrub_enabled": true,
+    "pii_scrub_options": {
+      "URL": false
+    },
     "pii_ruleset_version": "1.0.0",
-    "pii_redactions_total": 0,
-    "pii_redactions_by_type": {},
+    "pii_redactions_total": 2,
+    "pii_redactions_by_type": {
+      "EMAIL": 2
+    },
     "include_donor_context": true,
     "orphaned_nodes": 0,
     "validation": {

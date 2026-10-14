@@ -408,6 +408,10 @@
     turns.forEach(t => { t.captured_at = capturedAt; });
     return {
       mode: 'ai_mode',
+      // Stable id for file names, the manifest and the conversation_id
+      // column: the search query from the URL, exactly as classic AI
+      // Overview uses its query. The title stays the first user turn.
+      conversation_id: query || '',
       conversation_title: (firstUser && firstUser.text) || query || '',
       source_page_url: sourceUrl,
       captured_at: capturedAt,
