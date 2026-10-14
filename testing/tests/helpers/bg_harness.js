@@ -243,6 +243,8 @@ export const PLATFORM_SCENARIOS = Object.freeze([
     fixture: 'chatgpt_golden_v1.json', senderUrl: 'https://chatgpt.com/c/00000000-0000-4000-8000-0000000000c1' },
   { id: 'chatgpt_meta', platform: 'chatgpt', messageType: 'CHATGPT_CONVERSATION_DATA',
     fixture: 'chatgpt_meta_golden_v1.json', senderUrl: 'https://chatgpt.com/c/00000000-0000-4000-8000-0000000000c2' },
+  { id: 'chatgpt_branch', platform: 'chatgpt', messageType: 'CHATGPT_CONVERSATION_DATA',
+    fixture: 'chatgpt_branch_golden_v1.json', senderUrl: 'https://chatgpt.com/c/00000000-0000-4000-8000-0000000000c3' },
   { id: 'claude', platform: 'claude', messageType: 'CLAUDE_CONVERSATION_DATA',
     fixture: 'claude_golden_v1.json', senderUrl: 'https://claude.ai/chat/11111111-2222-3333-4444-555555555555' },
   { id: 'claude_rich', platform: 'claude', messageType: 'CLAUDE_CONVERSATION_DATA',

@@ -1,0 +1,82 @@
+{
+ "conversation_id": "00000000-0000-4000-8000-0000000000c3",
+ "title": "Synthetic branched chat",
+ "create_time": 1767225600,
+ "update_time": 1767225800,
+ "default_model_slug": "gpt-4o",
+ "current_node": "a1b",
+ "mapping": {
+  "root": {
+   "id": "root",
+   "message": null,
+   "parent": null,
+   "children": [
+    "u1"
+   ]
+  },
+  "u1": {
+   "id": "u1",
+   "message": {
+    "id": "u1",
+    "author": {
+     "role": "user"
+    },
+    "content": {
+     "content_type": "text",
+     "parts": [
+      "Name one RFC about CSV."
+     ]
+    },
+    "create_time": 1767225610,
+    "metadata": {}
+   },
+   "parent": "root",
+   "children": [
+    "a1",
+    "a1b"
+   ]
+  },
+  "a1": {
+   "id": "a1",
+   "message": {
+    "id": "a1",
+    "author": {
+     "role": "assistant"
+    },
+    "content": {
+     "content_type": "text",
+     "parts": [
+      "The first answer, later regenerated."
+     ]
+    },
+    "create_time": 1767225620,
+    "metadata": {
+     "model_slug": "gpt-4o"
+    }
+   },
+   "parent": "u1",
+   "children": []
+  },
+  "a1b": {
+   "id": "a1b",
+   "message": {
+    "id": "a1b",
+    "author": {
+     "role": "assistant"
+    },
+    "content": {
+     "content_type": "text",
+     "parts": [
+      "RFC 4180 describes the CSV format."
+     ]
+    },
+    "create_time": 1767225700,
+    "metadata": {
+     "model_slug": "gpt-4o"
+    }
+   },
+   "parent": "u1",
+   "children": []
+  }
+ }
+}

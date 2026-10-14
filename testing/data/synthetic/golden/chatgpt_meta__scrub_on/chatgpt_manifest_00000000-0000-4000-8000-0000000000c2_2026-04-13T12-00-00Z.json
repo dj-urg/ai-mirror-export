@@ -19,18 +19,18 @@
     {
       "filename": "chatgpt_messages_00000000-0000-4000-8000-0000000000c2_2026-04-13T12-00-00Z.csv",
       "schema": "chatgpt_messages",
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "rows": 2,
-      "bytes": 640,
-      "sha256": "2a4d91752b096ad2bb2a30e6126c500b7b5cf66122b9f1b941e0c2d2b7d38a0f"
+      "bytes": 666,
+      "sha256": "edc8669c2c68801625571e9d863fc67588f9bdf2c8774576799ef16840f1b26a"
     },
     {
       "filename": "chatgpt_messages_canonical_00000000-0000-4000-8000-0000000000c2_2026-04-13T12-00-00Z.csv",
       "schema": "chatgpt_messages_canonical",
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "rows": 2,
-      "bytes": 1024,
-      "sha256": "0247801933e6d872a1e7ad09725139dac8c9004fcd0a585a85daa8091b9e58ea"
+      "bytes": 1074,
+      "sha256": "24339040273e1148f09584956fbcb6e8670509a0af648fb5e3f002b2f12379b1"
     },
     {
       "filename": "chatgpt_donor_context_00000000-0000-4000-8000-0000000000c2_2026-04-13T12-00-00Z.csv",

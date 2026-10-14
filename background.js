@@ -977,7 +977,8 @@ async function handleConversationData(message) {
         content_type: m.content_type,
         text: m.text,
         create_time: m.create_time,
-        model_slug: m.model_slug
+        model_slug: m.model_slug,
+        on_visible_path: m.on_visible_path
       }));
       perSchemaValidation.chatgpt_messages = validateRows(msgRowsForValidation, 'chatgpt_messages');
 

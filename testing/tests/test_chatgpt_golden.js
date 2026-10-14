@@ -73,5 +73,25 @@ assert('metadata.num_messages equals extracted messages length',
   result.metadata.num_messages === result.messages.length,
   `${result.metadata.num_messages} vs ${result.messages.length}`);
 
+// Branched fixture: u1 has two assistant children; current_node points at the
+// regenerated one. Every branch is exported; on_visible_path marks the chain
+// from current_node to the root.
+const FIXTURE2 = path.join(__dirname, '..', 'data', 'synthetic', 'chatgpt_branch_golden_v1.json');
+const result2 = extractChatGPTConversation(JSON.parse(fs.readFileSync(FIXTURE2, 'utf8')), {
+  donorId: 'golden-donor', donorIdType: 'persistent', downloadTime: '2026-01-01T00:00:00.000Z'
+});
+const byId = (id) => result2.messages.find(m => m.node_id === id);
+assert('branch: all three messages exported', result2.messages.length === 3, String(result2.messages.length));
+assert('branch: u1 on visible path', byId('u1').on_visible_path === true);
+assert('branch: a1 (replaced) off visible path', byId('a1').on_visible_path === false);
+assert('branch: a1b on visible path', byId('a1b').on_visible_path === true);
+assert('branch: messages header ends with on_visible_path', result2.messagesCSV.split(/\r\n/)[0].endsWith(',on_visible_path'));
+const canonA1 = result2.messagesCanonicalCSV.split(/\r\n/).find(l => l.includes(',a1,'));
+assert('branch: canonical json carries on_visible_path false', canonA1 && canonA1.includes('""on_visible_path"":false'));
+assert('no current_node: every message visible', result.messages.every(m => m.on_visible_path === true));
+assert('messages-array format: every message visible',
+  extractChatGPTConversation({ conversation_id: 'x', messages: [{ id: 'm1', author: { role: 'user' }, content: { content_type: 'text', parts: ['hi'] } }] }, {})
+    .messages[0].on_visible_path === true);
+
 console.log(`\nChatGPT golden test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

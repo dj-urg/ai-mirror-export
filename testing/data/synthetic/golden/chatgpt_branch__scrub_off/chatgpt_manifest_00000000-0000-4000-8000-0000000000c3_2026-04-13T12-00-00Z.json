@@ -1,0 +1,55 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "3.0.0",
+  "platform": "chatgpt",
+  "conversation_id": "00000000-0000-4000-8000-0000000000c3",
+  "api_format": "mapping",
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "chatgpt_metadata_00000000-0000-4000-8000-0000000000c3_2026-04-13T12-00-00Z.csv",
+      "schema": "chatgpt_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 499,
+      "sha256": "351bee2af5780d56da100c9fddc56cff83f733122e712131f747facc923fff64"
+    },
+    {
+      "filename": "chatgpt_messages_00000000-0000-4000-8000-0000000000c3_2026-04-13T12-00-00Z.csv",
+      "schema": "chatgpt_messages",
+      "schema_version": "1.1.0",
+      "rows": 3,
+      "bytes": 953,
+      "sha256": "e97cab976b71ad57b54d2aabb526fbed25607da4f53267057e08d5203cb24267"
+    },
+    {
+      "filename": "chatgpt_messages_canonical_00000000-0000-4000-8000-0000000000c3_2026-04-13T12-00-00Z.csv",
+      "schema": "chatgpt_messages_canonical",
+      "schema_version": "1.1.0",
+      "rows": 3,
+      "bytes": 1578,
+      "sha256": "f64f80d2db06d6dcd900b04894de276ed77bb668f968496ffdf58fbe9884ec2f"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "chatgpt_messages": {
+        "valid": true,
+        "total_rows": 3,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

@@ -105,6 +105,32 @@ function computeNodeDepths(mapping) {
 }
 
 /**
+ * The set of node ids on the conversation's visible path: the chain from
+ * `current_node` up through each node's `parent`. ChatGPT keeps every branch
+ * (edited prompts, regenerated answers) in the mapping; this lets researchers
+ * filter to what the user last saw. Returns null when the payload has no
+ * usable `current_node` (including the flat messages-array format), in which
+ * case every message counts as visible.
+ */
+function visiblePathSet(conversationData) {
+    const mapping = conversationData.mapping;
+    const current = conversationData.current_node;
+    if (!mapping || typeof mapping !== 'object' || typeof current !== 'string' || !mapping[current]) return null;
+    const path = new Set();
+    let id = current;
+    let guard = 0;
+    while (id && mapping[id] && !path.has(id) && guard++ < 100000) {
+        path.add(id);
+        id = mapping[id].parent || null;
+    }
+    return path;
+}
+
+function isOnVisiblePath(pathSet, nodeId) {
+    return pathSet === null ? true : pathSet.has(nodeId);
+}
+
+/**
  * Normalize a conversation into a unified flat array of node objects,
  * regardless of whether the data uses the old mapping format or the new
  * messages array format.
@@ -350,6 +376,7 @@ function extractConversationMessages(conversationData) {
     const messages = [];
     const nodes = normalizeMessages(conversationData);
     const conversationId = conversationData.conversation_id || conversationData.id || '';
+    const visible = visiblePathSet(conversationData);
 
     for (const { nodeId, message, parent, depth } of nodes) {
         if (!message) continue;
@@ -379,7 +406,8 @@ function extractConversationMessages(conversationData) {
                 ? Boolean(message.end_turn) : '',
             is_visually_hidden: Boolean(message.metadata?.is_visually_hidden_from_conversation),
             model_slug: message.metadata?.resolved_model_slug || message.metadata?.model_slug || '',
-            tool_name: authorRole === 'tool' ? (message.author?.name || '') : ''
+            tool_name: authorRole === 'tool' ? (message.author?.name || '') : '',
+            on_visible_path: isOnVisiblePath(visible, nodeId)
         });
     }
 
@@ -406,7 +434,8 @@ function generateMessagesCSV(messages) {
         'text',
         'text_cleaned',
         'create_time',
-        'model_slug'
+        'model_slug',
+        'on_visible_path'
     ];
 
     const rows = [headers.join(',')];
@@ -428,7 +457,8 @@ function generateMessagesCSV(messages) {
             text: msg.text,
             text_cleaned: msg.text_cleaned,
             create_time: msg.create_time,
-            model_slug: msg.model_slug
+            model_slug: msg.model_slug,
+            on_visible_path: msg.on_visible_path
         };
         rows.push(headers.map(h => escapeCSVField(row[h])).join(','));
     }
@@ -468,7 +498,8 @@ function generateMessagesCanonicalCSV(messages, { donorId, donorIdType, download
                 has_image: msg.has_image,
                 image_ids: msg.image_ids,
                 status: msg.status,
-                end_turn: msg.end_turn
+                end_turn: msg.end_turn,
+                on_visible_path: msg.on_visible_path
             })
         };
         rows.push(headers.map(h => escapeCSVField(row[h])).join(','));

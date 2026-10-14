@@ -167,6 +167,7 @@ export const SCHEMAS = {
             text_cleaned: { type: 'string', optional: true },
             create_time: { type: 'iso_timestamp', optional: true },
             model_slug: { type: 'string', optional: true },
+            on_visible_path: { type: 'boolean', optional: true },
             ...VERSION_COLUMNS,
         },
     },

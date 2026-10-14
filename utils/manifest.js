@@ -10,11 +10,13 @@ export const EXTRACTOR_VERSION = '3.0.0';
 
 export const SCHEMA_VERSIONS = Object.freeze({
   chatgpt_metadata: '1.0.0',
-  chatgpt_messages: '1.0.0',
+  // 1.1.0: on_visible_path column (chain from current_node; all branches exported).
+  chatgpt_messages: '1.1.0',
   chatgpt_sources: '1.0.0',
   chatgpt_message_urls: '1.0.0',
   chatgpt_donor_context: '1.0.0',
-  chatgpt_messages_canonical: '1.0.0',
+  // 1.1.0: on_visible_path key in platform_specific_json.
+  chatgpt_messages_canonical: '1.1.0',
   claude_metadata: '1.0.0',
   // 1.1.0: thinking_summary, thinking_mode and on_visible_path columns.
   claude_messages: '1.1.0',
