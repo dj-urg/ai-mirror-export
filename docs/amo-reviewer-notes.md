@@ -18,10 +18,10 @@ No file is fetched from the network; no code is generated at runtime.
 
 Because the same files can therefore reach a page up to three times
 (manifest, registered script, executeScript), both Perplexity files are
-idempotent: `platforms/perplexity/inject.js` (line 24) returns early
+idempotent: `platforms/perplexity/inject.js` (line 25) returns early
 when a non-enumerable `__aiChatExporterPerplexityInjectInstalled` flag
 is already set on `window`, and `platforms/perplexity/content.js` (line
-20) does the same in its isolated-world global. A second evaluation
+21) does the same in its isolated-world global. A second evaluation
 therefore wraps nothing and registers no second listener.
 
 **Root cause status: not fully identified.** The code comment above
@@ -122,10 +122,11 @@ local blob URL.
 endpoint rejects cookie-only requests, so
 `platforms/deepseek/content.js` reads the bearer token DeepSeek itself
 stores in the page's `localStorage` (`userToken`; `readUserToken`, line
-146) and attaches it to that one same-origin request (line 200). The
+146) and attaches it to that one same-origin request (line 215). The
 extension repeats the site's own request with the site's own credential;
 the token is never stored, logged, exported or sent anywhere else. The
-refresh runs when the popup opens and when the user exports, because
+refresh runs when the popup opens (at most once every 30 seconds while
+the popup stays open and polls) and when the user exports, because
 DeepSeek streams new replies without re-requesting its history.
 
 `data_collection_permissions` is set to `"none"`.

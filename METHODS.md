@@ -14,7 +14,7 @@ Each platform's content script runs only on that platform's own origin (see `man
 |---|---|---|
 | ChatGPT, Copilot | A `window.fetch` hook in the page context observes the site's own conversation API response. | none |
 | Claude, Grok, Mistral | `window.fetch` and `XMLHttpRequest` hooks, plus a same-origin re-fetch of the open conversation through the site's own API when the hook has not seen it (page load, in-app navigation, popup open, export). | the site's own conversation endpoint |
-| DeepSeek | As above. DeepSeek's history endpoint rejects cookie-only requests, so the content script reads the site's own bearer token from the page's `localStorage` (`userToken`) and attaches it to that one same-origin request. The token is never stored, logged or exported. The export always refreshes first, because DeepSeek streams new replies without re-requesting its history. | `/api/v0/chat/history_messages` |
+| DeepSeek | As above. DeepSeek's history endpoint rejects cookie-only requests, so the content script reads the site's own bearer token from the page's `localStorage` (`userToken`) and attaches it to that same-origin request. The token is never stored, logged or exported. Because DeepSeek streams new replies without re-requesting its history, the conversation is refreshed when the popup opens (at most once every 30 seconds while the popup stays open and polls) and always once more at export. | `/api/v0/chat/history_messages` |
 | Perplexity | `window.fetch` and `XMLHttpRequest` hooks on `/rest/thread/<uuid>`; paginated thread pages are merged by thread id. Read/write tokens are stripped from the payload in the page context before it is forwarded. | none |
 | Microsoft 365 Copilot | A `WebSocket` proxy observes the Chathub frames; messages are assembled per conversation and exported once the reply is complete. | none |
 | Google AI Overview / AI Mode | Read from the rendered page (DOM); see "Google Search extraction". For a classic AI Overview that is not yet in the DOM, the content script requests the same search URL once per page and query (never on the popup's status poll) and parses the server HTML. AI Mode is never re-requested. | the user's own search URL, at most once |
@@ -59,7 +59,7 @@ The API returns messages newest-first; they are reversed to conversation order. 
 
 ### Google Search extraction
 
-Classic AI Overview is parsed from a re-fetched HTML snapshot of the current search URL (fetched with the donor's cookies) so that extraction anchors on Google's own semantic markers rather than live-DOM CSS classes. AI Mode is parsed from the live DOM only because its content is injected client-side and is not present in the server HTML response. The overview container selector fallback chain, tried in order, is:
+Classic AI Overview is read from the live DOM first; only when the overview is not in the DOM does the content script request the current search URL once (with the donor's cookies) and parse the server HTML, anchoring on Google's own semantic markers rather than CSS classes. AI Mode is parsed from the live DOM only because its content is injected client-side and is not present in the server HTML response. The overview container selector fallback chain, tried in order, is:
 
 1. `[data-attrid*="SrpGenSumSummary"]`
 2. `[data-attrid*="AioHostElement"]`

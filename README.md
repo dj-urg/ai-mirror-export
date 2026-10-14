@@ -71,26 +71,28 @@ Full column schemas live in [`METHODS.md`](METHODS.md) and [`STUDENT_GUIDE.md`](
 
 ```mermaid
 flowchart LR
-    A["Chat site<br/>(e.g. chatgpt.com)"] -->|API responses<br/>intercepted in-page| B[Content script]
-    B -->|postMessage| C[Extension popup]
-    C -->|browser.downloads| D[("ZIP in your<br/>Downloads folder")]
+    A["Chat site<br/>(e.g. chatgpt.com)"] -->|API responses<br/>observed in-page| B[Content script]
+    P[Extension popup] -->|Export| B
+    B -->|runtime message| C[Background script]
+    C -->|CSV + ZIP, browser.downloads| D[("ZIP in your<br/>Downloads folder")]
 
     subgraph Device["Your device — nothing leaves it"]
         A
         B
+        P
         C
         D
     end
 ```
 
-The extension hooks the chat site's own `fetch` calls, reads the conversation payload the site has already loaded for you, formats it as CSV, bundles the CSVs plus a manifest with SHA-256 checksums into a ZIP, and triggers a browser download. There is no server component.
+The extension hooks the chat site's own `fetch` calls (a WebSocket on Microsoft 365 Copilot, the rendered page on Google), reads the conversation payload the site has already loaded for you, and, when you click Export, hands it to the background script, which formats it as CSV, bundles the CSVs plus a manifest with SHA-256 checksums into a ZIP, and triggers a browser download. There is no server component.
 
 **What the extension does *not* do:**
 
-- No requests to anyone but the chat site you are on. The popup and background make no network requests at all (CSP `connect-src 'none'`); the per-site content scripts only make same-origin requests to that site, such as re-fetching the conversation you have open through the site's own API. On DeepSeek that request carries the site's own login token read from the page's local storage, because DeepSeek rejects cookie-only requests; the token is never stored or exported. On Google the search page you are viewing is re-requested at most once per page and query.
+- No requests to anyone but the chat site you are on. The popup and background make no network requests at all (CSP `connect-src 'none'`); the per-site content scripts only make same-origin requests to that site, such as re-fetching the conversation you have open through the site's own API. On DeepSeek that request carries the site's own login token read from the page's local storage, because DeepSeek rejects cookie-only requests; it is made when the popup opens (at most once every 30 seconds while it stays open) and at export, and the token is never stored or exported. On Google the search page you are viewing is re-requested at most once per page and query.
 - No telemetry, analytics, or crash reporting.
 - No account linking. The `donor_id` is a UUID generated locally on first use, never tied to your ChatGPT / Claude / Microsoft / Google account.
-- No DOM scraping of chat sites. The exporter uses the site's own API payloads, so what you see is what you export. The one exception is Google Search, where the AI Overview exists only as rendered HTML and is read from the page.
+- No DOM scraping of chat sites. The exporter uses the site's own API payloads. That means the export can hold slightly more than the screen shows: edited prompts and regenerated answers are included and marked with `on_visible_path`. The one exception to API-based capture is Google Search, where the AI Overview exists only as rendered HTML and is read from the page.
 
 **Permissions, and why:**
 
@@ -137,7 +139,7 @@ The real risk is that your past chats may contain sensitive content you've forgo
 
 ## How this tool is verified
 
-Every commit runs the Node test suite (unit tests, byte-exact golden exports through the real `background.js` for all nine platforms with scrubbing off and on, a PII sweep that plants secrets in every fixture and searches every ZIP entry, schema, version, message-security and settings checks) plus ESLint, `web-ext lint`, a build check and an accessibility baseline of every popup state. Exports are additionally compared against real captures with an external toolkit. [`docs/validation.md`](docs/validation.md) lists the tests, the last results, the real-data method and its log, and what is not yet validated.
+CI runs the Node test suite on every push (unit tests, byte-exact golden exports through the real `background.js` for all nine platforms with scrubbing off and on, a PII sweep that plants secrets in every fixture and searches every ZIP entry, schema, version, message-security and settings checks) plus ESLint, `web-ext lint` and a secret scan. Before a release the maintainer also runs the `web-ext build` check and the Playwright/axe accessibility baseline of every popup state locally. Exports are additionally compared against real captures with an external toolkit. [`docs/validation.md`](docs/validation.md) lists the tests, the last results, the real-data method and its log, and what is not yet validated.
 
 ## For researchers
 

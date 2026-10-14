@@ -178,6 +178,21 @@
 
   let activeFetchInFlight = null;
 
+  // The popup polls GET_CAPTURED_CONVERSATIONS every 2 s while it is open.
+  // A forced refresh must not turn that into a history request every 2 s:
+  // force at most once per conversation per interval; otherwise the cached
+  // copy is served (or fetched once if nothing is cached yet).
+  const FORCE_REFRESH_INTERVAL_MS = 30000;
+  const lastForcedAt = new Map(); // conversation id -> timestamp of the last forced refresh
+
+  function shouldForceRefresh(convId) {
+    const now = Date.now();
+    const last = lastForcedAt.get(convId) || 0;
+    if (now - last < FORCE_REFRESH_INTERVAL_MS) return false;
+    lastForcedAt.set(convId, now);
+    return true;
+  }
+
   // DeepSeek's router is `/a/:agentId/s/:sessionId`. The agent id is usually
   // `chat` but other agents exist, so any slug is accepted.
   function extractConversationIdFromPath() {
@@ -408,9 +423,10 @@
     }
 
     if (message.type === 'GET_CAPTURED_CONVERSATIONS') {
-      // Always refresh when the popup opens on a chat page: DeepSeek does
-      // not re-request history for an open chat, so messages sent after the
-      // first capture would otherwise never reach the cache.
+      // Refresh when the popup opens on a chat page (at most once per
+      // 30 s while it stays open and polls): DeepSeek does not re-request
+      // history for an open chat, so messages sent after the first capture
+      // would otherwise never reach the cache.
       const urlConvId = extractConversationIdFromPath();
 
       const respond = () => {
@@ -432,7 +448,7 @@
       };
 
       if (urlConvId) {
-        activelyFetchAndStore(urlConvId, { force: true }).finally(respond);
+        activelyFetchAndStore(urlConvId, { force: shouldForceRefresh(urlConvId) }).finally(respond);
         return true;
       }
       respond();
@@ -451,8 +467,9 @@
           .catch(error => sendResponse({ success: false, error: error.message }));
       };
 
-      // Refresh before exporting so the ZIP reflects the latest state of the
-      // chat; fall back to the cached copy if the refresh fails.
+      // Always refresh before exporting so the ZIP reflects the latest state
+      // of the chat; fall back to the cached copy if the refresh fails.
+      lastForcedAt.set(conversationId, Date.now());
       activelyFetchAndStore(conversationId, { force: true }).then(data => {
         const fresh = data || capturedConversations.get(conversationId);
         if (!fresh) {
