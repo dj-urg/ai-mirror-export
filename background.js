@@ -5,10 +5,6 @@
  * and manages CSV generation and downloads
  */
 
-// Load breadcrumb: this prints before any imports run, so if it never shows
-// up in the Inspect console, background.js isn't being parsed/loaded at all.
-try { console.log('[Background] background.js top-of-file reached'); } catch (_) {}
-
 import {
   extractChatGPTConversation,
   generateMessagesCSV,
@@ -1366,7 +1362,7 @@ self.addEventListener('unhandledrejection', event => {
 (async function ensurePerplexityContentScripts() {
   const scripting = typeof browser !== 'undefined' ? browser.scripting : null;
   if (!scripting || typeof scripting.registerContentScripts !== 'function') {
-    console.warn('[Background] browser.scripting unavailable; relying on manifest content_scripts');
+    _console.warn('[Background] browser.scripting unavailable; relying on manifest content_scripts');
     return;
   }
 
@@ -1398,9 +1394,9 @@ self.addEventListener('unhandledrejection', event => {
       await scripting.unregisterContentScripts({ ids: Array.from(existingIds) });
     }
     await scripting.registerContentScripts(scripts);
-    console.log('[Background] Perplexity content scripts registered via scripting API');
+    _console.log('[Background] Perplexity content scripts registered via scripting API');
   } catch (err) {
-    console.error('[Background] Failed to register Perplexity content scripts:', err);
+    _console.error('[Background] Failed to register Perplexity content scripts:', err);
   }
 
   // Belt-and-suspenders: also hook navigation and inject on each page load.
@@ -1413,7 +1409,7 @@ self.addEventListener('unhandledrejection', event => {
         if (!tab || typeof tab.url !== 'string') return;
         if (!tab.url.startsWith('https://www.perplexity.ai/')) return;
         if (info.status !== 'loading') return;
-        console.log('[Background] perplexity tab loading, injecting via executeScript', { tabId });
+        _console.log('[Background] perplexity tab loading, injecting via executeScript', { tabId });
         await scripting.executeScript({
           target: { tabId },
           files: ['shared/message-security.js', 'platforms/perplexity/inject.js'],
@@ -1426,14 +1422,14 @@ self.addEventListener('unhandledrejection', event => {
           world: 'ISOLATED',
           injectImmediately: true
         });
-        console.log('[Background] perplexity executeScript succeeded for tab', tabId);
+        _console.log('[Background] perplexity executeScript succeeded for tab', tabId);
       } catch (err) {
-        console.error('[Background] perplexity executeScript failed:', err && (err.message || err));
+        _console.error('[Background] perplexity executeScript failed:', err && (err.message || err));
       }
     });
-    console.log('[Background] perplexity tab-navigation injector installed');
+    _console.log('[Background] perplexity tab-navigation injector installed');
   } catch (err) {
-    console.error('[Background] could not install tab-navigation injector:', err);
+    _console.error('[Background] could not install tab-navigation injector:', err);
   }
 })();
 
@@ -1560,5 +1556,5 @@ try {
     } catch (_) { /* ignore */ }
   })();
 } catch (err) {
-  console.error('[Background] could not install icon-state listeners:', err);
+  _console.error('[Background] could not install icon-state listeners:', err);
 }
