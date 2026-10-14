@@ -171,8 +171,8 @@ Requires Node 20+.
 The `dev/` directory contains a static HTML harness that renders the popup in every possible state (supported, ready, loading, each error, consent gate) over mocked `browser.*` APIs. All fixtures are synthetic — no real conversations.
 
 ```bash
-python3 -m http.server 8000
-# then open http://localhost:8000/dev/harness.html
+python3 -m http.server 8766
+# then open http://localhost:8766/dev/harness.html
 ```
 
 The harness supports light/dark/forced-theme switching and 320 / 380 / 600 px viewports for responsive checks. See [`dev/README.md`](dev/README.md). The harness is excluded from `web-ext build`.

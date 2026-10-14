@@ -12,19 +12,24 @@ The harness is static HTML; it just needs a local HTTP server because
 From the repo root:
 
 ```bash
-python3 -m http.server 8000
-# or:  npx http-server -p 8000
+python3 -m http.server 8766
+# or:  npx http-server -p 8766
 ```
 
-Then open <http://localhost:8000/dev/harness.html>.
+Then open <http://localhost:8766/dev/harness.html>.
 
 ## What you get
 
-- **State preset** dropdown — every state the popup can land in (supported +
-  ready for each platform, loading, each error, consent gate).
-- **Export outcome** dropdown — click Export in the popup; the mock resolves
-  or rejects per this setting. Covers success, hang, network error, rate
-  limit, no-data, generic export failure.
+- **State preset** dropdown — every state the popup can land in: ready and
+  idle for each of the nine platforms, loading, each error, sign-out, the
+  consent gate, and the export outcomes (those presets click Export for
+  you, including the review-your-export step with and without a study
+  code).
+- **Export outcome** dropdown — click Export in the popup; the mock answers
+  per this setting: success, success confirmed by background, hang, network
+  error, missing content script, no data, generic failure, the four
+  background outcomes (download failed, processing failed, empty, invalid)
+  and the popup's own rate limiter.
 - **Theme** — Light / Dark (forced via `data-force-color-scheme`) / System.
 - **Viewport width** — 320, 380, 600 to check the popup's responsive range.
 - **Event log** — side panel shows every call the popup makes into the
@@ -39,9 +44,10 @@ Then open <http://localhost:8000/dev/harness.html>.
   on disk is never modified.
 - `mock-browser.js` installs `window.browser` with just enough surface to
   satisfy `popup.js`: `tabs.{query, sendMessage, reload, onUpdated}`,
-  `runtime.{id, onMessage, sendMessage, getURL, getManifest}`,
-  `storage.local.{get, set, remove, clear}`, `downloads.download`,
-  `action.{setIcon, setTitle, setBadgeText}`.
+  `runtime.{id, onMessage, sendMessage, getURL, getManifest}` (the
+  `onMessage` listeners are kept so the mock can deliver `EXPORT_RESULT`
+  broadcasts), `storage.local.{get, set, remove, clear}`,
+  `downloads.{download, show}`, `action.{setIcon, setTitle, setBadgeText}`.
 - `fixtures.js` holds the synthetic tab shapes and `GET_CAPTURED_CONVERSATIONS`
   responses for each state. **All data is fabricated — never put a real
   conversation here.**
@@ -55,15 +61,18 @@ Then open <http://localhost:8000/dev/harness.html>.
 
 ## Playwright / axe
 
-The harness is designed to be driven by Playwright for before/after
-screenshotting and automated axe runs. See `docs/manual-tests.md` (once that
-exists) for the current test matrix.
+`dev/baseline.mjs` drives the harness with Playwright (Firefox only):
+every state × light/dark, one PNG and one axe report per combination, plus
+the status-card text, review-card copy and focused element in each
+`.axe.json`. Run `npm run baseline -- --label <name>` and
+`npm run baseline:compare -- <before> <after>`; the run exits non-zero if
+any capture produced no axe result.
 
 Rough recipe:
 
 ```js
 // Playwright: iterate states and shoot
-await page.goto('http://localhost:8000/dev/harness.html');
+await page.goto('http://localhost:8766/dev/harness.html');
 for (const state of STATES) {
   await page.selectOption('#statePreset', state);
   await page.waitForFunction(() => {
