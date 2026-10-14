@@ -703,6 +703,18 @@ strong {
   overflow-wrap: break-word;
 }
 
+/* Elapsed counter under the status card (waiting states only). */
+.status-elapsed {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+  margin: calc(-1 * clamp(var(--space-sm), 2vw, var(--space-md))) 0 clamp(var(--space-md), 3vw, var(--space-lg));
+  padding-left: calc(4px + clamp(var(--space-sm), 2.5vw, var(--space-md)));
+}
+
+.status-elapsed[hidden] {
+  display: none;
+}
+
 /* Only show detail if it has content */
 .status-card__detail:not(:empty) {
   font-size: var(--font-size-sm);

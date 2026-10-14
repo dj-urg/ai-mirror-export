@@ -50,8 +50,8 @@
       <h1 class="popup-header__text">AI Chat Exporter</h1>
       <span class="preview-tag" title="Development preview build">Preview</span>
     </div>
-    <div class="popup-header__platform" id="platformBadge" aria-live="polite">
-      <!-- Platform badge inserted dynamically -->
+    <div class="popup-header__platform" id="platformBadge">
+      <!-- Platform badge inserted dynamically; rebuilt only when the platform changes -->
     </div>
   </header>
 
@@ -173,6 +173,11 @@
         </p>
       </div>
     </div>
+    <!-- Elapsed-time counter for waiting states. Lives outside the atomic
+         live region and is aria-hidden so screen readers are not re-read
+         the whole card every second; the text already says it may take a
+         few seconds. -->
+    <p class="status-elapsed" id="statusElapsed" aria-hidden="true" hidden></p>
 
     <!-- Review-your-export step. Shown once background.js confirms the
          download; invites the participant to look at the ZIP before
@@ -194,7 +199,7 @@
     </section>
 
     <!-- Google-specific capture tip (shown only on google.com/search pages) -->
-    <div class="google-tip" id="googleTip" hidden role="note" aria-live="polite">
+    <div class="google-tip" id="googleTip" hidden role="note">
       <svg class="google-tip__icon" aria-hidden="true" width="16" height="16" viewBox="0 0 20 20" fill="none"
         xmlns="http://www.w3.org/2000/svg">
         <path fill-rule="evenodd" clip-rule="evenodd"
@@ -208,7 +213,7 @@
     </div>
 
     <!-- File List Section -->
-    <div id="fileList" class="file-list" style="display: none;" role="status" aria-live="polite">
+    <div id="fileList" class="file-list" style="display: none;">
       <div class="file-list__header">
         <svg class="file-list__header-icon" aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"
           xmlns="http://www.w3.org/2000/svg">

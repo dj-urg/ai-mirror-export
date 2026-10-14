@@ -179,6 +179,15 @@ const state = {
     debounceTimeout: null
   },
 
+  // Last values written to DOM regions that are rebuilt on every poll, so
+  // unchanged content is not re-rendered (and never re-announced).
+  ui: {
+    badgeKey: null,
+    fileListKey: null,
+    googleTipVisible: null,
+    elapsedText: null
+  },
+
   // Capture wait state — tracks how long we've been waiting for a conversation
   capture: {
     waitingSince: null,   // timestamp when we first found no data for this ID
@@ -218,13 +227,12 @@ const CAPTURE_LOADING_TIMEOUT_MS = 15000;
  * @returns {string}
  */
 function formatStuckDetail({ elapsedMs, threshold, mechanism, platformName, stuck = false }) {
-  const secs = Math.max(0, Math.round(elapsedMs / 1000));
   const prefix = platformName ? `${platformName}: ` : '';
   if (!stuck) {
-    // Pre-threshold loading phase. Only surface the counter once we've been
-    // waiting a few seconds — showing "0s" or "1s" on first paint is noise.
-    const sinceLine = secs >= 3 ? ` (${secs}s)` : '';
-    return `${prefix}this usually takes a few seconds${sinceLine}.`;
+    // Pre-threshold loading phase. The elapsed seconds are shown by the
+    // separate #statusElapsed counter (see updateStatus), not here, so the
+    // live region's text stays stable while waiting.
+    return `${prefix}this usually takes a few seconds.`;
   }
   const threshSecs = Math.round(threshold / 1000);
   if (mechanism === 'reopen') {
@@ -486,6 +494,11 @@ function displayError(errorType, options = {}) {
 function updatePlatformBadge(platform) {
   const platformBadge = document.getElementById('platformBadge');
 
+  // Diff before write: the 2 s poll calls this every tick.
+  const key = platform ? `${platform.id}|${platform.name}` : null;
+  if (key === state.ui.badgeKey) return;
+  state.ui.badgeKey = key;
+
   if (!platform) {
     platformBadge.innerHTML = '';
     return;
@@ -526,10 +539,13 @@ function updatePlatformBadge(platform) {
  * @param {string} message - Main status message
  * @param {string} detail - Optional detail message (empty string or null to hide)
  */
-function updateStatus(type, message, detail = '') {
+function updateStatus(type, message, detail = '', { elapsedMs = null } = {}) {
   const statusCard = document.querySelector('.status-card');
   const statusMessage = document.getElementById('statusMessage');
   const statusDetail = document.getElementById('statusDetail');
+
+  // Elapsed counter outside the live region (diffed; aria-hidden).
+  updateElapsedCounter(elapsedMs);
 
   // Store current focus to maintain it during update
   const activeElement = document.activeElement;
@@ -602,6 +618,28 @@ function updateStatus(type, message, detail = '') {
 
   // Log status update for debugging
   _console.log(`Status updated: [${type}] ${message}${detail ? ' - ' + detail : ''}`);
+}
+
+/**
+ * Show "Ns" under the status card while a wait is in progress, or hide the
+ * counter. Only surfaces once a few seconds have passed ("0s" on first
+ * paint is noise). Writes the DOM only when the text changes.
+ * @param {number|null} elapsedMs
+ */
+function updateElapsedCounter(elapsedMs) {
+  const el = document.getElementById('statusElapsed');
+  if (!el) return;
+  const secs = typeof elapsedMs === 'number' ? Math.max(0, Math.round(elapsedMs / 1000)) : null;
+  const text = (secs !== null && secs >= 3) ? `Waiting for ${secs} seconds…` : null;
+  if (text === state.ui.elapsedText) return;
+  state.ui.elapsedText = text;
+  if (text === null) {
+    el.hidden = true;
+    el.textContent = '';
+  } else {
+    el.textContent = text;
+    el.hidden = false;
+  }
 }
 
 /**
@@ -701,6 +739,16 @@ function updateFilePreview(title) {
 
   const platformId = state.platform.id;
   const platformName = state.platform.name || platformId || 'conversation';
+
+  // Diff before write: the list depends only on platform + title.
+  const key = `${platformId}|${title || ''}`;
+  if (key === state.ui.fileListKey) {
+    fileList.style.display = 'block';
+    const notice = document.getElementById('dataNotice');
+    if (notice) notice.hidden = false;
+    return;
+  }
+  state.ui.fileListKey = key;
 
   let files;
   if (platformId === 'chatgpt') {
@@ -889,26 +937,23 @@ function updateFilePreview(title) {
 function hideFilePreview() {
   const fileList = document.getElementById('fileList');
   if (fileList) fileList.style.display = 'none';
+  state.ui.fileListKey = null;
 
   const dataNotice = document.getElementById('dataNotice');
   if (dataNotice) dataNotice.hidden = true;
 }
 
 /**
- * Show the Google-specific capture tip (close + reopen workflow).
- * Idempotent — safe to call every UI tick.
+ * Show or hide the Google-specific capture tip (close + reopen workflow).
+ * Writes the DOM only when visibility changes, so the 2 s poll does not
+ * flip `hidden` on every tick.
+ * @param {boolean} visible
  */
-function showGoogleTip() {
+function setGoogleTip(visible) {
+  if (visible === state.ui.googleTipVisible) return;
+  state.ui.googleTipVisible = visible;
   const el = document.getElementById('googleTip');
-  if (el) el.hidden = false;
-}
-
-/**
- * Hide the Google-specific capture tip.
- */
-function hideGoogleTip() {
-  const el = document.getElementById('googleTip');
-  if (el) el.hidden = true;
+  if (el) el.hidden = !visible;
 }
 
 // Reload prompt removed in the UX pass. Earlier builds exposed a
@@ -1250,11 +1295,11 @@ async function checkConversationData(tab, platform, conversationId) {
  * Update UI based on current tab and platform detection
  */
 async function checkAndUpdateUI() {
-  hideGoogleTip();    // Only re-shown below when the active tab is Google
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
     if (tabs.length === 0) {
+      setGoogleTip(false);
       displayError('NO_ACTIVE_TAB');
       updatePlatformBadge(null);
       return;
@@ -1275,6 +1320,7 @@ async function checkAndUpdateUI() {
     // reaches 'complete'.
     const urlLooksTemporary = !url || url === 'about:blank' || url.startsWith('about:') || url.startsWith('data:');
     if (tab.status === 'loading' || urlLooksTemporary) {
+      setGoogleTip(false);
       updateStatus('loading', 'Waiting for page to load…', 'The page is still loading.');
       updateExportButton(false);
       hideFilePreview();
@@ -1283,6 +1329,7 @@ async function checkAndUpdateUI() {
 
     // Detect platform
     const platform = detectPlatform(url);
+    setGoogleTip(Boolean(platform && platform.id === 'google_search'));
 
     // For google_search, show AI Mode vs AI Overview distinctly in the badge
     // and surface the "close + reopen the popup" workflow tip. Google's AI
@@ -1294,7 +1341,6 @@ async function checkAndUpdateUI() {
         const isAIMode = new URL(url).searchParams.get('udm') === '50';
         if (isAIMode) platform.name = 'Google AI Mode';
       } catch { /* ignore */ }
-      showGoogleTip();
     }
 
     // Update platform badge
@@ -1370,7 +1416,8 @@ async function checkAndUpdateUI() {
                 threshold: CAPTURE_LOADING_TIMEOUT_MS,
                 mechanism: 'reload',
                 platformName: platform.name
-              })
+              }),
+              { elapsedMs: elapsed }
             );
           } else {
             // Past the loading threshold — the extension only captures on
@@ -1595,6 +1642,7 @@ async function checkAndUpdateUI() {
       updateFilePreview('conversation');
     }
   } catch (error) {
+    setGoogleTip(false);
     popupLogError('checkAndUpdateUI', error);
     displayError('UNKNOWN_ERROR', {
       originalError: error,
