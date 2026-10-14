@@ -19,7 +19,7 @@ import { parseCsv } from './helpers/csv_parse.js';
 
 // Set to a non-empty string to report leaks without failing. Clear it in the
 // same commit that makes scrubbing cover every text-bearing column (D10).
-const PENDING_UNTIL = 'D10: full-coverage PII scrubbing lands in Phase 3';
+const PENDING_UNTIL = '';
 
 export const PLANTED = Object.freeze({
   EMAIL: 'pii.sweep.donor@example.test',
@@ -32,11 +32,13 @@ export const PLANTED = Object.freeze({
 const PLANT_SUFFIX = ` email ${PLANTED.EMAIL} phone ${PLANTED.PHONE} ip ${PLANTED.IP} key ${PLANTED.TOKEN}`;
 
 // Keys whose string values are prose even when they contain no whitespace.
+// (`name` is deliberately absent: it is a tool name on tool_use blocks; a
+// conversation name contains whitespace and is planted by the general rule.)
 const TEXT_KEYS = new Set([
-  'text', 'content', 'answer', 'title', 'snippet', 'query', 'query_str', 'name', 'summary',
+  'text', 'content', 'answer', 'title', 'snippet', 'query', 'query_str', 'summary',
   'message', 'spokenText', 'description', 'user_profile', 'user_instructions',
   'about_user_message', 'about_model_message', 'ai_overview_text', 'conversation_title',
-  'searchQuery', 'thinking', 'reasoning', 'code', 'extracted_text', 'file_name'
+  'searchQuery', 'thinking', 'reasoning', 'code', 'extracted_text', 'extracted_content', 'file_name', 'cited_text'
 ]);
 // Keys that look like text but are structural; never plant there.
 const SKIP_KEYS = new Set(['url', 'seeMoreUrl', 'source_page_url', 'domain', 'imageLink']);

@@ -79,36 +79,95 @@ function luhnValid(digits) {
   return sum % 10 === 0;
 }
 
-/**
- * Default columns to scrub per CSV filename.
- * Keys match the base names used by the extension's CSV writers.
- */
-export const DEFAULT_SCRUB_COLUMNS = Object.freeze({
-  chatgpt_messages: ['text', 'text_cleaned'],
-  chatgpt_donor_context: ['user_profile', 'user_instructions'],
-  claude_metadata: ['conversation_name', 'summary'],
-  claude_messages: ['text', 'text_cleaned'],
-  claude_sources: ['title', 'snippet'],
-  claude_attachments: ['file_name', 'extracted_text'],
-  copilot_conversation: ['text', 'text_cleaned'],
-  m365_copilot_conversation: ['text', 'text_cleaned', 'spoken_text'],
-  m365_copilot_sources: ['title', 'snippet'],
-  perplexity_metadata: ['title'],
-  perplexity_messages: ['text', 'text_cleaned', 'code_text', 'reasoning_text'],
-  perplexity_sources: ['title', 'snippet'],
-  grok_metadata: ['title'],
-  grok_messages: ['text', 'text_cleaned'],
-  grok_sources: ['title', 'snippet'],
-  deepseek_metadata: ['title'],
-  deepseek_messages: ['text', 'text_cleaned', 'thinking_text', 'thinking_text_cleaned'],
-  deepseek_sources: ['title', 'snippet'],
-  mistral_metadata: ['title', 'generated_title', 'user_title'],
-  mistral_messages: ['text', 'text_cleaned', 'reasoning_text', 'reasoning_text_cleaned'],
-  mistral_sources: ['title', 'snippet'],
-  google_ai_mode: ['text', 'text_cleaned', 'conversation_title', 'conversation_id'],
-  google_ai_overview: ['query', 'ai_overview_text', 'ai_overview_text_cleaned'],
-  google_sources: ['title']
+// ---------------------------------------------------------------------------
+// Column classification. When scrubbing is on, EVERY string cell of EVERY
+// CSV goes through `scrubCell`, which decides per column:
+//
+//   structural  identifiers, timestamps, enums, counters: left untouched so
+//               joins, ordering and provenance survive. A UUID or ISO date
+//               would otherwise be eaten by the generic token / phone rules.
+//   url         URL-valued columns: governed by the URL option. With
+//               `stripUrls` the whole value becomes <REDACTED:URL>; without
+//               it only credentials embedded in the URL are removed, so
+//               sources stay usable for news / source studies.
+//   json        `*_json` columns: parsed, walked, every prose string scrubbed,
+//               re-serialised. Keys that denote ids, timestamps or URLs and
+//               values that are bare UUIDs / ISO dates are preserved, so the
+//               JSON stays valid and joinable.
+//   text        everything else: full `scrubText`.
+//
+// A column that is not listed anywhere is treated as text (fail safe for
+// privacy). test_pii.js asserts that every column emitted by the golden
+// exports is classified explicitly, so a new column must be placed here on
+// purpose.
+// ---------------------------------------------------------------------------
+
+export const STRUCTURAL_COLUMNS = Object.freeze(new Set([
+  // provenance
+  'donor_id', 'donor_id_type', 'download_time', 'platform', 'schema_version', 'extractor_version', 'api_format',
+  // identifiers
+  'conversation_id', 'message_id', 'node_id', 'parent_id', 'parent_message_id', 'request_id', 'fragment_id',
+  'source_id', 'tool_use_id', 'entry_uuid', 'current_leaf_message_uuid', 'file_uuid', 'part_ids', 'image_ids',
+  'xpost_ids', 'agent_id', 'organization_id', 'project_id', 'response_identifier',
+  // positions and counters
+  'turn_index', 'turn_number', 'turn_count', 'block_index', 'message_index', 'source_index', 'cite_index',
+  'start_index', 'end_index', 'ref_index', 'ref_turn_index', 'page_count', 'version', 'version_count',
+  'file_size', 'source_count', 'suggested_count', 'follow_up_count', 'chunk_count', 'fragment_count',
+  'cited_source_count',
+  // timestamps
+  'created_at', 'create_time', 'created_at_iso', 'updated_at', 'update_time', 'modify_time', 'captured_at',
+  'published_at', 'publication_date', 'pub_date', 'message_created_at', 'message_updated_at',
+  'block_start_timestamp', 'block_stop_timestamp',
+  // enums, flags, machine names
+  'role', 'author_role', 'author_type', 'author', 'sender', 'content_type', 'fragment_type', 'fragment_types',
+  'message_type', 'source_list', 'source_block_type', 'source', 'type', 'mode', 'status', 'quasi_status',
+  'generation_status', 'turn_state', 'title_type', 'ref_type', 'file_type', 'model', 'model_alias',
+  'model_identifier', 'model_slug', 'default_model_slug', 'model_type', 'channel', 'visibility', 'permission',
+  'product_type', 'reaction', 'input_method', 'content_origin', 'offense', 'conversation_mode', 'chunk_types',
+  'tool_name', 'tool_names', 'tools_used', 'provider', 'provider_name', 'site_name', 'domain', 'attribution',
+  'features', 'integrations', 'libraries', 'reasoning_effort', 'memory_scope', 'message_stop_reason',
+  'incomplete_message', 'moderation_category', 'moderation_blocked_category', 'feedback_labels',
+  'system_prompt_name', 'media_types', 'end_turn', 'manual', 'partial', 'pinned', 'shared', 'temporary',
+  'ban_regenerate', 'search_enabled', 'search_triggered', 'thinking_enabled', 'message_truncated',
+  'enabled_web_search', 'enabled_monkeys_in_a_barrel', 'preview_feature_uses_artifacts'
+]));
+
+// Prefix rules for whole families of flag / counter columns.
+const STRUCTURAL_PREFIX_RE = /^(num_|has_|is_)/;
+
+export const URL_COLUMNS = Object.freeze(new Set([
+  'url', 'url_clean', 'source_page_url', 'source_urls', 'image_link'
+]));
+
+export const TEXT_COLUMNS = Object.freeze(new Set([
+  'text', 'text_cleaned', 'thinking_text', 'thinking_text_cleaned', 'reasoning_text', 'reasoning_text_cleaned',
+  'code_text', 'title', 'generated_title', 'user_title', 'conversation_name', 'conversation_title', 'summary',
+  'snippet', 'query', 'search_query', 'ai_overview_text', 'ai_overview_text_cleaned', 'follow_up_questions',
+  'source_titles', 'spoken_text', 'user_instructions', 'user_profile', 'file_name', 'extracted_text'
+]));
+
+// Columns that are free text on one platform although structural elsewhere.
+// Google's conversation id is the search query.
+export const PLATFORM_TEXT_COLUMNS = Object.freeze({
+  google_search: new Set(['conversation_id'])
 });
+
+export const JSON_COLUMN_RE = /_json$/;
+
+/**
+ * @param {string} column
+ * @param {string} [platform]
+ * @returns {'structural'|'url'|'json'|'text'|'unknown'}
+ */
+export function classifyColumn(column, platform) {
+  const override = platform && PLATFORM_TEXT_COLUMNS[platform];
+  if (override && override.has(column)) return 'text';
+  if (JSON_COLUMN_RE.test(column)) return 'json';
+  if (URL_COLUMNS.has(column)) return 'url';
+  if (STRUCTURAL_COLUMNS.has(column) || STRUCTURAL_PREFIX_RE.test(column)) return 'structural';
+  if (TEXT_COLUMNS.has(column)) return 'text';
+  return 'unknown';
+}
 
 /**
  * Escape a string for use inside a RegExp.
@@ -207,6 +266,123 @@ export function scrubRow(row, columns, options) {
 export function scrubRows(rows, columns, options) {
   if (!Array.isArray(rows)) return rows;
   return rows.map(r => scrubRow(r, columns, options));
+}
+
+/**
+ * URL-valued cell. With `stripUrls` the whole value is replaced; otherwise
+ * only credentials embedded in a URL (user:pass@host) are removed.
+ * @param {string} value
+ * @param {{stripUrls?: boolean}} [options]
+ * @returns {string}
+ */
+export function scrubUrlValue(value, options) {
+  if (typeof value !== 'string' || value.length === 0) return value;
+  if (options && options.stripUrls) return '<REDACTED:URL>';
+  return value.replace(URL_USERINFO_RE, '<REDACTED:URL>');
+}
+
+// Inside JSON columns: keys and values that denote identifiers, timestamps
+// or URLs rather than prose.
+const JSON_ID_KEY_RE = /(^|[_-])(id|ids|uuid|uuids)$|(Id|Ids|Uuid)$/;
+const JSON_TIME_KEY_RE = /(^|[_-])(at|time|timestamp|date|datetime)$|(At|Time|Timestamp|Date)$/;
+const JSON_URL_KEY_RE = /(^|[_-])(url|urls|link|href|src)$|(Url|Urls|Link|Href|Src)$/;
+const ISO_DATE_VALUE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/;
+const UUID_VALUE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function addCounts(acc, counts) {
+  acc.total += counts.total;
+  for (const [type, n] of Object.entries(counts.byType)) {
+    acc.byType[type] = (acc.byType[type] || 0) + n;
+  }
+}
+
+function scrubJsonValue(value, key, options, counts) {
+  if (typeof value === 'string') {
+    if (value.length === 0) return value;
+    if (JSON_ID_KEY_RE.test(key) || JSON_TIME_KEY_RE.test(key)) return value;
+    if (ISO_DATE_VALUE_RE.test(value) || UUID_VALUE_RE.test(value)) return value;
+    const out = JSON_URL_KEY_RE.test(key) ? scrubUrlValue(value, options) : scrubText(value, options);
+    addCounts(counts, countRedactions(value, out));
+    return out;
+  }
+  if (Array.isArray(value)) return value.map(v => scrubJsonValue(v, key, options, counts));
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = scrubJsonValue(v, k, options, counts);
+    return out;
+  }
+  return value;
+}
+
+/**
+ * Scrub a JSON-encoded cell structurally: parse, scrub prose string values,
+ * re-serialise. Placeholders therefore never break the JSON. Falls back to
+ * plain text scrubbing if the cell does not parse.
+ * @param {string} text
+ * @param {{stripUrls?: boolean, names?: string[]}} [options]
+ * @returns {{value: string, counts: {total: number, byType: Object<string, number>}}}
+ */
+export function scrubJsonText(text, options) {
+  const counts = { total: 0, byType: {} };
+  if (typeof text !== 'string' || text.length === 0) return { value: text, counts };
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const out = scrubText(text, options);
+    addCounts(counts, countRedactions(text, out));
+    return { value: out, counts };
+  }
+  const scrubbed = scrubJsonValue(parsed, '', options, counts);
+  return { value: JSON.stringify(scrubbed), counts };
+}
+
+/**
+ * Scrub one CSV cell according to its column's classification.
+ * @param {string} column
+ * @param {*} value
+ * @param {{stripUrls?: boolean, names?: string[]}} [options]
+ * @param {string} [platform]
+ * @returns {{value: *, counts: {total: number, byType: Object<string, number>}}}
+ */
+export function scrubCell(column, value, options, platform) {
+  const counts = { total: 0, byType: {} };
+  if (typeof value !== 'string' || value.length === 0) return { value, counts };
+  switch (classifyColumn(column, platform)) {
+    case 'structural':
+      return { value, counts };
+    case 'url': {
+      const out = scrubUrlValue(value, options);
+      addCounts(counts, countRedactions(value, out));
+      return { value: out, counts };
+    }
+    case 'json':
+      return scrubJsonText(value, options);
+    default: {
+      const out = scrubText(value, options);
+      addCounts(counts, countRedactions(value, out));
+      return { value: out, counts };
+    }
+  }
+}
+
+/**
+ * Scrub every cell of a row (shallow copy, key order preserved).
+ * @param {Object} row
+ * @param {{stripUrls?: boolean, names?: string[]}} [options]
+ * @param {string} [platform]
+ * @returns {{row: Object, counts: {total: number, byType: Object<string, number>}}}
+ */
+export function scrubRowDeep(row, options, platform) {
+  const counts = { total: 0, byType: {} };
+  if (row === null || row === undefined || typeof row !== 'object') return { row, counts };
+  const out = {};
+  for (const [column, value] of Object.entries(row)) {
+    const r = scrubCell(column, value, options, platform);
+    out[column] = r.value;
+    addCounts(counts, r.counts);
+  }
+  return { row: out, counts };
 }
 
 /**

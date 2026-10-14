@@ -50,6 +50,19 @@ The `telemetry` object carries PII-scrubbing provenance:
 
 Default behavior ships `URL: false` so URLs are preserved in exports; news / sources studies rely on them. There is no popup control for this option in 3.0.0; a researcher who wants URL stripping has to set `pii_scrub_options` to `{ "URL": true }` in the extension's local storage (for example via the add-on debugger) on each participant's browser before they export.
 
+### PII scrubbing coverage
+
+When `pii_scrub_enabled` is true, every string cell of every CSV in the ZIP is passed through the scrubber, including the cross-platform canonical files, the raw-JSON columns and the sources / attachments / donor-context files. What happens to a cell depends on its column (the classification lives in `utils/pii.js`):
+
+| Column class | Columns | Treatment |
+|---|---|---|
+| text | message text and its `_cleaned` copy, thinking / reasoning / code text, titles, summaries, snippets, queries, follow-up questions, user profile and instructions, file names, extracted file text | Full rule set: emails, phone numbers, IPv4 addresses, JWTs, bearer / provider API keys, credit-card numbers (Luhn-checked), US SSNs, generic 32+ character tokens, URLs with embedded credentials. |
+| json | every `*_json` column (`raw_block_json`, `tool_input_json`, `settings_json`, `raw_message_json`, `feedback_json`, `token_usage_json`, `raw_json`, `adaptive_cards_json`, `content_chunks_json`, `files_json`, `platform_specific_json`) | Parsed, walked and re-serialised: every prose string value gets the text rules; values under id / timestamp keys, bare UUIDs and ISO dates are preserved; values under URL keys get the URL treatment. Placeholders never break the JSON. |
+| url | `url`, `url_clean`, `source_page_url`, `source_urls`, `image_link` | Embedded credentials (`user:password@host`) are always removed. With `pii_scrub_options.URL` the whole value becomes `<REDACTED:URL>`; otherwise the URL is kept so source analyses still work. |
+| structural | identifiers, timestamps, roles and other enums, model names, counters and flags | Untouched, so joins, ordering and provenance survive. Exception: on Google the `conversation_id` is the search query and is scrubbed as text; the ZIP and file names, which derive from it, are built from the scrubbed value. |
+
+`pii_redactions_total` and `pii_redactions_by_type` count every placeholder added in every cell of every file, so the same email in `text`, `text_cleaned` and the canonical row counts three times. Scrubbing is pattern-based and best-effort: personal names, addresses and free-form identifying statements are not detected. With scrubbing off, no cell is modified.
+
 ## Schema versions
 
 Every CSV carries a `schema_version` column (per file type) next to `extractor_version`; the manifest repeats both per file. The version table lives in `utils/manifest.js` (`SCHEMA_VERSIONS`). Changes in 3.0.0:

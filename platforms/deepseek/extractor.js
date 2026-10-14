@@ -449,7 +449,7 @@ function generateSourcesCSV(sources) {
 // CSV D: CANONICAL MESSAGES
 // ============================================================================
 
-function generateMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime }) {
+function generateMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime, scrubCell = null }) {
   const headers = canonicalHeaders();
   const schemaVersion = SCHEMA_VERSIONS.deepseek_messages_canonical;
   const { messages, conversationId } = unwrap(conversationData);
@@ -488,7 +488,9 @@ function generateMessagesCanonicalCSV(conversationData, { donorId, donorIdType, 
         has_file_fragment: countFragmentsOfTypes(m, FILE_FRAG_TYPES) > 0
       })
     };
-    rows.push(headers.map(h => escapeCSVField(row[h])).join(','));
+    // Optional per-cell scrubber (background.js passes one when PII scrubbing
+    // is on) so the canonical file never carries text the other CSVs redact.
+    rows.push(headers.map(h => escapeCSVField(scrubCell ? scrubCell(h, row[h]) : row[h])).join(','));
   }
   return rows.join('\r\n') + '\r\n';
 }

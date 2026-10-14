@@ -1,0 +1,73 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "3.0.0",
+  "platform": "claude",
+  "conversation_id": "11111111-2222-3333-4444-666666666666",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "claude_metadata_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 803,
+      "sha256": "ab5b483d23851a9a386d2a45818efb8b60d9ad2e7d0d80d39c65ca0e5ec49984"
+    },
+    {
+      "filename": "claude_messages_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_messages",
+      "schema_version": "1.0.0",
+      "rows": 5,
+      "bytes": 2800,
+      "sha256": "1abc20e80b660f47d40ba0c733c08722585bc25141776e1a05d0528ea87e99cc"
+    },
+    {
+      "filename": "claude_sources_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_sources",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 686,
+      "sha256": "8f4bed27170c250c7f23c95c36e1f87aae95283df1409ebc6fb78e6786ee0f6f"
+    },
+    {
+      "filename": "claude_attachments_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_attachments",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 636,
+      "sha256": "7fb81111dbb9a332f7e159ee39820fed1a99a195cf78f5616a602aadcda6773a"
+    },
+    {
+      "filename": "claude_messages_canonical_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
+      "schema": "claude_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1627,
+      "sha256": "37eb220e592b58771f87c3acdb2ae77ad281d234be59751822fc3b953ab9ebc6"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": true,
+    "pii_scrub_options": {
+      "URL": false
+    },
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "claude_messages": {
+        "valid": true,
+        "total_rows": 5,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

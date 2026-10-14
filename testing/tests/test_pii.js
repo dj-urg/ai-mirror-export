@@ -4,15 +4,23 @@
  * Run with: node testing/tests/test_pii.js
  */
 
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   scrubText,
   scrubRow,
   scrubRows,
   countRedactions,
-  DEFAULT_SCRUB_COLUMNS,
   PII_RULESET_VERSION,
-  PII_SCRUB_OPTION_KEYS
+  PII_SCRUB_OPTION_KEYS,
+  classifyColumn,
+  scrubCell,
+  scrubJsonText,
+  scrubRowDeep
 } from '../../utils/pii.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let passed = 0;
 let failed = 0;
@@ -176,28 +184,95 @@ assertEq(preC.byType.EMAIL, 1, 'countRedactions only counts newly added');
 assertEq(countRedactions('', ''), { total: 0, byType: {} }, 'countRedactions empty');
 assertEq(countRedactions(null, null), { total: 0, byType: {} }, 'countRedactions null');
 
-// --- DEFAULT_SCRUB_COLUMNS ----------------------------------------------
-// Message-text columns scrub both the raw `text` and the derived `text_cleaned`
-// column so the NLP-ready view also has secrets removed when scrub is enabled.
-assertEq(DEFAULT_SCRUB_COLUMNS.chatgpt_messages, ['text', 'text_cleaned'], 'defaults: chatgpt_messages');
-assertEq(DEFAULT_SCRUB_COLUMNS.chatgpt_donor_context, ['user_profile', 'user_instructions'],
-  'defaults: chatgpt_donor_context');
-assertEq(DEFAULT_SCRUB_COLUMNS.claude_metadata, ['conversation_name', 'summary'],
-  'defaults: claude_metadata');
-assertEq(DEFAULT_SCRUB_COLUMNS.claude_messages, ['text', 'text_cleaned'],
-  'defaults: claude_messages');
-assertEq(DEFAULT_SCRUB_COLUMNS.claude_sources, ['title', 'snippet'],
-  'defaults: claude_sources');
-assertEq(DEFAULT_SCRUB_COLUMNS.claude_attachments, ['file_name', 'extracted_text'],
-  'defaults: claude_attachments');
-assertEq(DEFAULT_SCRUB_COLUMNS.copilot_conversation, ['text', 'text_cleaned'],
-  'defaults: copilot_conversation');
-assertEq(DEFAULT_SCRUB_COLUMNS.google_ai_mode, ['text', 'text_cleaned', 'conversation_title', 'conversation_id'],
-  'defaults: google_ai_mode');
-assertEq(DEFAULT_SCRUB_COLUMNS.google_ai_overview, ['query', 'ai_overview_text', 'ai_overview_text_cleaned'],
-  'defaults: google_ai_overview');
-assertEq(DEFAULT_SCRUB_COLUMNS.google_sources, ['title'],
-  'defaults: google_sources');
+// --- Column classification + deep scrubbing ------------------------------
+// Every column emitted by the golden exports must be classified explicitly
+// (structural / url / json / text); an unclassified column would be scrubbed
+// as text, which is safe for privacy but must be a conscious choice.
+{
+  const goldenDir = path.join(__dirname, '..', 'data', 'synthetic', 'golden');
+  const unknown = [];
+  let columnsSeen = 0;
+  for (const scenario of fs.readdirSync(goldenDir)) {
+    const platform = scenario.startsWith('google') ? 'google_search' : scenario.split('__')[0].replace(/_rich|_meta|_search|_reasoning|_salted$/, '');
+    const dir = path.join(goldenDir, scenario);
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith('.csv')) continue;
+      const header = fs.readFileSync(path.join(dir, file), 'utf8').split(/\r?\n/)[0].replace(/^\uFEFF/, '');
+      for (const col of header.split(',')) {
+        columnsSeen++;
+        if (classifyColumn(col, platform) === 'unknown') unknown.push(`${scenario}/${file}:${col}`);
+      }
+    }
+  }
+  assert(columnsSeen > 100, 'classification: goldens enumerate columns');
+  assertEq(unknown, [], 'classification: every golden column is classified');
+}
+assertEq(classifyColumn('text'), 'text', 'classify text');
+assertEq(classifyColumn('message_id'), 'structural', 'classify message_id');
+assertEq(classifyColumn('num_anything'), 'structural', 'classify num_ prefix');
+assertEq(classifyColumn('raw_block_json'), 'json', 'classify *_json');
+assertEq(classifyColumn('url_clean'), 'url', 'classify url_clean');
+assertEq(classifyColumn('conversation_id'), 'structural', 'classify conversation_id (default)');
+assertEq(classifyColumn('conversation_id', 'google_search'), 'text', 'classify conversation_id on google');
+assertEq(classifyColumn('made_up_column'), 'unknown', 'classify unknown');
+
+// scrubCell: structural untouched, text scrubbed, unknown scrubbed as text
+assertEq(scrubCell('message_id', 'a@b.co').value, 'a@b.co', 'scrubCell leaves structural');
+assertEq(scrubCell('text', 'mail a@b.co').value, 'mail <REDACTED:EMAIL>', 'scrubCell scrubs text');
+assertEq(scrubCell('text', 'mail a@b.co').counts, { total: 1, byType: { EMAIL: 1 } }, 'scrubCell counts');
+assertEq(scrubCell('made_up_column', 'mail a@b.co').value, 'mail <REDACTED:EMAIL>', 'scrubCell scrubs unknown as text');
+assertEq(scrubCell('text', 42).value, 42, 'scrubCell leaves non-strings');
+
+// URL columns: credentials always removed; whole value only with stripUrls
+assertEq(scrubCell('url', 'https://example.org/a?x=1').value, 'https://example.org/a?x=1', 'url column kept');
+assertEq(scrubCell('url', 'https://user:pw@example.org/a').value, '<REDACTED:URL>', 'url column credentials removed');
+assertEq(scrubCell('url', 'https://example.org/a', { stripUrls: true }).value, '<REDACTED:URL>', 'url column stripped on option');
+assertEq(scrubCell('url', 'https://example.org/' + 'a'.repeat(40)).value, 'https://example.org/' + 'a'.repeat(40),
+  'url column: long path segment is not a token');
+
+// JSON columns: valid after scrubbing; ids, timestamps and URLs preserved
+{
+  const raw = JSON.stringify({
+    uuid: '12345678-1234-1234-1234-123456789abc',
+    parent_message_uuid: '12345678-1234-1234-1234-123456789abd',
+    created_at: '2026-01-01T00:00:00.000Z',
+    inserted_at: 1767225600,
+    url: 'https://example.org/' + 'b'.repeat(40),
+    text: 'write to a@b.co or call 555-123-4567',
+    nested: { items: [{ id: 'x'.repeat(40), note: 'ip 10.0.0.1' }] },
+    flag: true,
+    n: null
+  });
+  const r = scrubJsonText(raw);
+  let parsed = null;
+  try { parsed = JSON.parse(r.value); } catch { /* fails below */ }
+  assert(parsed !== null, 'json: still parses');
+  assertEq(parsed.uuid, '12345678-1234-1234-1234-123456789abc', 'json: uuid value preserved');
+  assertEq(parsed.parent_message_uuid, '12345678-1234-1234-1234-123456789abd', 'json: id key preserved');
+  assertEq(parsed.created_at, '2026-01-01T00:00:00.000Z', 'json: timestamp preserved');
+  assertEq(parsed.inserted_at, 1767225600, 'json: numbers untouched');
+  assertEq(parsed.url, 'https://example.org/' + 'b'.repeat(40), 'json: url key preserved');
+  assertEq(parsed.text, 'write to <REDACTED:EMAIL> or call <REDACTED:PHONE>', 'json: prose scrubbed');
+  assertEq(parsed.nested.items[0].id, 'x'.repeat(40), 'json: nested id key preserved');
+  assertEq(parsed.nested.items[0].note, 'ip <REDACTED:IP>', 'json: nested prose scrubbed');
+  assertEq(parsed.flag, true, 'json: booleans untouched');
+  assertEq(parsed.n, null, 'json: null untouched');
+  assertEq(r.counts, { total: 3, byType: { EMAIL: 1, PHONE: 1, IP: 1 } }, 'json: counts');
+  assertEq(scrubJsonText('').value, '', 'json: empty passthrough');
+  assertEq(scrubJsonText('not json a@b.co').value, 'not json <REDACTED:EMAIL>', 'json: unparseable falls back to text');
+}
+
+// scrubRowDeep: every cell, order preserved, counts aggregated
+{
+  const row = { message_id: 'm-1', text: 'a@b.co', raw_json: '{"text":"b@c.co","id":"' + 'q'.repeat(40) + '"}', url: 'https://e.org', n: 3 };
+  const r = scrubRowDeep(row);
+  assertEq(Object.keys(r.row), ['message_id', 'text', 'raw_json', 'url', 'n'], 'rowDeep: key order');
+  assertEq(r.row.message_id, 'm-1', 'rowDeep: structural kept');
+  assertEq(r.row.text, '<REDACTED:EMAIL>', 'rowDeep: text scrubbed');
+  assertEq(JSON.parse(r.row.raw_json), { text: '<REDACTED:EMAIL>', id: 'q'.repeat(40) }, 'rowDeep: json scrubbed structurally');
+  assertEq(r.row.url, 'https://e.org', 'rowDeep: url kept');
+  assertEq(r.counts, { total: 2, byType: { EMAIL: 2 } }, 'rowDeep: counts');
+}
 
 // --- Ruleset version + exposed option keys -----------------------------
 assert(typeof PII_RULESET_VERSION === 'string' && PII_RULESET_VERSION.length > 0,

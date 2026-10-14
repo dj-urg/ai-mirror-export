@@ -510,7 +510,7 @@ function generateSourcesCSV(sources) {
 // CSV D: CANONICAL MESSAGES
 // ============================================================================
 
-function generateMessagesCanonicalCSV(data, { donorId, donorIdType, downloadTime }) {
+function generateMessagesCanonicalCSV(data, { donorId, donorIdType, downloadTime, scrubCell = null }) {
   const headers = canonicalHeaders();
   const schemaVersion = SCHEMA_VERSIONS.mistral_messages_canonical;
   const { chat, messages, conversationId } = unwrap(data);
@@ -554,7 +554,9 @@ function generateMessagesCanonicalCSV(data, { donorId, donorIdType, downloadTime
         product_type: (chat && chat.productType) || ''
       })
     };
-    rows.push(headers.map(h => escapeCSVField(row[h])).join(','));
+    // Optional per-cell scrubber (background.js passes one when PII scrubbing
+    // is on) so the canonical file never carries text the other CSVs redact.
+    rows.push(headers.map(h => escapeCSVField(scrubCell ? scrubCell(h, row[h]) : row[h])).join(','));
   }
   return rows.join('\r\n') + '\r\n';
 }

@@ -7,8 +7,11 @@
 
 import {
   extractChatGPTConversation,
+  generateMetadataCSV as generateChatGPTMetadataCSV,
   generateMessagesCSV,
   generateMessagesCanonicalCSV,
+  generateSearchResultsCSV as generateChatGPTSourcesCSV,
+  generateMessageUrlsCSV as generateChatGPTMessageUrlsCSV,
   generateDonorContextCSV
 } from './platforms/chatgpt/extractor.js';
 import {
@@ -16,31 +19,36 @@ import {
   generateMetadataCSV as generateClaudeMetadataCSV,
   generateMessagesCSV as generateClaudeMessagesCSV,
   generateSourcesCSV as generateClaudeSourcesCSV,
-  generateAttachmentsCSV as generateClaudeAttachmentsCSV
+  generateAttachmentsCSV as generateClaudeAttachmentsCSV,
+  generateMessagesCanonicalCSV as generateClaudeMessagesCanonicalCSV
 } from './platforms/claude/extractor.js';
 import {
   extractPerplexityConversation,
   generateMetadataCSV as generatePerplexityMetadataCSV,
   generateMessagesCSV as generatePerplexityMessagesCSV,
-  generateSourcesCSV as generatePerplexitySourcesCSV
+  generateSourcesCSV as generatePerplexitySourcesCSV,
+  generateMessagesCanonicalCSV as generatePerplexityMessagesCanonicalCSV
 } from './platforms/perplexity/extractor.js';
 import {
   extractGrokConversation,
   generateMetadataCSV as generateGrokMetadataCSV,
   generateMessagesCSV as generateGrokMessagesCSV,
-  generateSourcesCSV as generateGrokSourcesCSV
+  generateSourcesCSV as generateGrokSourcesCSV,
+  generateMessagesCanonicalCSV as generateGrokMessagesCanonicalCSV
 } from './platforms/grok/extractor.js';
 import {
   extractDeepSeekConversation,
   generateMetadataCSV as generateDeepSeekMetadataCSV,
   generateMessagesCSV as generateDeepSeekMessagesCSV,
-  generateSourcesCSV as generateDeepSeekSourcesCSV
+  generateSourcesCSV as generateDeepSeekSourcesCSV,
+  generateMessagesCanonicalCSV as generateDeepSeekMessagesCanonicalCSV
 } from './platforms/deepseek/extractor.js';
 import {
   extractMistralConversation,
   generateMetadataCSV as generateMistralMetadataCSV,
   generateMessagesCSV as generateMistralMessagesCSV,
-  generateSourcesCSV as generateMistralSourcesCSV
+  generateSourcesCSV as generateMistralSourcesCSV,
+  generateMessagesCanonicalCSV as generateMistralMessagesCanonicalCSV
 } from './platforms/mistral/extractor.js';
 import { EXTENSION_CONFIG, getPlatformByUrl } from './config/settings.js';
 import { sanitizeErrorMessage } from './shared/errors.js';
@@ -56,9 +64,8 @@ import {
   countRows
 } from './utils/manifest.js';
 import {
-  scrubText,
-  countRedactions,
-  DEFAULT_SCRUB_COLUMNS,
+  scrubCell,
+  scrubRowDeep,
   PII_RULESET_VERSION,
   PII_SCRUB_OPTION_KEYS
 } from './utils/pii.js';
@@ -756,33 +763,43 @@ function scrubOptionsForScrubText(options) {
 }
 
 /**
- * Scrub PII (optional) and count redactions across all scrub-targeted columns.
- * Returns per-type counts alongside the total so callers can surface a
+ * Scrub PII (optional) in every cell of every row, per the column
+ * classification in utils/pii.js (text, JSON, URL, structural). Returns
+ * per-type counts alongside the total so callers can surface a
  * `pii_redactions_by_type` map in the export manifest.
  */
-function scrubIfEnabled(rows, columns, enabled, options) {
-  if (!enabled || !columns || columns.length === 0) {
+function scrubRowsIfEnabled(rows, enabled, options, platform) {
+  if (!enabled) {
     return { rows, redactionCount: 0, redactionsByType: {} };
   }
   const scrubOptions = scrubOptionsForScrubText(options);
   let total = 0;
   const byType = {};
   const scrubbed = rows.map(row => {
-    const next = { ...row };
-    for (const col of columns) {
-      if (typeof next[col] === 'string' && next[col].length > 0) {
-        const original = next[col];
-        next[col] = scrubText(original, scrubOptions);
-        const counts = countRedactions(original, next[col]);
-        total += counts.total;
-        for (const [type, n] of Object.entries(counts.byType)) {
-          byType[type] = (byType[type] || 0) + n;
-        }
-      }
+    const r = scrubRowDeep(row, scrubOptions, platform);
+    total += r.counts.total;
+    for (const [type, n] of Object.entries(r.counts.byType)) {
+      byType[type] = (byType[type] || 0) + n;
     }
-    return next;
+    return r.row;
   });
   return { rows: scrubbed, redactionCount: total, redactionsByType: byType };
+}
+
+/**
+ * Per-cell scrubber handed to the extractors' canonical-CSV generators (the
+ * ones that build canonical rows from the raw payload rather than from the
+ * already-scrubbed message rows). Counts go straight into `stats`.
+ * Returns null when scrubbing is off, so the generators run untouched.
+ */
+function makeCellScrubber(enabled, options, platform, stats) {
+  if (!enabled) return null;
+  const scrubOptions = scrubOptionsForScrubText(options);
+  return (column, value) => {
+    const r = scrubCell(column, value, scrubOptions, platform);
+    mergeScrubCounts(stats, { redactionCount: r.counts.total, redactionsByType: r.counts.byType });
+    return r.value;
+  };
 }
 
 /**
@@ -866,17 +883,23 @@ async function handleConversationData(message) {
     const donorIdHashed = studySalt ? donorId : await sha256Hex(donorIdRaw);
     const downloadTime = new Date().toISOString();
 
-    // Build a filename slug that pins every file in this export (CSVs and
-    // manifest) to its conversation + download time. If the ZIP is unpacked
-    // and the CSVs move around, each file still carries enough provenance in
-    // its name to be matched back to the manifest / archive.
-    const conversationIdForNaming = resolveConversationId(conversationData);
-    const idShort = sanitizeIdForFilename(conversationIdForNaming || '');
-    const slug = `${idShort}_${timestampSlug(downloadTime)}`;
-
     const csvFiles = []; // { innerName, schemaName, content, rowCount }
     const perSchemaValidation = {};
     const piiStats = { total: 0, byType: {} };
+    const cellScrubber = makeCellScrubber(piiScrubEnabled, piiScrubOptions, platform, piiStats);
+
+    // Build a filename slug that pins every file in this export (CSVs and
+    // manifest) to its conversation + download time. If the ZIP is unpacked
+    // and the CSVs move around, each file still carries enough provenance in
+    // its name to be matched back to the manifest / archive. On Google the
+    // id is the search query (free text), so it is scrubbed like any other
+    // text cell when scrubbing is on; elsewhere it is an opaque id.
+    const rawConversationId = resolveConversationId(conversationData);
+    const conversationIdForNaming = (cellScrubber && typeof rawConversationId === 'string')
+      ? cellScrubber('conversation_id', rawConversationId)
+      : rawConversationId;
+    const idShort = sanitizeIdForFilename(conversationIdForNaming || '');
+    const slug = `${idShort}_${timestampSlug(downloadTime)}`;
     let apiFormat = null;
     let orphanCount = 0;
     let extractionTelemetry = null;
@@ -886,39 +909,39 @@ async function handleConversationData(message) {
       apiFormat = result.apiFormat;
       orphanCount = result.orphanCount;
 
-      const scrubChatGPTMsgs = scrubIfEnabled(
-        result.messages, DEFAULT_SCRUB_COLUMNS.chatgpt_messages, piiScrubEnabled, piiScrubOptions
-      );
+      const scrubChatGPTMeta = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
+      mergeScrubCounts(piiStats, scrubChatGPTMeta);
+      const scrubChatGPTMsgs = scrubRowsIfEnabled(result.messages, piiScrubEnabled, piiScrubOptions, platform);
       const msgRows = scrubChatGPTMsgs.rows;
-      const msgRed = scrubChatGPTMsgs.redactionCount;
       mergeScrubCounts(piiStats, scrubChatGPTMsgs);
 
-      pushCsv(csvFiles, 'chatgpt_metadata', 'chatgpt_metadata', result.metadataCSV, slug);
-
-      if (piiScrubEnabled && msgRed > 0) {
-        pushCsv(csvFiles, 'chatgpt_messages', 'chatgpt_messages', generateMessagesCSV(msgRows), slug);
-        pushCsv(csvFiles, 'chatgpt_messages_canonical', 'chatgpt_messages_canonical',
-          generateMessagesCanonicalCSV(msgRows, { donorId, donorIdType, downloadTime }), slug);
-      } else {
-        pushCsv(csvFiles, 'chatgpt_messages', 'chatgpt_messages', result.messagesCSV, slug);
-        pushCsv(csvFiles, 'chatgpt_messages_canonical', 'chatgpt_messages_canonical', result.messagesCanonicalCSV, slug);
-      }
+      // With scrubbing on, every CSV is regenerated from the scrubbed rows;
+      // off, the extractor's own output is used untouched.
+      pushCsv(csvFiles, 'chatgpt_metadata', 'chatgpt_metadata',
+        piiScrubEnabled ? generateChatGPTMetadataCSV(scrubChatGPTMeta.rows[0]) : result.metadataCSV, slug);
+      pushCsv(csvFiles, 'chatgpt_messages', 'chatgpt_messages',
+        piiScrubEnabled ? generateMessagesCSV(msgRows) : result.messagesCSV, slug);
+      pushCsv(csvFiles, 'chatgpt_messages_canonical', 'chatgpt_messages_canonical',
+        piiScrubEnabled
+          ? generateMessagesCanonicalCSV(msgRows, { donorId, donorIdType, downloadTime })
+          : result.messagesCanonicalCSV, slug);
 
       if (result.searchResults && result.searchResults.length > 0) {
-        pushCsv(csvFiles, 'chatgpt_sources', 'chatgpt_sources', result.sourcesCSV, slug);
+        const scrubSources = scrubRowsIfEnabled(result.searchResults, piiScrubEnabled, piiScrubOptions, platform);
+        mergeScrubCounts(piiStats, scrubSources);
+        pushCsv(csvFiles, 'chatgpt_sources', 'chatgpt_sources',
+          piiScrubEnabled ? generateChatGPTSourcesCSV(scrubSources.rows) : result.sourcesCSV, slug);
       }
       if (result.messageUrls && result.messageUrls.length > 0) {
-        pushCsv(csvFiles, 'chatgpt_message_urls', 'chatgpt_message_urls', result.messageUrlsCSV, slug);
+        const scrubUrls = scrubRowsIfEnabled(result.messageUrls, piiScrubEnabled, piiScrubOptions, platform);
+        mergeScrubCounts(piiStats, scrubUrls);
+        pushCsv(csvFiles, 'chatgpt_message_urls', 'chatgpt_message_urls',
+          piiScrubEnabled ? generateChatGPTMessageUrlsCSV(scrubUrls.rows) : result.messageUrlsCSV, slug);
       }
       if (includeDonorContext && result.donorContext &&
           (result.donorContext.user_profile || result.donorContext.user_instructions)) {
         if (piiScrubEnabled) {
-          const scrubDonor = scrubIfEnabled(
-            [result.donorContext],
-            DEFAULT_SCRUB_COLUMNS.chatgpt_donor_context,
-            piiScrubEnabled,
-            piiScrubOptions
-          );
+          const scrubDonor = scrubRowsIfEnabled([result.donorContext], piiScrubEnabled, piiScrubOptions, platform);
           mergeScrubCounts(piiStats, scrubDonor);
           const dc = scrubDonor.rows[0] || result.donorContext;
           pushCsv(csvFiles, 'chatgpt_donor_context', 'chatgpt_donor_context', generateDonorContextCSV(dc), slug);
@@ -948,13 +971,13 @@ async function handleConversationData(message) {
       const result = extractClaudeConversation(conversationData, { donorId, donorIdType, downloadTime });
 
       // Optional PII scrub per CSV. Each schema has its own target columns.
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.claude_metadata, piiScrubEnabled, piiScrubOptions);
+      const scrubMetadata = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMetadata);
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.claude_messages, piiScrubEnabled, piiScrubOptions);
+      const scrubMessages = scrubRowsIfEnabled(result.messages, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMessages);
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.claude_sources, piiScrubEnabled, piiScrubOptions);
+      const scrubSources = scrubRowsIfEnabled(result.sources, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubSources);
-      const scrubAttachments = scrubIfEnabled(result.attachments, DEFAULT_SCRUB_COLUMNS.claude_attachments, piiScrubEnabled, piiScrubOptions);
+      const scrubAttachments = scrubRowsIfEnabled(result.attachments, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubAttachments);
 
       pushCsv(csvFiles, 'claude_metadata', 'claude_metadata',
@@ -970,18 +993,20 @@ async function handleConversationData(message) {
           generateClaudeAttachmentsCSV(scrubAttachments.rows), slug);
       }
       pushCsv(csvFiles, 'claude_messages_canonical', 'claude_messages_canonical',
-        result.messagesCanonicalCSV, slug);
+        cellScrubber
+          ? generateClaudeMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime, scrubCell: cellScrubber })
+          : result.messagesCanonicalCSV, slug);
 
       perSchemaValidation.claude_messages = validateRows(scrubMessages.rows, 'claude_messages');
 
     } else if (platform === 'perplexity') {
       const result = extractPerplexityConversation(conversationData, { donorId, donorIdType, downloadTime });
 
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.perplexity_metadata, piiScrubEnabled, piiScrubOptions);
+      const scrubMetadata = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMetadata);
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.perplexity_messages, piiScrubEnabled, piiScrubOptions);
+      const scrubMessages = scrubRowsIfEnabled(result.messages, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMessages);
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.perplexity_sources, piiScrubEnabled, piiScrubOptions);
+      const scrubSources = scrubRowsIfEnabled(result.sources, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubSources);
 
       pushCsv(csvFiles, 'perplexity_metadata', 'perplexity_metadata',
@@ -993,18 +1018,20 @@ async function handleConversationData(message) {
           generatePerplexitySourcesCSV(scrubSources.rows), slug);
       }
       pushCsv(csvFiles, 'perplexity_messages_canonical', 'perplexity_messages_canonical',
-        result.messagesCanonicalCSV, slug);
+        piiScrubEnabled
+          ? generatePerplexityMessagesCanonicalCSV(scrubMessages.rows, { donorId, donorIdType, downloadTime })
+          : result.messagesCanonicalCSV, slug);
 
       perSchemaValidation.perplexity_messages = validateRows(scrubMessages.rows, 'perplexity_messages');
 
     } else if (platform === 'grok') {
       const result = extractGrokConversation(conversationData, { donorId, donorIdType, downloadTime });
 
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.grok_metadata, piiScrubEnabled, piiScrubOptions);
+      const scrubMetadata = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMetadata);
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.grok_messages, piiScrubEnabled, piiScrubOptions);
+      const scrubMessages = scrubRowsIfEnabled(result.messages, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMessages);
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.grok_sources, piiScrubEnabled, piiScrubOptions);
+      const scrubSources = scrubRowsIfEnabled(result.sources, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubSources);
 
       pushCsv(csvFiles, 'grok_metadata', 'grok_metadata',
@@ -1016,18 +1043,20 @@ async function handleConversationData(message) {
           generateGrokSourcesCSV(scrubSources.rows), slug);
       }
       pushCsv(csvFiles, 'grok_messages_canonical', 'grok_messages_canonical',
-        result.messagesCanonicalCSV, slug);
+        cellScrubber
+          ? generateGrokMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime, scrubCell: cellScrubber })
+          : result.messagesCanonicalCSV, slug);
 
       perSchemaValidation.grok_messages = validateRows(scrubMessages.rows, 'grok_messages');
 
     } else if (platform === 'deepseek') {
       const result = extractDeepSeekConversation(conversationData, { donorId, donorIdType, downloadTime });
 
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.deepseek_metadata, piiScrubEnabled, piiScrubOptions);
+      const scrubMetadata = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMetadata);
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.deepseek_messages, piiScrubEnabled, piiScrubOptions);
+      const scrubMessages = scrubRowsIfEnabled(result.messages, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMessages);
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.deepseek_sources, piiScrubEnabled, piiScrubOptions);
+      const scrubSources = scrubRowsIfEnabled(result.sources, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubSources);
 
       pushCsv(csvFiles, 'deepseek_metadata', 'deepseek_metadata',
@@ -1039,18 +1068,20 @@ async function handleConversationData(message) {
           generateDeepSeekSourcesCSV(scrubSources.rows), slug);
       }
       pushCsv(csvFiles, 'deepseek_messages_canonical', 'deepseek_messages_canonical',
-        result.messagesCanonicalCSV, slug);
+        cellScrubber
+          ? generateDeepSeekMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime, scrubCell: cellScrubber })
+          : result.messagesCanonicalCSV, slug);
 
       perSchemaValidation.deepseek_messages = validateRows(scrubMessages.rows, 'deepseek_messages');
 
     } else if (platform === 'mistral') {
       const result = extractMistralConversation(conversationData, { donorId, donorIdType, downloadTime });
 
-      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.mistral_metadata, piiScrubEnabled, piiScrubOptions);
+      const scrubMetadata = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMetadata);
-      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.mistral_messages, piiScrubEnabled, piiScrubOptions);
+      const scrubMessages = scrubRowsIfEnabled(result.messages, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMessages);
-      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.mistral_sources, piiScrubEnabled, piiScrubOptions);
+      const scrubSources = scrubRowsIfEnabled(result.sources, piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubSources);
 
       pushCsv(csvFiles, 'mistral_metadata', 'mistral_metadata',
@@ -1062,7 +1093,9 @@ async function handleConversationData(message) {
           generateMistralSourcesCSV(scrubSources.rows), slug);
       }
       pushCsv(csvFiles, 'mistral_messages_canonical', 'mistral_messages_canonical',
-        result.messagesCanonicalCSV, slug);
+        cellScrubber
+          ? generateMistralMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime, scrubCell: cellScrubber })
+          : result.messagesCanonicalCSV, slug);
 
       perSchemaValidation.mistral_messages = validateRows(scrubMessages.rows, 'mistral_messages');
 
@@ -1078,23 +1111,20 @@ async function handleConversationData(message) {
         ...row
       }));
 
-      let canonicalKey, scrubColumns, flatSchemaName, innerPrefix, canonicalInner;
+      let canonicalKey, flatSchemaName, innerPrefix, canonicalInner;
       if (platform === 'copilot') {
         canonicalKey = 'copilot';
-        scrubColumns = DEFAULT_SCRUB_COLUMNS.copilot_conversation;
         flatSchemaName = 'copilot_conversation';
         innerPrefix = 'copilot_conversation';
         canonicalInner = 'copilot_messages_canonical';
       } else if (platform === 'm365_copilot') {
         canonicalKey = 'm365_copilot';
-        scrubColumns = DEFAULT_SCRUB_COLUMNS.m365_copilot_conversation;
         flatSchemaName = 'm365_copilot_conversation';
         innerPrefix = 'm365_copilot_conversation';
         canonicalInner = 'm365_copilot_messages_canonical';
       } else {
         const isAIMode = conversationData.mode === 'ai_mode';
         canonicalKey = isAIMode ? 'google_ai_mode' : 'google_ai_overview';
-        scrubColumns = isAIMode ? DEFAULT_SCRUB_COLUMNS.google_ai_mode : DEFAULT_SCRUB_COLUMNS.google_ai_overview;
         flatSchemaName = isAIMode ? 'google_ai_mode' : 'google_ai_overview';
         innerPrefix = flatSchemaName;
         canonicalInner = isAIMode ? 'google_ai_mode_canonical' : 'google_ai_overview_canonical';
@@ -1112,7 +1142,7 @@ async function handleConversationData(message) {
         return;
       }
 
-      const scrubFlat = scrubIfEnabled(rawRows, scrubColumns, piiScrubEnabled, piiScrubOptions);
+      const scrubFlat = scrubRowsIfEnabled(rawRows, piiScrubEnabled, piiScrubOptions, platform);
       const scrubbedRows = scrubFlat.rows;
       mergeScrubCounts(piiStats, scrubFlat);
 
@@ -1141,7 +1171,9 @@ async function handleConversationData(message) {
           ...r
         }));
         if (sourceRows.length > 0) {
-          pushCsv(csvFiles, 'google_sources', 'google_sources', generateGoogleSourcesCSV(sourceRows), slug);
+          const scrubbedSources = scrubRowsIfEnabled(sourceRows, piiScrubEnabled, piiScrubOptions, platform);
+          mergeScrubCounts(piiStats, scrubbedSources);
+          pushCsv(csvFiles, 'google_sources', 'google_sources', generateGoogleSourcesCSV(scrubbedSources.rows), slug);
         }
       }
 
@@ -1153,7 +1185,7 @@ async function handleConversationData(message) {
           ...r
         }));
         if (sourceRows.length > 0) {
-          const scrubbedSources = scrubIfEnabled(sourceRows, DEFAULT_SCRUB_COLUMNS.m365_copilot_sources, piiScrubEnabled, piiScrubOptions);
+          const scrubbedSources = scrubRowsIfEnabled(sourceRows, piiScrubEnabled, piiScrubOptions, platform);
           mergeScrubCounts(piiStats, scrubbedSources);
           pushCsv(csvFiles, 'm365_copilot_sources', 'm365_copilot_sources',
             generateM365CopilotSourcesCSV(scrubbedSources.rows), slug);
