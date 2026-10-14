@@ -1492,6 +1492,14 @@ self.addEventListener('unhandledrejection', event => {
 // color), and the title is what macOS VoiceOver / NVDA / Jaws read out
 // when the toolbar button receives focus.
 //
+// No `tabs` permission: Firefox only exposes `tab.url` / `info.url` for
+// tabs whose URL is covered by host_permissions, which is exactly the set
+// of supported sites. An undefined URL therefore means "not a supported
+// page" and gets the grey icon. The listeners below re-evaluate on every
+// status change as well as on URL changes, so a tab that navigates from a
+// supported site to an unsupported one (where no URL is delivered) still
+// turns grey.
+//
 // Badges are reserved for conditions that need user attention: a '!'
 // appears when the most recent export on the tab failed. The badge
 // clears on the next successful export or navigation.
@@ -1557,24 +1565,29 @@ async function clearExportFailureBadge(tabId) {
 }
 
 try {
-  // URL change → re-evaluate the icon + clear per-tab auth state.
-  browser.tabs.onUpdated.addListener((tabId, info) => {
-    if (info && typeof info.url === 'string') {
-      applyIconStateForTab(tabId, info.url);
-      // URL change → the user navigated; previous auth-failed state no
-      // longer applies on this tab (they may have signed in, moved to a
-      // different site, etc.). Dropping the entry lets the next 401
-      // on this tab re-notify.
+  // URL or load-status change → re-evaluate the icon + clear per-tab auth
+  // state. `tab.url` is undefined for pages outside host_permissions, which
+  // applyIconStateForTab treats as unsupported.
+  browser.tabs.onUpdated.addListener((tabId, info, tab) => {
+    if (!info) return;
+    const urlChanged = typeof info.url === 'string';
+    if (urlChanged || info.status === 'loading' || info.status === 'complete') {
+      applyIconStateForTab(tabId, urlChanged ? info.url : (tab && tab.url));
+    }
+    if (urlChanged) {
+      // The user navigated; previous auth-failed state no longer applies
+      // on this tab (they may have signed in, moved to a different site,
+      // etc.). Dropping the entry lets the next 401 on this tab re-notify.
       authFailureByTab.delete(tabId);
     }
     // Clear stale "!" when the tab finishes loading a new page.
-    if (info && info.status === 'complete') {
+    if (info.status === 'complete') {
       clearExportFailureBadge(tabId);
     }
     // A tab that is actively loading has fresh cookies; the previous
     // 401 may now resolve to 200. Clear so popup opened mid-reload
     // doesn't flash a stale sign-in message.
-    if (info && info.status === 'loading') {
+    if (info.status === 'loading') {
       authFailureByTab.delete(tabId);
     }
   });

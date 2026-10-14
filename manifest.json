@@ -16,7 +16,6 @@
   "description": "Export conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral and Google Search AI Overview to CSV. All processing happens locally in your browser.",
   "permissions": [
     "activeTab",
-    "tabs",
     "downloads",
     "storage",
     "scripting"

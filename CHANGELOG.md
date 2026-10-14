@@ -24,7 +24,6 @@
 
 This update adds new permissions:
 
-- `tabs` — so the popup can tell which site the active tab is on and show the right toolbar icon.
 - `scripting` — needed to load the Perplexity reader reliably.
 - Host permissions for the new sites: `www.perplexity.ai`, `grok.com`, `chat.deepseek.com`, `chat.mistral.ai` and `m365.cloud.microsoft`.
 - Ten Google-locale host permissions (`.com`, `.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au`) — so the extension can read AI Overview text from Google search pages. The content script only runs on `/search*` paths. It never sends a new query; at most it re-requests the search page you are already viewing to read the overview text.
