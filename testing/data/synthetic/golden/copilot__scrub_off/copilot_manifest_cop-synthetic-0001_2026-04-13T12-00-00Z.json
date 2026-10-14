@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.1.0",
-  "extractor_version": "2.1.1",
+  "extractor_version": "3.0.0",
   "platform": "copilot",
   "conversation_id": "cop-synthetic-0001",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 759,
-      "sha256": "52e24aded67557745b9317d17117eb698737fb5fa68fb84687dba598cc0f5fdb"
+      "sha256": "9b813f3c3db2cd2a75ec1dc89e02f4f049683d82d4e7dfab2f23c06fed6796c3"
     },
     {
       "filename": "copilot_messages_canonical_cop-synthetic-0001_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1111,
-      "sha256": "0e2579f696053cdc6bc1c05f1ba6d60471b61658a7c7873f7374d9724045f503"
+      "sha256": "af636c1a8befae1e6b4bcf3900caf04680933573f8f56b037ac11f81d3c96eb8"
     }
   ],
   "telemetry": {

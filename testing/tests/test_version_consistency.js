@@ -12,7 +12,7 @@ import { EXTENSION_CONFIG } from '../../config/settings.js';
 
 // Set to a non-empty string to report mismatches without failing. Clear it
 // in the same commit that aligns the versions.
-const PENDING_UNTIL = 'D8: EXTRACTOR_VERSION is bumped to the manifest version in Phase 2';
+const PENDING_UNTIL = '';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');

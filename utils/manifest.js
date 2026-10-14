@@ -6,7 +6,7 @@
  * tests (globalThis.crypto.subtle). No DOM, no browser.*, no deps.
  */
 
-export const EXTRACTOR_VERSION = '2.1.1';
+export const EXTRACTOR_VERSION = '3.0.0';
 
 export const SCHEMA_VERSIONS = Object.freeze({
   chatgpt_metadata: '1.0.0',

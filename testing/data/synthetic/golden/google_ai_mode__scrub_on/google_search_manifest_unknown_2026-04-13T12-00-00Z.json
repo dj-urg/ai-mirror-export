@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.1.0",
-  "extractor_version": "2.1.1",
+  "extractor_version": "3.0.0",
   "platform": "google_search",
   "conversation_id": null,
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 843,
-      "sha256": "932c2a50b5808b574d80c04872877b086dadbd69d07c1f983c8e03f2866e2b1a"
+      "sha256": "11a9229fdef74ac1209b12bb09412525a31a88bfeea14204a6ba270e1d06ef95"
     },
     {
       "filename": "google_ai_mode_canonical_unknown_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1239,
-      "sha256": "29bf248a8e66c3799360ff84b030297d0552bd541d8bc8cc25348a3378621138"
+      "sha256": "3eb3913be2b0bf0a630bcfd3687a51c97c56d05bb04dc13ad36415005305bb67"
     },
     {
       "filename": "google_sources_unknown_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 440,
-      "sha256": "75545ef4d083ce89769655d3e7fdc9313d5bcb7db7c4590e1be86d8ae9cdf968"
+      "sha256": "c3dc5aea2be07f9b8d6f0206b5fd6a2ddd4ad72044aebca94cd6c4b0f28775c4"
     }
   ],
   "telemetry": {

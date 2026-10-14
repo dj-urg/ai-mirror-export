@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.1.0",
-  "extractor_version": "2.1.1",
+  "extractor_version": "3.0.0",
   "platform": "google_search",
   "conversation_id": "how do tides work",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 725,
-      "sha256": "0b6986c30cd4556207d7544586791c949c57eaa8bfd5054da3bc7fe4f5b141df"
+      "sha256": "f464ee56165a174fb9a2b9132e9411b25e70ef96aaad2b04e21d199338bf2d26"
     },
     {
       "filename": "google_ai_overview_canonical_howdotideswork_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 950,
-      "sha256": "0337a7144ac5021cfca6817f878af52e4b5285b6cd6bd44abe46c9599dd5170e"
+      "sha256": "ea22bfb0e3119663e239d410f46b7b4602467949de0cfd4fdf224c0256f63295"
     },
     {
       "filename": "google_sources_howdotideswork_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 685,
-      "sha256": "ab0615200b80509ddc58c21b92b8acc3fe27a2e23630997de589c9ee70dab43a"
+      "sha256": "1dd9c584802b9786eb00eacf899398c3ed4485cf1af3e8b20eeb0c58b469fa5e"
     }
   ],
   "telemetry": {
