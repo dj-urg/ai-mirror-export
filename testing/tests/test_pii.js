@@ -192,7 +192,7 @@ assertEq(DEFAULT_SCRUB_COLUMNS.claude_attachments, ['file_name', 'extracted_text
   'defaults: claude_attachments');
 assertEq(DEFAULT_SCRUB_COLUMNS.copilot_conversation, ['text', 'text_cleaned'],
   'defaults: copilot_conversation');
-assertEq(DEFAULT_SCRUB_COLUMNS.google_ai_mode, ['text', 'text_cleaned', 'conversation_title'],
+assertEq(DEFAULT_SCRUB_COLUMNS.google_ai_mode, ['text', 'text_cleaned', 'conversation_title', 'conversation_id'],
   'defaults: google_ai_mode');
 assertEq(DEFAULT_SCRUB_COLUMNS.google_ai_overview, ['query', 'ai_overview_text', 'ai_overview_text_cleaned'],
   'defaults: google_ai_overview');
