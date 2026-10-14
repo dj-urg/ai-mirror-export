@@ -18,9 +18,10 @@ participants, so trust messaging and plain language matter.
   stays `"none"`.
 - **No new dependencies without asking.** `playwright` + `@axe-core/playwright`
   are dev-only (ignored by the AMO build via `web-ext-config.mjs`).
-- **No new permissions without asking.** Current set is `activeTab`, `tabs`,
-  `downloads`, `storage`, `scripting`. Any addition triggers a user
-  re-approval prompt on update — see `docs/ux-audit.md` §9.
+- **No new permissions without asking.** Current set is `activeTab`,
+  `downloads`, `storage`, `scripting` (no `tabs`: the icon state works from
+  the host permissions). Any addition triggers a user re-approval prompt on
+  update — see `docs/ux-audit.md` §9.
 - **AMO reviewers see the source.** Code stays unbundled, unminified,
   readable. No build step that changes what ships.
 - **Golden-output policy.** `testing/tests/test_background_golden.js` pins
