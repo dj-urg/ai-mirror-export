@@ -74,7 +74,7 @@ import { validateRows } from './utils/validators.js';
 import { buildZip } from './utils/zip.js';
 
 // UTF-8 BOM prepended to every CSV inside the ZIP so Excel opens them with the
-// right encoding, matching the pre-zip single-file behavior from createCSVBlob.
+// right encoding.
 const UTF8_BOM = '﻿';
 
 // In production, suppress all console output to avoid leaking operational
@@ -91,9 +91,7 @@ function sanitizeIdForFilename(id) {
 }
 
 // Turn an ISO 8601 timestamp into a filename-safe UTC slug. Example:
-// '2026-10-13T11:58:12.345Z' → '2026-10-13T11-58-12Z'. Matches the timestamp
-// format used by generateFilename() in utils/csv.js so inner and outer names
-// stay consistent.
+// '2026-10-13T11:58:12.345Z' → '2026-10-13T11-58-12Z'.
 function timestampSlug(iso) {
   if (typeof iso !== 'string' || !iso) return '';
   return iso.replace(/:/g, '-').replace(/\.\d+Z$/, 'Z');

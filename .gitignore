@@ -224,18 +224,3 @@ secrets.json
 *.key
 *.pem
 *.cert
-
-# ============================================================================
-# KEEP THESE FILES (Essential Extension Files)
-# ============================================================================
-# The following files SHOULD be committed:
-# - manifest.json (extension configuration)
-# - popup.html (popup UI)
-# - popup.js (popup logic)
-# - content.js (content script)
-# - icon.png (extension icon)
-# - README.md (documentation)
-# - *.md (all markdown documentation)
-# - validate_extension.sh (validation script)
-# - .gitignore (this file)
-

@@ -150,9 +150,8 @@ by the hooks.)
 - The source submitted matches the GitHub tree 1:1 — no bundler, no
   minifier, no build-time code generation. The `web-ext build` output
   is exactly the files on disk minus `dev/`, `docs/`, `testing/`,
-  `test/`, `node_modules/`, `.github/`, the root Markdown files,
-  `updates.json`, and config files (full ignore list in
-  `web-ext-config.mjs`).
+  `test/`, `node_modules/`, `.github/`, the root Markdown files and
+  config files (full ignore list in `web-ext-config.mjs`).
 
 ## Preview status
 

@@ -58,8 +58,6 @@ export default {
     '*.zip',
     '*.xpi',
     '*.md',
-    'updates.json',
     'submission.zip',
-    'nodes.md',
   ],
 };

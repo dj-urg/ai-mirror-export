@@ -16,63 +16,47 @@ export const EXTENSION_CONFIG = {
 
   // Supported platforms
   // IMPORTANT: Platform objects must NOT contain an 'id' property.
-  // The 'id' is always derived from the object key by getPlatformByUrl() and getEnabledPlatforms().
+  // The 'id' is always derived from the object key by getPlatformByUrl().
   platforms: {
     chatgpt: {
       name: 'ChatGPT',
       domains: ['chatgpt.com', 'chat.openai.com'],
-      enabled: true,
-      contentScript: 'platforms/chatgpt/content.js',
-      injectScript: 'platforms/chatgpt/inject.js'
+      enabled: true
     },
     claude: {
       name: 'Claude',
       domains: ['claude.ai'],
-      enabled: true,
-      contentScript: 'platforms/claude/content.js',
-      injectScript: 'platforms/claude/inject.js'
+      enabled: true
     },
     copilot: {
       name: 'Copilot',
       domains: ['copilot.microsoft.com', 'copilotstudio.microsoft.com'],
-      enabled: true,
-      contentScript: 'platforms/copilot/content.js',
-      injectScript: 'platforms/copilot/inject.js'
+      enabled: true
     },
     perplexity: {
       name: 'Perplexity',
       domains: ['www.perplexity.ai'],
-      enabled: true,
-      contentScript: 'platforms/perplexity/content.js',
-      injectScript: 'platforms/perplexity/inject.js'
+      enabled: true
     },
     grok: {
       name: 'Grok',
       domains: ['grok.com'],
-      enabled: true,
-      contentScript: 'platforms/grok/content.js',
-      injectScript: 'platforms/grok/inject.js'
+      enabled: true
     },
     deepseek: {
       name: 'DeepSeek',
       domains: ['chat.deepseek.com'],
-      enabled: true,
-      contentScript: 'platforms/deepseek/content.js',
-      injectScript: 'platforms/deepseek/inject.js'
+      enabled: true
     },
     mistral: {
       name: 'Mistral',
       domains: ['chat.mistral.ai'],
-      enabled: true,
-      contentScript: 'platforms/mistral/content.js',
-      injectScript: 'platforms/mistral/inject.js'
+      enabled: true
     },
     m365_copilot: {
       name: 'Microsoft 365 Copilot',
       domains: ['m365.cloud.microsoft'],
-      enabled: true,
-      contentScript: 'platforms/m365_copilot/content.js',
-      injectScript: 'platforms/m365_copilot/inject.js'
+      enabled: true
     },
     google_search: {
       name: 'Google AI Overview',
@@ -83,16 +67,8 @@ export const EXTENSION_CONFIG = {
         'www.google.com', 'www.google.be', 'www.google.nl', 'www.google.fr', 'www.google.de',
         'www.google.co.uk', 'www.google.es', 'www.google.it', 'www.google.ca', 'www.google.com.au'
       ],
-      enabled: true,
-      contentScript: 'platforms/google_search/content.js'
+      enabled: true
     }
-  },
-
-  // CSV export settings
-  csv: {
-    includeBOM: true, // UTF-8 BOM for Excel compatibility
-    dateFormat: 'YYYY-MM-DD_HH-MM-SS',
-    filenamePrefix: 'conversation_export'
   },
 
   // Debug settings
@@ -108,8 +84,6 @@ export const EXTENSION_CONFIG = {
  * @property {string} name                   Platform display name
  * @property {string[]} domains              Supported domains
  * @property {boolean} enabled               Whether platform is enabled
- * @property {string} contentScript          Path to content script
- * @property {string} [injectScript]         Path to inject script (optional)
  */
 
 /**
@@ -153,18 +127,3 @@ export function getPlatformByUrl(url) {
     return null;
   }
 }
-
-/**
- * Get all enabled platforms.
- * @returns {PlatformDescriptor[]} Array of enabled platform configs with id.
- */
-export function getEnabledPlatforms() {
-  return Object.entries(EXTENSION_CONFIG.platforms)
-    .filter(([, platform]) => platform.enabled)
-    .map(([id, platform]) => {
-      // id is added last so it always overrides any platform.id (if accidentally added).
-      return { ...platform, id };
-    });
-}
-
-
