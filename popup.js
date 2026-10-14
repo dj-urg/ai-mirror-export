@@ -1064,22 +1064,25 @@ function handleExportResultMessage(detail) {
       showReviewCard(detail);
       break;
     case 'download_failed':
+      // detail.reason is sanitised exception text; it goes to the log only.
+      popupLogError('EXPORT_RESULT download_failed', detail.reason || 'no reason');
       updateStatus(
         'error',
         'Download failed.',
-        (detail.reason ? `${detail.reason}. ` : '') +
         'Check that your browser allows downloads for this site, and that the Downloads folder is writable, then try again.'
       );
       updateExportButton(true);
+      hideReviewCard();
       break;
     case 'processing_failed':
+      popupLogError('EXPORT_RESULT processing_failed', detail.reason || 'no reason');
       updateStatus(
         'error',
         'Could not build the export.',
-        (detail.reason ? `${detail.reason}. ` : '') +
         'Reload the tab, wait for the conversation to finish loading, then try again.'
       );
       updateExportButton(true);
+      hideReviewCard();
       break;
     case 'empty_export':
       updateStatus(
@@ -1089,15 +1092,16 @@ function handleExportResultMessage(detail) {
       );
       updateExportButton(true);
       break;
-    case 'invalid_data':
-      updateStatus(
-        'error',
-        'The conversation data looks incomplete.',
-        (detail.reason ? `${detail.reason}. ` : '') +
-        'Reload the tab and let the conversation finish loading before exporting.'
-      );
+    case 'invalid_data': {
+      // Internal validation strings stay in the log; the user gets plain copy
+      // keyed on the validation code.
+      popupLogError('EXPORT_RESULT invalid_data', `${detail.code || 'BAD_SHAPE'}: ${detail.reason || ''}`);
+      const copy = invalidDataCopy(detail.code);
+      updateStatus('error', copy.message, copy.detail);
       updateExportButton(true);
+      hideReviewCard();
       break;
+    }
     case 'auth_failed':
       renderAuthFailure(detail.platform, platformDisplayName(detail.platform));
       break;
@@ -1162,6 +1166,32 @@ function wireReviewCard() {
       browser.downloads.show(reviewState.downloadId).catch(() => {});
     } catch (_) { /* downloads.show unavailable; the file is still in Downloads */ }
   });
+}
+
+/**
+ * Plain-language copy for a background validation code (see
+ * validateConversationData in background.js).
+ * @param {string|undefined} code
+ * @returns {{message: string, detail: string}}
+ */
+function invalidDataCopy(code) {
+  switch (code) {
+    case 'TOO_LARGE':
+      return {
+        message: 'This conversation is too large to export.',
+        detail: 'The conversation data is over 50 MB, which is more than the extension can process in the browser.'
+      };
+    case 'UNSERIALIZABLE':
+      return {
+        message: 'The conversation data could not be read.',
+        detail: 'Reload the tab, wait for the conversation to finish loading, then try again.'
+      };
+    default:
+      return {
+        message: 'The conversation data looks incomplete.',
+        detail: 'Reload the tab and let the conversation finish loading before exporting.'
+      };
+  }
 }
 
 /**

@@ -309,10 +309,10 @@
         broadcastExportResult({ platform: 'claude', outcome: 'processing_failed', reason: 'Processing failed' });
         return ok();
       case 'empty_export':
-        broadcastExportResult({ platform: 'claude', outcome: 'empty_export', reason: 'Claude chat_messages array is empty' });
+        broadcastExportResult({ platform: 'claude', outcome: 'empty_export', code: 'EMPTY', reason: 'Claude chat_messages array is empty' });
         return ok();
       case 'invalid_data':
-        broadcastExportResult({ platform: 'chatgpt', outcome: 'invalid_data', reason: 'ChatGPT mapping is not a plain object' });
+        broadcastExportResult({ platform: 'chatgpt', outcome: 'invalid_data', code: 'BAD_SHAPE', reason: 'ChatGPT mapping is not a plain object' });
         return ok();
       case 'success_result':
         broadcastExportResult({ platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip', downloadId: 1 });

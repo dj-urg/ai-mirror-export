@@ -513,9 +513,14 @@ function generateGoogleSourcesCSV(rows) {
 }
 
 
+/**
+ * Validate a payload before extraction. Every failure carries a stable
+ * `code` the popup maps to plain copy (the `error` string is for logs):
+ *   NOT_OBJECT, TOO_LARGE, UNSERIALIZABLE, MISSING_FIELDS, BAD_SHAPE, EMPTY.
+ */
 function validateConversationData(data, platform) {
   if (!data || typeof data !== 'object') {
-    return { isValid: false, error: 'Data is not an object' };
+    return { isValid: false, code: 'NOT_OBJECT', error: 'Data is not an object' };
   }
   const MAX_PAYLOAD_SIZE = 50 * 1024 * 1024;
   try {
@@ -523,24 +528,25 @@ function validateConversationData(data, platform) {
     if (jsonSize > MAX_PAYLOAD_SIZE) {
       return {
         isValid: false,
+        code: 'TOO_LARGE',
         error: `Payload too large: ${(jsonSize / 1024 / 1024).toFixed(2)}MB (max: 50MB)`
       };
     }
   } catch (error) {
-    return { isValid: false, error: 'Failed to serialize data: ' + error.message };
+    return { isValid: false, code: 'UNSERIALIZABLE', error: 'Failed to serialize data: ' + error.message };
   }
   switch (platform) {
     case 'chatgpt':
       if (!data.mapping && !data.conversation_id) {
-        return { isValid: false, error: 'ChatGPT data missing required fields (mapping or conversation_id)' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'ChatGPT data missing required fields (mapping or conversation_id)' };
       }
       if ('mapping' in data && (data.mapping === null || typeof data.mapping !== 'object' || Array.isArray(data.mapping))) {
-        return { isValid: false, error: 'ChatGPT mapping is not a plain object' };
+        return { isValid: false, code: 'BAD_SHAPE', error: 'ChatGPT mapping is not a plain object' };
       }
       break;
     case 'claude':
       if (!Array.isArray(data.chat_messages)) {
-        return { isValid: false, error: 'Claude data missing required chat_messages array' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'Claude data missing required chat_messages array' };
       }
       if (data.chat_messages.length === 0) {
         return { isValid: false, code: 'EMPTY', error: 'Claude chat_messages array is empty' };
@@ -548,7 +554,7 @@ function validateConversationData(data, platform) {
       break;
     case 'copilot':
       if (!Array.isArray(data.results)) {
-        return { isValid: false, error: 'Copilot data missing required results array' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'Copilot data missing required results array' };
       }
       if (data.results.length === 0) {
         return { isValid: false, code: 'EMPTY', error: 'Copilot results array is empty' };
@@ -556,7 +562,7 @@ function validateConversationData(data, platform) {
       break;
     case 'm365_copilot':
       if (!Array.isArray(data.results)) {
-        return { isValid: false, error: 'M365 Copilot data missing required results array' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'M365 Copilot data missing required results array' };
       }
       if (data.results.length === 0) {
         return { isValid: false, code: 'EMPTY', error: 'M365 Copilot results array is empty' };
@@ -573,7 +579,7 @@ function validateConversationData(data, platform) {
       break;
     case 'perplexity':
       if (!Array.isArray(data.entries)) {
-        return { isValid: false, error: 'Perplexity data missing entries array' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'Perplexity data missing entries array' };
       }
       if (data.entries.length === 0) {
         return { isValid: false, code: 'EMPTY', error: 'Perplexity entries array is empty' };
@@ -589,7 +595,7 @@ function validateConversationData(data, platform) {
       const flatMessages = Array.isArray(data.messages) ? data.messages : null;
       const messages = flatResponses || nestedResponses || flatMessages;
       if (!messages) {
-        return { isValid: false, error: 'Grok data missing responses/messages array' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'Grok data missing responses/messages array' };
       }
       if (messages.length === 0) {
         return { isValid: false, code: 'EMPTY', error: 'Grok messages array is empty' };
@@ -606,7 +612,7 @@ function validateConversationData(data, platform) {
         (biz && Array.isArray(biz.chat_messages) ? biz.chat_messages : null) ||
         (Array.isArray(data.chat_messages) ? data.chat_messages : null);
       if (!chatMessages) {
-        return { isValid: false, error: 'DeepSeek data missing chat_messages array' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'DeepSeek data missing chat_messages array' };
       }
       if (chatMessages.length === 0) {
         return { isValid: false, code: 'EMPTY', error: 'DeepSeek chat_messages array is empty' };
@@ -615,7 +621,7 @@ function validateConversationData(data, platform) {
     }
     case 'mistral':
       if (!Array.isArray(data.messages)) {
-        return { isValid: false, error: 'Mistral data missing required messages array' };
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'Mistral data missing required messages array' };
       }
       if (data.messages.length === 0) {
         return { isValid: false, code: 'EMPTY', error: 'Mistral messages array is empty' };
@@ -871,6 +877,8 @@ async function handleConversationData(message) {
     broadcastExportResult({
       platform,
       outcome: validation.code === 'EMPTY' ? 'empty_export' : 'invalid_data',
+      code: validation.code || 'BAD_SHAPE',
+      // `reason` is diagnostic text for the popup's log, never shown to the user.
       reason: validation.error || 'Validation failed'
     });
     return;

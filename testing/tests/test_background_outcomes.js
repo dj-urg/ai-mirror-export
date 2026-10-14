@@ -10,7 +10,7 @@ function assert(name, cond, detail = '') {
   if (cond) { passed++; } else { failed++; console.error('FAIL:', name, detail); }
 }
 
-async function expectOutcome(name, opts, outcome) {
+async function expectOutcome(name, opts, outcome, expectedCode = null) {
   const r = await runExport(opts);
   assert(`${name}: no ZIP downloaded`, r.filename === null, r.filename);
   const outcomes = r.broadcasts.map(b => b.outcome);
@@ -18,11 +18,13 @@ async function expectOutcome(name, opts, outcome) {
   const detail = r.broadcasts.find(b => b.outcome === outcome) || {};
   assert(`${name}: platform set`, typeof detail.platform === 'string' && detail.platform.length > 0);
   assert(`${name}: reason is plain text`, typeof detail.reason === 'string' && detail.reason.length > 0, detail.reason);
+  assert(`${name}: carries a validation code`, typeof detail.code === 'string' && /^[A-Z_]+$/.test(detail.code), detail.code);
+  if (expectedCode) assert(`${name}: code is ${expectedCode}`, detail.code === expectedCode, detail.code);
 }
 
 await expectOutcome('claude empty chat',
   { messageType: 'CLAUDE_CONVERSATION_DATA', payload: { uuid: 'x', chat_messages: [] }, senderUrl: 'https://claude.ai/chat/x' },
-  'empty_export');
+  'empty_export', 'EMPTY');
 await expectOutcome('copilot empty results',
   { messageType: 'COPILOT_CONVERSATION_DATA', payload: { conversationId: 'c', results: [] }, senderUrl: 'https://copilot.microsoft.com/chats/c' },
   'empty_export');
@@ -34,10 +36,10 @@ await expectOutcome('mistral empty messages',
   'empty_export');
 await expectOutcome('chatgpt mapping not an object',
   { messageType: 'CHATGPT_CONVERSATION_DATA', payload: { conversation_id: 'c', mapping: [] }, senderUrl: 'https://chatgpt.com/c/c' },
-  'invalid_data');
+  'invalid_data', 'BAD_SHAPE');
 await expectOutcome('claude missing chat_messages',
   { messageType: 'CLAUDE_CONVERSATION_DATA', payload: { uuid: 'x' }, senderUrl: 'https://claude.ai/chat/x' },
-  'invalid_data');
+  'invalid_data', 'MISSING_FIELDS');
 
 // Sender/type validation: nothing happens at all for a mismatched origin.
 const mismatch = await runExport({
