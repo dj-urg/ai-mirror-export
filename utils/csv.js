@@ -75,7 +75,9 @@ export function generateCSV(data, headers = null) {
     rows.push(values.join(','));
   }
 
-  return rows.join('\n');
+  // RFC 4180 record separator with a terminating newline, matching every
+  // other CSV writer in the extension so one ZIP never mixes line endings.
+  return rows.join('\r\n') + '\r\n';
 }
 
 /**

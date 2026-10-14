@@ -91,7 +91,7 @@ The other platforms follow the same `{stem}_{conversation_id_short}_{timestamp}`
 **File characteristics worth knowing:**
 
 - Every CSV begins with a UTF-8 BOM so Excel opens it with the right encoding.
-- Field separator: `,` — quoting: RFC 4180 — line endings: `\r\n` in most files; the flat Copilot, M365 Copilot and Google CSVs and the ChatGPT metadata and donor-context CSVs use `\n`.
+- Field separator: `,` — quoting: RFC 4180 — line endings: `\r\n` (CRLF) in every CSV, each file ending with a newline.
 - Empty "optional" CSVs (sources, attachments, donor context) are only emitted when there is at least one row. Don't assume every file is always present.
 
 ---

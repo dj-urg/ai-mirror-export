@@ -13,8 +13,8 @@
       "schema": "chatgpt_metadata",
       "schema_version": "1.0.0",
       "rows": 1,
-      "bytes": 514,
-      "sha256": "420df7dd6fa17cb5d0ff465ff727f2e90513a64bb4c75381631e647d46e48091"
+      "bytes": 517,
+      "sha256": "b4d143a68dba5dd1c1257af91ee48b7e147ba83950e0ce7ebdf61e170301d4d6"
     },
     {
       "filename": "chatgpt_messages_00000000-0000-4000-8000-0000000000c2_2026-04-13T12-00-00Z.csv",
@@ -37,8 +37,8 @@
       "schema": "chatgpt_donor_context",
       "schema_version": "1.0.0",
       "rows": 1,
-      "bytes": 344,
-      "sha256": "0a99682215395b031d597a7211c164ec60396959dc5308a65322e187d704f452"
+      "bytes": 347,
+      "sha256": "920b84562802a840a8b169e9946a42218cbc412557ed1f937ccec63e83c80142"
     }
   ],
   "telemetry": {

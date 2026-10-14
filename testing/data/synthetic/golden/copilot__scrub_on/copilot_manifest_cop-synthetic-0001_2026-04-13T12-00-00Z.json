@@ -13,8 +13,8 @@
       "schema": "copilot_conversation",
       "schema_version": "1.0.0",
       "rows": 2,
-      "bytes": 765,
-      "sha256": "6fad04b758b5a9e0cbccce43cd1310f201c4475616e1e791b98157bc76b447ca"
+      "bytes": 769,
+      "sha256": "840d31917cb46f7cdfe963314ccc79632968e52c4a5abc3194cd8c37d8e00614"
     },
     {
       "filename": "copilot_messages_canonical_cop-synthetic-0001_2026-04-13T12-00-00Z.csv",

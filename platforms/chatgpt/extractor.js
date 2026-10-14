@@ -333,7 +333,7 @@ function generateMetadataCSV(metadata) {
         ...metadata
     };
     const row = headers.map(h => escapeCSVField(enriched[h]));
-    return [headers.join(','), row.join(',')].join('\n');
+    return [headers.join(','), row.join(',')].join('\r\n') + '\r\n';
 }
 
 
@@ -746,7 +746,7 @@ function generateDonorContextCSV(donorContext) {
         ...donorContext
     };
     const row = headers.map(h => escapeCSVField(enriched[h]));
-    return [headers.join(','), row.join(',')].join('\n');
+    return [headers.join(','), row.join(',')].join('\r\n') + '\r\n';
 }
 
 

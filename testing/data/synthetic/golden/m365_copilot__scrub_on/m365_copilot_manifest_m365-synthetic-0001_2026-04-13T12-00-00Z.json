@@ -13,8 +13,8 @@
       "schema": "m365_copilot_conversation",
       "schema_version": "1.0.0",
       "rows": 2,
-      "bytes": 1940,
-      "sha256": "5436a5a388f6d44c8d41e40b38eda66146f6898c16e5171b12e3615053252738"
+      "bytes": 1944,
+      "sha256": "5bc00e165d1bcd81813f36afbc6f7dfa9b22b8853b07b9c8179de613e0a4a1a9"
     },
     {
       "filename": "m365_copilot_messages_canonical_m365-synthetic-0001_2026-04-13T12-00-00Z.csv",
