@@ -183,6 +183,7 @@ testing/tests/*
 !testing/tests/test_deepseek_golden.js
 !testing/tests/test_mistral_golden.js
 !testing/tests/test_background_golden.js
+!testing/tests/test_chatgpt_golden.js
 !testing/tests/helpers/
 !testing/tests/helpers/**
 # Synthetic (hand-built) fixtures used by the golden tests. Real-origin
