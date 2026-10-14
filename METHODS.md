@@ -147,11 +147,18 @@ A conversation payload larger than 50 MB when serialised as JSON is refused befo
 
 ## Consent record
 
-The first-run consent gate stores `consent_given: true`, `consent_version` (the version of the consent text the participant agreed to; `"1"` is the 3.0.0 wording) and `consent_given_at` (ISO 8601 UTC) in `browser.storage.local`. These values are not written into the export; a study that needs them must collect them separately. Exports are only possible after consent.
+The first-run consent gate stores `consent_given: true`, `consent_version` (the version of the consent text the participant agreed to; `"1"` is the 3.0.0 wording) and `consent_given_at` (ISO 8601 UTC) in `browser.storage.local`. The version and timestamp are also written into every manifest's `telemetry` (manifest schema 1.2.0), so an export carries the consent record it was made under. Exports are only possible after consent.
 
 ## Provenance manifest (`_manifest.json`)
 
-Every ZIP includes a sidecar `{platform}_manifest_{slug}.json` describing the files inside, so researchers can audit what was emitted without re-running the extension. The outer schema version is `manifest_schema_version`; the current value is `1.1.0` (additive change from `1.0.0` — the fields below were added, no field was renamed or removed, so parsers that ignore unknown keys stay compatible).
+Every ZIP includes a sidecar `{platform}_manifest_{slug}.json` describing the files inside, so researchers can audit what was emitted without re-running the extension. The outer schema version is `manifest_schema_version`; the current value is `1.2.0` (additive changes from `1.0.0`: `1.1.0` added the PII fields below, `1.2.0` added the consent record; no field was renamed or removed, so parsers that ignore unknown keys stay compatible).
+
+The `telemetry` object carries the consent record from the first-run gate:
+
+| Field | Shape | Meaning |
+|---|---|---|
+| `consent_version` | string or null | Version of the consent text the donor agreed to (`"1"` = the 3.0.0 wording). `null` when the install predates 3.0.0, where consent was recorded without a version. |
+| `consent_given_at` | ISO 8601 string or null | When the donor agreed. `null` for the same pre-3.0.0 installs. |
 
 The `telemetry` object carries PII-scrubbing provenance:
 

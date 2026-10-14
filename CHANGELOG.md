@@ -18,7 +18,7 @@
 
 - **`extractor_version` is `3.0.0`** in every CSV and manifest (it was stuck at `2.1.1`), and a test keeps it equal to the add-on version.
 - **Branches are exported, with a visible-path marker.** ChatGPT and Claude exports contain every edited prompt and regenerated answer; `on_visible_path` says which messages were on the thread shown on screen.
-- **Consent record.** The browser stores `consent_version` and `consent_given_at` next to `consent_given` (not written into the export).
+- **Consent record.** The browser stores `consent_version` and `consent_given_at` next to `consent_given`, and every manifest's `telemetry` carries them (manifest schema `1.2.0`, additive; `null` for installs that consented before 3.0.0).
 - **Verification.** `docs/validation.md` documents the automated suite, the accessibility baseline and the real-data validation method and log.
 - **Breaking change: the export format changed from one CSV to a ZIP of CSVs.** Existing analysis scripts that read a single `.csv` need updating to unpack the `.zip` first and read the individual files inside. See [`METHODS.md`](METHODS.md) for the schema of each file in the bundle.
 - **Donor identifiers are pseudonymous, not anonymous.** The `donor_id` in every CSV is a locally-generated UUID (not linked to any account), but it's stable across all of that donor's exports, so multiple exports from the same install can be joined. Add an optional **study code** in Privacy settings to turn `donor_id` into `HMAC-SHA256(uuid, salt)` so the same donor across different studies yields different IDs.

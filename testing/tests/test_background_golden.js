@@ -106,6 +106,9 @@ for (const r of runs) {
     assert(`${r.run}: manifest.download_time frozen`, manifest.download_time === FROZEN_ISO, manifest.download_time);
     assert(`${r.run}: manifest.telemetry.pii_scrub_enabled`,
       manifest.telemetry.pii_scrub_enabled === Boolean(r.settings.pii_scrub_enabled));
+    assert(`${r.run}: manifest.telemetry consent record`,
+      manifest.telemetry.consent_version === '1' && manifest.telemetry.consent_given_at === '2026-01-01T00:00:00.000Z',
+      JSON.stringify([manifest.telemetry.consent_version, manifest.telemetry.consent_given_at]));
     const listed = manifest.files.map(f => f.filename).sort();
     assert(`${r.run}: manifest lists every CSV`, JSON.stringify(listed) === JSON.stringify([...csvNames].sort()),
       `${listed} vs ${csvNames}`);

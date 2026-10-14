@@ -1,5 +1,5 @@
 {
-  "manifest_schema_version": "1.1.0",
+  "manifest_schema_version": "1.2.0",
   "extractor_version": "3.0.0",
   "platform": "mistral",
   "conversation_id": "mistral-golden-0001",
@@ -40,6 +40,8 @@
     "pii_redactions_total": 0,
     "pii_redactions_by_type": {},
     "include_donor_context": true,
+    "consent_version": "1",
+    "consent_given_at": "2026-01-01T00:00:00.000Z",
     "orphaned_nodes": 0,
     "validation": {
       "mistral_messages": {

@@ -167,20 +167,28 @@ async function loadPrivacySettings() {
       'pii_scrub_enabled',
       'pii_scrub_options',
       'include_donor_context',
-      'study_salt'
+      'study_salt',
+      'consent_version',
+      'consent_given_at'
     ]);
     return {
       piiScrubEnabled: Boolean(s.pii_scrub_enabled),
       piiScrubOptions: normalizeScrubOptions(s.pii_scrub_options),
       includeDonorContext: s.include_donor_context !== false, // default: true
-      studySalt: typeof s.study_salt === 'string' ? s.study_salt : ''
+      studySalt: typeof s.study_salt === 'string' ? s.study_salt : '',
+      // Consent record written by the popup's first-run gate. null when the
+      // install predates 3.0.0 (consent was given before versions existed).
+      consentVersion: typeof s.consent_version === 'string' ? s.consent_version : null,
+      consentGivenAt: typeof s.consent_given_at === 'string' ? s.consent_given_at : null
     };
   } catch {
     return {
       piiScrubEnabled: false,
       piiScrubOptions: normalizeScrubOptions(null),
       includeDonorContext: true,
-      studySalt: ''
+      studySalt: '',
+      consentVersion: null,
+      consentGivenAt: null
     };
   }
 }
@@ -868,7 +876,9 @@ async function handleConversationData(message) {
 
   try {
     const { id: donorIdRaw, type: donorIdType } = await getOrCreateDonorId();
-    const { piiScrubEnabled, piiScrubOptions, includeDonorContext, studySalt } = await loadPrivacySettings();
+    const {
+      piiScrubEnabled, piiScrubOptions, includeDonorContext, studySalt, consentVersion, consentGivenAt
+    } = await loadPrivacySettings();
     const donorId = await hmacDonorId(donorIdRaw, studySalt);
     const donorIdHashed = studySalt ? donorId : await sha256Hex(donorIdRaw);
     const downloadTime = new Date().toISOString();
@@ -1213,6 +1223,8 @@ async function handleConversationData(message) {
       pii_redactions_total: piiStats.total,
       pii_redactions_by_type: piiStats.byType,
       include_donor_context: includeDonorContext,
+      consent_version: consentVersion,
+      consent_given_at: consentGivenAt,
       orphaned_nodes: orphanCount,
       validation: summarizeValidation(perSchemaValidation),
       ...(extractionTelemetry ? { extraction_telemetry: extractionTelemetry } : {})

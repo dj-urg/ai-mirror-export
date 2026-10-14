@@ -28,6 +28,7 @@ export const FROZEN_ISO = '2026-04-13T12:00:00.000Z';
 const DEFAULT_SETTINGS = Object.freeze({
   consent_given: true,
   consent_version: '1',
+  consent_given_at: '2026-01-01T00:00:00.000Z',
   pii_scrub_enabled: false,
   include_donor_context: true,
   study_salt: '',

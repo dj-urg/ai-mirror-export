@@ -70,8 +70,8 @@ async function run() {
   assert('file entry row count', manifest.files[0].rows === 1);
   assert('manifest preserves extras', manifest.telemetry.pii_redactions === 3);
 
-  // MANIFEST_SCHEMA_VERSION bumped additively to 1.1.0
-  assert('manifest schema is 1.1.0', MANIFEST_SCHEMA_VERSION === '1.1.0');
+  // MANIFEST_SCHEMA_VERSION bumped additively (1.1.0 PII fields, 1.2.0 consent record)
+  assert('manifest schema is 1.2.0', MANIFEST_SCHEMA_VERSION === '1.2.0');
 
   // New additive telemetry fields survive the round-trip
   const manifestWithScrub = await buildManifest({
