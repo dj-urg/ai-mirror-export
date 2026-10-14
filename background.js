@@ -72,6 +72,7 @@ import {
 import { cleanText } from './utils/text_cleaner.js';
 import { validateRows } from './utils/validators.js';
 import { buildZip } from './utils/zip.js';
+import { stripUtmParams, normalizeRole } from './utils/extract_helpers.js';
 
 // UTF-8 BOM prepended to every CSV inside the ZIP so Excel opens them with the
 // right encoding.
@@ -246,11 +247,6 @@ const CopilotHandler = {
  * and `suggestedResponses`.
  */
 const M365CopilotHandler = {
-  _normalizeRole(author) {
-    if (author === 'user') return 'user';
-    if (author === 'bot' || author === 'assistant') return 'assistant';
-    return author || '';
-  },
 
   flattenConversationData(convJson) {
     if (!convJson || !Array.isArray(convJson.results)) {
@@ -273,7 +269,7 @@ const M365CopilotHandler = {
           message_id: typeof msg.messageId === 'string' ? msg.messageId : '',
           request_id: typeof msg.requestId === 'string' ? msg.requestId : '',
           author,
-          role: this._normalizeRole(author),
+          role: normalizeRole(author),
           text: m365Text,
           text_cleaned: cleanText(m365Text),
           spoken_text: typeof msg.spokenText === 'string' ? msg.spokenText : '',
@@ -305,15 +301,6 @@ const M365CopilotHandler = {
    */
   flattenSources(convJson) {
     if (!convJson || !Array.isArray(convJson.results)) return [];
-    const stripUtm = (url) => {
-      if (!url) return '';
-      try {
-        const u = new URL(url);
-        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-          .forEach(p => u.searchParams.delete(p));
-        return u.toString();
-      } catch { return url; }
-    };
     const rows = [];
     const conversationId = convJson.conversationId || '';
     for (const msg of convJson.results) {
@@ -330,7 +317,7 @@ const M365CopilotHandler = {
           title: a.title || a.name || '',
           snippet: a.snippet || a.description || '',
           url,
-          url_clean: stripUtm(url),
+          url_clean: stripUtmParams(url),
           search_query: a.searchQuery || '',
           image_link: a.imageLink || '',
           raw_json: (() => { try { return JSON.stringify(a); } catch { return ''; } })()
@@ -427,15 +414,6 @@ const GoogleSearchHandler = {
    */
   flattenSources(data) {
     if (!data || typeof data !== 'object') return [];
-    const stripUtm = (url) => {
-      if (!url) return '';
-      try {
-        const u = new URL(url);
-        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-          .forEach(p => u.searchParams.delete(p));
-        return u.toString();
-      } catch { return url; }
-    };
     const rows = [];
     if (data.mode === 'ai_mode') {
       const turns = Array.isArray(data.turns) ? data.turns : [];
@@ -451,7 +429,7 @@ const GoogleSearchHandler = {
             source_page_url: data.source_page_url || '',
             captured_at: turn.captured_at || data.captured_at || '',
             url: s.url,
-            url_clean: stripUtm(s.url),
+            url_clean: stripUtmParams(s.url),
             title: s.title || ''
           });
         }
@@ -468,7 +446,7 @@ const GoogleSearchHandler = {
         source_page_url: data.source_page_url || '',
         captured_at: data.captured_at || '',
         url: s.url,
-        url_clean: stripUtm(s.url),
+        url_clean: stripUtmParams(s.url),
         title: s.title || ''
       });
     }
