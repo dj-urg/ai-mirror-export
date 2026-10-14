@@ -1,0 +1,20 @@
+# gitleaks configuration for AI Chat Exporter.
+#
+# Extends the default rule set. The only allowlisted path holds hand-built
+# *inputs* for the PII-scrubber unit test (a dummy HS256 JWT and a sequential
+# hex placeholder); they are not credentials. test_pii_sweep.js builds its
+# planted tokens at runtime so no secret-looking literal lives in the repo.
+#
+# Run locally:  gitleaks git --redact --config .gitleaks.toml
+# Pre-commit:   see dev/README.md
+
+title = "AI Chat Exporter"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic inputs for the PII scrubber tests"
+paths = [
+  '''testing/tests/test_pii\.js''',
+]

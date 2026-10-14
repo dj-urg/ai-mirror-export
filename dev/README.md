@@ -75,6 +75,26 @@ for (const state of STATES) {
 }
 ```
 
+## Secret scanning (gitleaks)
+
+CI runs [gitleaks](https://github.com/gitleaks/gitleaks) over the full
+history on every push and pull request (`.gitleaks.toml` allowlists only the
+synthetic inputs in `testing/tests/test_pii.js`). To catch a slip before it
+is committed, install gitleaks (`brew install gitleaks`) and add a
+pre-commit hook:
+
+```bash
+cat > .git/hooks/pre-commit <<'HOOK'
+#!/bin/sh
+exec gitleaks git --pre-commit --staged --redact --config .gitleaks.toml --no-banner
+HOOK
+chmod +x .git/hooks/pre-commit
+```
+
+The hook scans only the staged changes and prints redacted findings.
+Captures (HAR files, real-origin fixtures) must never be staged in the
+first place; see `.gitignore`.
+
 ## Not shipped
 
 `web-ext-config.mjs` excludes `dev/` and `dev/**` from `web-ext build`, so
