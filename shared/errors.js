@@ -14,7 +14,7 @@ export const ERROR_TYPES = {
   UNSUPPORTED_PLATFORM: {
     message: "The extension doesn't support this page.",
     detail: 'Open one of the supported sites below and come back.',
-    troubleshooting: 'Supported sites: ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, and Google Search AI Overview.'
+    troubleshooting: 'Supported sites: ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, and Google AI Overview.'
   },
   NO_CONVERSATION_ID: {
     message: "This page doesn't look like a conversation yet.",

@@ -1587,10 +1587,14 @@ const ICON_PATHS_GREY = {
   128: 'icons/icon-128-grey.png'
 };
 
+// Display names come from config/settings.js so this list can never drift
+// from the popup's.
+const SUPPORTED_NAMES = Object.values(EXTENSION_CONFIG.platforms)
+  .filter(p => p.enabled)
+  .map(p => p.name);
 const UNSUPPORTED_TITLE =
   'AI Chat Exporter — this page is not supported. Supported sites: ' +
-  'ChatGPT, Claude, Copilot, Perplexity, Grok, DeepSeek, Mistral, ' +
-  'Microsoft 365 Copilot, and Google Search AI Overview.';
+  SUPPORTED_NAMES.slice(0, -1).join(', ') + ', and ' + SUPPORTED_NAMES[SUPPORTED_NAMES.length - 1] + '.';
 
 async function applyIconStateForTab(tabId, url) {
   const action = typeof browser !== 'undefined' ? browser.action : null;
