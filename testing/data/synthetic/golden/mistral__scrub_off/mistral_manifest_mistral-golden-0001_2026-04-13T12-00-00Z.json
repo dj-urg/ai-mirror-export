@@ -1,0 +1,55 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "3.0.0",
+  "platform": "mistral",
+  "conversation_id": "mistral-golden-0001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "mistral_metadata_mistral-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "mistral_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 672,
+      "sha256": "e03b585e065fb7a81084a3ea08074f462a099bf1e31e2428095133d82a67582a"
+    },
+    {
+      "filename": "mistral_messages_mistral-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "mistral_messages",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1733,
+      "sha256": "9dc27a27a25b6c9b8d673de977e123b090082dee4120162475377e17c3a9aeb4"
+    },
+    {
+      "filename": "mistral_messages_canonical_mistral-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "mistral_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1447,
+      "sha256": "d98230628c4a165f14d43920201d920b0d1dec680237e94b1f395adb5dec9b68"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": false,
+    "pii_scrub_options": {},
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "mistral_messages": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

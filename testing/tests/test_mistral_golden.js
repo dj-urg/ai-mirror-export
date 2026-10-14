@@ -44,11 +44,12 @@ assert('canonical row count matches messages',
   countRows(result.messagesCanonicalCSV) === result.messages.length);
 assert('canonical row embeds mistral platform', (canonLines[1] || '').includes(',mistral,'));
 
-// Provenance — Mistral has no schema entry registered in utils/manifest.js
-// yet (its background.js dispatch branch is still pending), so we only pin
-// the invariants the extractor itself owns.
+// Provenance
+assert('schema_version for mistral_messages is known',
+  typeof SCHEMA_VERSIONS.mistral_messages === 'string');
+assert('schema_version for mistral_messages_canonical is known',
+  typeof SCHEMA_VERSIONS.mistral_messages_canonical === 'string');
 assert('extractor_version non-empty', EXTRACTOR_VERSION.length > 0);
-void SCHEMA_VERSIONS;
 
 console.log(`\nMistral golden test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

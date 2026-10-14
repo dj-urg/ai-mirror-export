@@ -102,6 +102,9 @@ export const DEFAULT_SCRUB_COLUMNS = Object.freeze({
   deepseek_metadata: ['title'],
   deepseek_messages: ['text', 'text_cleaned', 'thinking_text', 'thinking_text_cleaned'],
   deepseek_sources: ['title', 'snippet'],
+  mistral_metadata: ['title', 'generated_title', 'user_title'],
+  mistral_messages: ['text', 'text_cleaned', 'reasoning_text', 'reasoning_text_cleaned'],
+  mistral_sources: ['title', 'snippet'],
   google_ai_mode: ['text', 'text_cleaned', 'conversation_title'],
   google_ai_overview: ['query', 'ai_overview_text', 'ai_overview_text_cleaned'],
   google_sources: ['title']

@@ -36,6 +36,12 @@ import {
   generateMessagesCSV as generateDeepSeekMessagesCSV,
   generateSourcesCSV as generateDeepSeekSourcesCSV
 } from './platforms/deepseek/extractor.js';
+import {
+  extractMistralConversation,
+  generateMetadataCSV as generateMistralMetadataCSV,
+  generateMessagesCSV as generateMistralMessagesCSV,
+  generateSourcesCSV as generateMistralSourcesCSV
+} from './platforms/mistral/extractor.js';
 import { EXTENSION_CONFIG, getPlatformByUrl } from './config/settings.js';
 import { sanitizeErrorMessage } from './shared/errors.js';
 import { escapeCSVField, generateCSV } from './utils/csv.js';
@@ -109,9 +115,15 @@ function resolveConversationId(conversationData) {
   const deepseekSession = deepseekBiz && typeof deepseekBiz.chat_session === 'object'
     ? deepseekBiz.chat_session.id
     : null;
+  // Mistral payloads carry `_captured_conversation_id` (stamped by content.js);
+  // the `chat.id` on the metadata half is also accepted as a fallback.
+  const mistralChat = conversationData.chat && typeof conversationData.chat === 'object'
+    ? conversationData.chat.id
+    : null;
   return stamped
     || grokNested
     || deepseekSession
+    || mistralChat
     || conversationData.conversation_id
     || conversationData.uuid
     || conversationData.id
@@ -589,6 +601,14 @@ function validateConversationData(data, platform) {
       }
       break;
     }
+    case 'mistral':
+      if (!Array.isArray(data.messages)) {
+        return { isValid: false, error: 'Mistral data missing required messages array' };
+      }
+      if (data.messages.length === 0) {
+        return { isValid: false, code: 'EMPTY', error: 'Mistral messages array is empty' };
+      }
+      break;
     default:
       _console.warn(`[${platform}] Unknown platform, skipping detailed validation`);
       break;
@@ -1018,6 +1038,29 @@ async function handleConversationData(message) {
 
       perSchemaValidation.deepseek_messages = validateRows(scrubMessages.rows, 'deepseek_messages');
 
+    } else if (platform === 'mistral') {
+      const result = extractMistralConversation(conversationData, { donorId, donorIdType, downloadTime });
+
+      const scrubMetadata = scrubIfEnabled([result.metadata], DEFAULT_SCRUB_COLUMNS.mistral_metadata, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMetadata);
+      const scrubMessages = scrubIfEnabled(result.messages, DEFAULT_SCRUB_COLUMNS.mistral_messages, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubMessages);
+      const scrubSources = scrubIfEnabled(result.sources, DEFAULT_SCRUB_COLUMNS.mistral_sources, piiScrubEnabled, piiScrubOptions);
+      mergeScrubCounts(piiStats, scrubSources);
+
+      pushCsv(csvFiles, 'mistral_metadata', 'mistral_metadata',
+        generateMistralMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
+      pushCsv(csvFiles, 'mistral_messages', 'mistral_messages',
+        generateMistralMessagesCSV(scrubMessages.rows), slug);
+      if (scrubSources.rows.length > 0) {
+        pushCsv(csvFiles, 'mistral_sources', 'mistral_sources',
+          generateMistralSourcesCSV(scrubSources.rows), slug);
+      }
+      pushCsv(csvFiles, 'mistral_messages_canonical', 'mistral_messages_canonical',
+        result.messagesCanonicalCSV, slug);
+
+      perSchemaValidation.mistral_messages = validateRows(scrubMessages.rows, 'mistral_messages');
+
     } else if (platform === 'copilot' || platform === 'm365_copilot' || platform === 'google_search') {
       const handler =
         platform === 'copilot' ? CopilotHandler :
@@ -1208,6 +1251,7 @@ const MESSAGE_TYPE_TO_PLATFORM = {
   PERPLEXITY_CONVERSATION_DATA: 'perplexity',
   GROK_CONVERSATION_DATA: 'grok',
   DEEPSEEK_CONVERSATION_DATA: 'deepseek',
+  MISTRAL_CONVERSATION_DATA: 'mistral',
   GOOGLE_SEARCH_AI_OVERVIEW_DATA: 'google_search'
 };
 

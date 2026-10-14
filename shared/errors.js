@@ -105,6 +105,11 @@ export const PLATFORM_TROUBLESHOOTING = {
     noConversationId: 'Make sure you are on a conversation page (URL should contain /a/chat/s/).',
     noData: 'Reload the page so DeepSeek re-fetches the conversation, then try exporting again.',
     exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
+  },
+  mistral: {
+    noConversationId: 'Make sure you are on a conversation page (URL should contain /chat/ or /work/).',
+    noData: 'Reload the page so Mistral re-fetches the conversation, then try exporting again.',
+    exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
   }
 };
 
