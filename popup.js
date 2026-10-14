@@ -193,6 +193,11 @@ const state = {
 // How long to show "loading" before switching to the "not captured" warning.
 const CAPTURE_LOADING_TIMEOUT_MS = 15000;
 
+// Version of the consent text in popup.html (#consentPanel). Stored next to
+// consent_given so a study can tell which wording a participant agreed to.
+// Bump it whenever that text changes. 1 = the 3.0.0 wording.
+const CONSENT_TEXT_VERSION = '1';
+
 /**
  * Milliseconds we have been waiting for `key` (a conversation id or a
  * platform id). Restarts the timer when the key changes.
@@ -1945,7 +1950,11 @@ function showConsentPanel() {
     if (!checkbox.checked) return;
 
     try {
-      await browser.storage.local.set({ consent_given: true });
+      await browser.storage.local.set({
+        consent_given: true,
+        consent_version: CONSENT_TEXT_VERSION,
+        consent_given_at: new Date().toISOString()
+      });
     } catch {
       // Storage failure is non-fatal — extension still works this session
     }
