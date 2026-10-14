@@ -1455,7 +1455,10 @@ strong {
   width: 100%;
   box-sizing: border-box;
   padding: 6px var(--space-sm);
-  border: 1px solid var(--color-border);
+  /* --color-border measures 1.4:1 (light) / 2.2:1 (dark) against the
+     field background; WCAG 1.4.11 asks 3:1 for the control boundary.
+     --color-text-tertiary gives 4.6:1 / 5.1:1 in the two palettes. */
+  border: 1px solid var(--color-text-tertiary);
   border-radius: var(--radius-sm);
   font-family: inherit;
   font-size: var(--font-size-xs);
