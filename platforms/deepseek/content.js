@@ -133,31 +133,73 @@
   setInterval(cleanupOldConversations, CLEANUP_INTERVAL_MS);
 
   // ==========================================================================
-  // ACTIVE FETCH — fast path for when the popup opens right after navigating
-  // to /a/chat/s/<uuid> and the passive intercept has not seen a request yet.
-  // Mirrors Grok/Claude.
+  // AUTH TOKEN BRIDGE
+  //
+  // DeepSeek authenticates its own history request with a Bearer token that
+  // the site stores in localStorage under `userToken` (a JSON blob
+  // `{"value":"<token>",...}`; the raw string is accepted as a fallback).
+  // Session cookies alone are rejected with INVALID_TOKEN. The token is read
+  // from the page's own storage, attached to one same-origin request to
+  // DeepSeek's own endpoint, and never stored, logged or exported.
+  // ==========================================================================
+
+  function readUserToken() {
+    try {
+      const raw = window.localStorage.getItem('userToken');
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.value === 'string' && parsed.value) return parsed.value;
+      } catch (_) {
+        // Not JSON: fall through and use the raw string.
+      }
+      return typeof raw === 'string' && raw.length > 0 ? raw : null;
+    } catch (_) {
+      // localStorage can be blocked in some privacy modes. The passive
+      // intercept path still works because DeepSeek's own code attaches the
+      // token to its own requests.
+      return null;
+    }
+  }
+
+  // ==========================================================================
+  // ACTIVE FETCH
+  //
+  // Two code paths rely on this:
+  //   1. Popup open and export: GET_CAPTURED_CONVERSATIONS and
+  //      EXPORT_CONVERSATION pass `force: true` so the export reflects the
+  //      latest state. DeepSeek streams replies via `/api/v0/chat/completion`
+  //      and keeps state in React; it never re-requests `history_messages`
+  //      for a chat that is already open, so without a forced refresh a
+  //      brand-new chat would export empty or stale.
+  //   2. SPA navigation: when the URL flips to another session id we re-fetch
+  //      after a short beat so the server has persisted the first message.
   // ==========================================================================
 
   let activeFetchInFlight = null;
 
+  // DeepSeek's router is `/a/:agentId/s/:sessionId`. The agent id is usually
+  // `chat` but other agents exist, so any slug is accepted.
   function extractConversationIdFromPath() {
     const m = window.location.pathname.match(
-      /\/a\/chat\/s\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+      /\/a\/[^/]+\/s\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
     );
     return m ? m[1] : null;
   }
 
-  async function activelyFetchAndStore(convId) {
+  async function activelyFetchAndStore(convId, { force = false } = {}) {
     if (!convId) return null;
-    if (capturedConversations.has(convId)) return capturedConversations.get(convId);
+    if (!force && capturedConversations.has(convId)) return capturedConversations.get(convId);
     if (activeFetchInFlight) {
       try { await activeFetchInFlight; } catch (_) {}
-      if (capturedConversations.has(convId)) return capturedConversations.get(convId);
+      if (!force && capturedConversations.has(convId)) return capturedConversations.get(convId);
     }
     activeFetchInFlight = (async () => {
       try {
+        const token = readUserToken();
+        const headers = token ? { Authorization: `Bearer ${token}` } : {};
         const url = `/api/v0/chat/history_messages?chat_session_id=${encodeURIComponent(convId)}`;
-        const resp = await fetch(url, { credentials: 'include' });
+        const resp = await fetch(url, { credentials: 'include', headers });
         if (!resp.ok) {
           logWarn('Active fetch failed', { error: `${url} ${resp.status}` });
           return null;
@@ -168,17 +210,39 @@
           return null;
         }
         const data = await resp.json();
+        // DeepSeek signals auth / lookup failures via `code` / `biz_code`
+        // while still returning HTTP 200. Treat anything non-zero as a miss.
+        if (typeof data?.code === 'number' && data.code !== 0) {
+          logWarn('Active fetch returned error code', { code: data.code });
+          return null;
+        }
+        if (typeof data?.data?.biz_code === 'number' && data.data.biz_code !== 0) {
+          logWarn('Active fetch returned biz error', { biz_code: data.data.biz_code });
+          return null;
+        }
         if (!hasConversationShape(data)) {
           logWarn('Active fetch returned unexpected shape');
           return null;
         }
+        const biz = data.data && data.data.biz_data ? data.data.biz_data : (data.biz_data || data);
+        const msgCount = Array.isArray(biz.chat_messages) ? biz.chat_messages.length : 0;
+
+        // Do not cache an empty session: on a brand-new chat the first
+        // message may not be persisted server-side yet. Returning null lets
+        // the SPA-navigation retry or the next popup-open refresh pick up
+        // the real messages once they land.
+        if (msgCount === 0 || (biz.chat_session && biz.chat_session.is_empty === true)) {
+          logDebug('Active fetch returned empty session, not caching', { conversationId: convId });
+          return null;
+        }
+
         // Stamp the URL id in case the response omits chat_session.id.
         try { data._captured_conversation_id = convId; } catch (_) {}
         storeConversation(convId, data);
-        const biz = data.data && data.data.biz_data ? data.data.biz_data : (data.biz_data || data);
         logDebug('Actively fetched conversation', {
           conversationId: convId,
-          messageCount: Array.isArray(biz.chat_messages) ? biz.chat_messages.length : 0
+          messageCount: msgCount,
+          force
         });
         browser.runtime.sendMessage({
           type: 'CONVERSATION_READY',
@@ -198,24 +262,32 @@
     }
   }
 
-  function kickoffIfOnChatPage() {
+  function kickoffIfOnChatPage(opts = {}) {
     const convId = extractConversationIdFromPath();
-    if (convId) activelyFetchAndStore(convId).catch(() => {});
+    if (convId) activelyFetchAndStore(convId, opts).catch(() => {});
   }
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', kickoffIfOnChatPage, { once: true });
+    document.addEventListener('DOMContentLoaded', () => kickoffIfOnChatPage(), { once: true });
   } else {
     kickoffIfOnChatPage();
   }
 
   // SPA navigation: DeepSeek swaps conversations without a full page reload.
+  // A 1 s pathname poll plus `popstate` covers it. (Wrapping
+  // history.pushState from a content script would only patch the content
+  // script's own view of `history`, not the page's, so it is not done.)
   let _lastPath = window.location.pathname;
-  setInterval(() => {
-    if (window.location.pathname !== _lastPath) {
-      _lastPath = window.location.pathname;
-      kickoffIfOnChatPage();
-    }
-  }, 1500);
+  function onPathMaybeChanged() {
+    const now = window.location.pathname;
+    if (now === _lastPath) return;
+    _lastPath = now;
+    // Short delay so the server has persisted the first message of a
+    // brand-new chat before its history is requested; force so messages
+    // that arrived later overwrite anything cached under this id.
+    setTimeout(() => kickoffIfOnChatPage({ force: true }), 800);
+  }
+  setInterval(onPathMaybeChanged, 1000);
+  window.addEventListener('popstate', onPathMaybeChanged);
 
   // ==========================================================================
   // SIGNED MESSAGE VERIFICATION
@@ -318,8 +390,10 @@
     }
 
     if (message.type === 'GET_CAPTURED_CONVERSATIONS') {
+      // Always refresh when the popup opens on a chat page: DeepSeek does
+      // not re-request history for an open chat, so messages sent after the
+      // first capture would otherwise never reach the cache.
       const urlConvId = extractConversationIdFromPath();
-      const needActive = urlConvId && !capturedConversations.has(urlConvId);
 
       const respond = () => {
         const conversations = Array.from(capturedConversations.entries()).map(([id, data]) => {
@@ -339,8 +413,8 @@
         });
       };
 
-      if (needActive) {
-        activelyFetchAndStore(urlConvId).finally(respond);
+      if (urlConvId) {
+        activelyFetchAndStore(urlConvId, { force: true }).finally(respond);
         return true;
       }
       respond();
@@ -359,21 +433,19 @@
           .catch(error => sendResponse({ success: false, error: error.message }));
       };
 
-      const existing = capturedConversations.get(conversationId);
-      if (!existing) {
-        activelyFetchAndStore(conversationId).then(data => {
-          if (!data) {
-            sendResponse({
-              success: false,
-              error: 'Conversation not found. Please reload the page and try again.'
-            });
-            return;
-          }
-          forward(data);
-        });
-        return true;
-      }
-      forward(existing);
+      // Refresh before exporting so the ZIP reflects the latest state of the
+      // chat; fall back to the cached copy if the refresh fails.
+      activelyFetchAndStore(conversationId, { force: true }).then(data => {
+        const fresh = data || capturedConversations.get(conversationId);
+        if (!fresh) {
+          sendResponse({
+            success: false,
+            error: 'Conversation not found. Please reload the page and try again.'
+          });
+          return;
+        }
+        forward(fresh);
+      });
       return true;
     }
 
