@@ -23,9 +23,32 @@ participants, so trust messaging and plain language matter.
   re-approval prompt on update — see `docs/ux-audit.md` §9.
 - **AMO reviewers see the source.** Code stays unbundled, unminified,
   readable. No build step that changes what ships.
-- **Don't touch `window.fetch` hooks or extractor logic** unless a UX fix
-  genuinely requires it. If you do, prove the CSV output is byte-identical
-  on synthetic fixtures first.
+- **Golden-output policy.** `testing/tests/test_background_golden.js` pins
+  every ZIP entry (CSVs and manifest) for every platform, scrubbing off and
+  on, against `testing/data/synthetic/golden/`. Any change to
+  `background.js`, `platforms/*/extractor.js`, `utils/` or the content
+  scripts that alters export bytes must be intentional: its own commit, the
+  changed files/columns and the reason in the message, goldens refreshed in
+  that same commit (`UPDATE_GOLDEN=1 node testing/tests/test_background_golden.js`),
+  the schema version bumped in `utils/manifest.js` `SCHEMA_VERSIONS` when
+  columns change, and METHODS.md + CHANGELOG.md updated. Never refresh
+  goldens to make an unrelated failure pass. Scrub-off output must stay
+  byte-identical unless the change is one of the listed intentional ones.
+- **Protected zone.** `background.js`, the extractors, the content/inject
+  scripts, `utils/pii.js`, `utils/manifest.js` and `utils/validators.js`
+  decide what research data looks like. Changes there need the golden
+  test, the PII sweep (`test_pii_sweep.js`) and, for content scripts, a
+  real-browser check from `docs/manual-tests.md`, because nothing automated
+  covers them.
+- **Synthetic data only.** Fixtures under `testing/data/synthetic/` are
+  hand-written. Real-origin captures (`testing/data/<site>/`, `test/`,
+  `dev/m365_ws_capture.json`, HAR files, `.playwright-mcp/`) are ignored
+  and must never be opened, printed, or committed.
+- **ESLint is strict about imports.** Globals are scoped per file in
+  `eslint.config.mjs`: only content/inject scripts get `MessageSecurity`.
+  A missing `import` in `background.js`, an extractor or `utils/` is a
+  lint error, not a runtime surprise. `npm run lint` must report 0
+  warnings.
 - **Match consent-gate copy exactly** — it's methodological, not UX. All
   trust/preview messaging lives outside the consent flow.
 
@@ -47,7 +70,8 @@ Full palette in `popup.css` under `:root`. Highlights:
 Dark theme kicks in on `@media (prefers-color-scheme: dark)` AND on
 `html[data-force-color-scheme="dark"]` (used by the preview harness).
 The two palettes are deliberately duplicated — CSS can't share a token set
-across a media query and an attribute selector in one block.
+across a media query and an attribute selector in one block. Every
+platform has `--badge-<id>-{strong,bg,text}` tokens in all three blocks.
 
 ## Component conventions
 
@@ -56,8 +80,13 @@ across a media query and an attribute selector in one block.
   to** `box-shadow: var(--focus-ring)` — some environments drop shadows.
 - `prefers-reduced-motion: reduce` collapses all animations + transitions
   to ~0 ms via a universal override; new keyframes don't need to opt in.
-- `role="status"` + `aria-live="polite"` on the status card; `aria-live=
-  "assertive"` only when the user needs to notice immediately.
+- `role="status"` + `aria-live="polite"` on the status card, always polite
+  (an assertive region inside a status role is contradictory). Regions
+  that are rebuilt on the 2 s poll (platform badge, file list) carry no
+  live attributes and are diffed before they are written; the elapsed
+  counter lives outside the atomic card and is `aria-hidden`.
+- "Not a conversation yet" and "unsupported page" render as info, not
+  error.
 
 ## Preview harness (dev-only)
 
@@ -66,13 +95,17 @@ python3 -m http.server 8766       # from repo root
 # open http://localhost:8766/dev/harness.html
 ```
 
-Dropdown picks one of 13 harness states (idle/ready per platform,
-loading, errors, consent gate, auth failure); theme radio flips the
-palette; viewport radio shows 320/380/600 widths. Behind the scenes, a
-mock `browser.*` sits in the iframe so the popup renders without a real
-chat site.
+Dropdown picks one of 36 harness states (ready and idle per platform,
+loading, errors, sign-out, consent gate, and the export outcomes, which
+click Export for you); theme radio flips the palette; viewport radio
+shows 320/380/600 widths. Behind the scenes, a mock `browser.*` sits in
+the iframe so the popup renders without a real chat site; the mock
+keeps the popup's `runtime.onMessage` listeners so it can deliver
+`EXPORT_RESULT` broadcasts.
 
-For automated baselines + axe runs across every state × theme:
+For automated baselines + axe runs across every state × theme (the run
+records the status-card text, review-card copy and focused element in
+each `.axe.json`, and exits non-zero if a capture produced no result):
 
 ```bash
 npm run baseline -- --label before
@@ -80,6 +113,9 @@ npm run baseline -- --label before
 npm run baseline -- --label after
 npm run baseline:compare -- before after
 ```
+
+Run tests and baselines one at a time (the baseline serves the repo on
+port 8766 and reads popup files from disk while it runs).
 
 Firefox only — the popup depends on `-moz-system-ui` and Firefox form
 control rendering; Chromium runs produce different metrics.
@@ -91,9 +127,11 @@ control rendering; Chromium runs produce different metrics.
 - Information is never conveyed by colour alone — status icons, titles,
   and ARIA labels carry the same information.
 - Popup opens with focus on the primary action (consent checkbox on
-  first run, export button when ready). `Escape` closes the popup
-  (Firefox doesn't do this natively) and blurs text inputs instead of
-  closing if focus is in one.
+  first run, export button when ready, set after the first status check
+  resolves). After a confirmed export, focus moves to the review card's
+  "Show in Downloads" button. `Escape` closes the popup (Firefox doesn't
+  do this natively) and blurs text inputs instead of closing if focus is
+  in one. Enter/Space on buttons is native; do not add synthetic clicks.
 - Every `<details>` has an accessible name via `aria-label` or
   `aria-labelledby`.
 
@@ -103,6 +141,7 @@ control rendering; Chromium runs produce different metrics.
 |---|---|
 | UX decisions + severity-ranked findings | `docs/ux-audit.md` |
 | Manual-test checklist | `docs/manual-tests.md` |
+| How the exporter is verified (tests, baseline, real-data validation log) | `docs/validation.md` |
 | Preview harness controls | `dev/harness.html` + `dev/README.md` |
 | Baseline capture / compare | `dev/baseline.mjs` |
 | Error taxonomy + copy | `shared/errors.js` |
@@ -115,8 +154,13 @@ control rendering; Chromium runs produce different metrics.
 - Firefox-chrome native fit (fonts, icon rendering)
 - `web-ext run` end-to-end flows on real logged-in sessions
 - Toolbar icon state transitions across tab switches
-- The 3-second popup auto-close vs. late background `EXPORT_RESULT`
-  broadcasts (race condition — covered by the toolbar `!` badge)
-- M365 Copilot's WebSocket interception path (no synthetic fixture yet)
+- The toolbar `!` badge after a failed export when the popup has already
+  been closed (the popup no longer auto-closes, so an open popup always
+  receives the background's `EXPORT_RESULT`)
+- The review step's "Show in Downloads" (`downloads.show`)
+- M365 Copilot's WebSocket interception path (no synthetic fixture, no
+  raw-capture validation yet)
+- DeepSeek's token-bearing history refresh and Google's single re-fetch
+  (content scripts have no automated coverage)
 
 See `docs/manual-tests.md` for the full checklist.
