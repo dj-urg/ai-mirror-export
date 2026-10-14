@@ -1,6 +1,6 @@
 # Student Guide — AI Chat Exporter
 
-> **AI-generated document.** This guide was drafted by Claude (Anthropic) based on direct reads of the extension's source code and a Claude test fixture. Treat it as a starting point, not an authoritative spec.
+> **About this document.** Drafted with AI assistance from the extension's source code and its synthetic test fixtures, then checked against the 3.0.0 test suite. Where this guide and the code disagree, the code wins; the extraction rules are in `METHODS.md` and the verification status in `docs/validation.md`.
 
 ---
 
@@ -44,12 +44,12 @@ Walk through this once yourself on your own account — it is the fastest way to
 2. Open a conversation on one of the supported platforms.
 3. Click the extension icon in the toolbar. A popup appears with the page's detected status.
 4. Click **Export ZIP**.
-5. A single ZIP file is downloaded.
+5. A single ZIP file is downloaded. The popup then shows a **Review your export** step: open the ZIP and check what is in it before sharing it; **Show in Downloads** reveals the file.
 
 **Settings worth knowing about** (visible in the popup):
 
-- **PII scrubbing** — optional regex pass that redacts emails, phone numbers, IPs, tokens, SSNs, and credit card patterns in the text columns. Redactions appear as `<REDACTED:EMAIL>`, etc.
-- **Study salt** — optional string that hashes the donor ID per-study, so the same donor's exports across different studies cannot be joined.
+- **PII scrubbing** — optional pattern-based pass that redacts emails, phone numbers, IP addresses, API keys and tokens, SSNs and credit-card patterns in **every file of the ZIP**: the platform CSVs, the canonical CSV, the raw-JSON columns, sources, attachments and the custom-instructions file. Redactions appear as `<REDACTED:EMAIL>`, etc. Identifiers, timestamps and URLs are left intact so files can still be joined (see "PII scrubbing coverage" in `METHODS.md`). It does not detect names or addresses.
+- **Study code** (salt) — optional string that hashes the donor ID per study, so the same donor's exports under different study codes cannot be joined.
 - **Include donor context** — ChatGPT only; includes the user's custom instructions ("About you" / "How ChatGPT should respond"). Sensitive; on by default, can be switched off in Privacy settings.
 
 The manifest inside each ZIP records which settings were on, so you always know what you are looking at.
@@ -85,8 +85,10 @@ The schema prefix (`claude_messages`, `claude_metadata`, …) still lets scripts
 The other platforms follow the same `{stem}_{conversation_id_short}_{timestamp}` pattern:
 
 - **ChatGPT:** `chatgpt_metadata`, `chatgpt_messages`, `chatgpt_sources`, `chatgpt_message_urls`, `chatgpt_donor_context`, `chatgpt_messages_canonical`, `chatgpt_manifest`
-- **Google Search:** `google_ai_overview` or `google_ai_mode`, plus `google_sources`, the matching `_canonical`, and `google_search_manifest`
 - **Copilot:** `copilot_conversation`, `copilot_messages_canonical`, `copilot_manifest`
+- **Microsoft 365 Copilot:** `m365_copilot_conversation`, `m365_copilot_sources`, `m365_copilot_messages_canonical`, `m365_copilot_manifest`
+- **Perplexity, Grok, DeepSeek, Mistral:** `<platform>_metadata`, `<platform>_messages`, `<platform>_sources`, `<platform>_messages_canonical`, `<platform>_manifest`
+- **Google Search:** `google_ai_overview` or `google_ai_mode`, plus `google_sources`, the matching `_canonical`, and `google_search_manifest`
 
 **File characteristics worth knowing:**
 
@@ -115,15 +117,15 @@ Rule of thumb:
 
 Each table below lists columns, their meaning, type, and a **confidence score**:
 
-- **High** — observed in a real test fixture and verified end-to-end by the test suite.
-- **Medium** — follows the documented Anthropic/OpenAI/Google API conventions, matched by the extractor's defensive code, but not yet seen in this repository's fixtures.
-- **Low** — the extractor codes for the shape defensively but no real data has been inspected. Verify against your own exports.
+- **High** — present in a synthetic fixture and pinned end-to-end by the test suite (`docs/validation.md` says which platforms have also been checked against real captures).
+- **Medium** — follows the platform's observed API shape, matched by the extractor's defensive code, but not exercised by a fixture.
+- **Low** — the extractor codes for the shape defensively; not yet seen in fixtures or real data. Verify against your own exports.
 
 ### 5.1 Shared donor columns (every CSV)
 
 | Column | Type | Meaning | Confidence |
 |---|---|---|---|
-| `schema_version` | string | Version of the CSV schema, bumps on breaking changes. Current `1.0.0`. | High |
+| `schema_version` | string | Version of that CSV's schema (`1.0.0`, or `1.1.0` for the files that gained columns in 3.0.0; see the table in `METHODS.md`). | High |
 | `extractor_version` | string | Version of the extension build that produced the file. | High |
 | `donor_id` | string | A UUID (or HMAC thereof) identifying the donor across their exports. **Not** a real-world identity. | High |
 | `donor_id_type` | string | `persistent` (stored in browser storage) or `session` (fallback if storage unavailable). | High |
@@ -160,9 +162,11 @@ Each table below lists columns, their meaning, type, and a **confidence score**:
 | `author_role` | string | `user`, `assistant`, `system`, or `tool`. | High |
 | `tool_name` | string | For `author_role = tool`, the name of the tool (e.g. `web_search`). | High |
 | `content_type` | string | `text`, `multimodal_text`, `thoughts`, `reasoning_recap`, `execution_output`, `code`. | High |
-| `text` | string | Extracted plaintext for the block. Thought/reasoning blocks surface their summary. | High |
+| `text` | string | Extracted plaintext for the node. Thought/reasoning nodes surface OpenAI's summaries. | High |
+| `text_cleaned` | string | `text` with markup, citation placeholders and invisible characters removed (see `METHODS.md`). | High |
 | `create_time` | ISO 8601 | When the message was created. | High |
 | `model_slug` | string | The specific model that produced the message (may differ from the conversation's default). | High |
+| `on_visible_path` | boolean | True when the node is on the thread the user last saw (from `current_node` to the root). Every branch is exported, so filter on this to reproduce the screen. Always true for the messages-array format. | High |
 
 #### 5.2.3 `chatgpt_sources.csv` — one row per source
 
@@ -227,14 +231,18 @@ A single Claude assistant message with `[thinking, tool_use, text]` produces **t
 | `block_index` | int | Position of this block within the message's `content[]`. | High |
 | `sender` | string | `human` or `assistant`. (For cross-platform, use canonical `role` where `human → user`.) | High |
 | `content_type` | string | `text`, `thinking`, `tool_use`, `tool_result`, or something new. | Medium (defensive) |
-| `text` | string | For `text`: the message body. For `thinking`: the chain-of-thought. For `tool_result`: the result text. Empty for `tool_use`. | Medium |
-| `tool_name` | string | Only populated for `tool_use` blocks (e.g. `web_search`). | Low |
-| `tool_input_json` | JSON string | For `tool_use`: the tool's arguments. e.g. `{"query": "weather Brussels"}`. | Low |
-| `tool_use_id` | string | Links a `tool_use` block to its matching `tool_result` block. | Low |
+| `text` | string | For `text`: the message body. For `thinking`: Claude's raw thinking, which the web interface sends **empty** (`thinking_hidden`). For `tool_result`: the result text. Empty for `tool_use`. | High |
+| `text_cleaned` | string | `text` cleaned for NLP (see `METHODS.md`). | High |
+| `thinking_summary` | string | For `thinking` blocks: Claude's reasoning summaries, joined with blank lines. This is the only reasoning text Claude's web interface exposes. | High |
+| `tool_name` | string | Only populated for `tool_use` blocks (e.g. `web_search`). | High |
+| `tool_input_json` | JSON string | For `tool_use`: the tool's arguments. e.g. `{"query": "weather Brussels"}`. | High |
+| `tool_use_id` | string | Links a `tool_use` block to its matching `tool_result` block. | High |
 | `block_start_timestamp`, `block_stop_timestamp` | ISO 8601 | Per-block generation timing — useful for latency analysis. | Medium |
 | `message_created_at`, `message_updated_at` | ISO 8601 | Message-level timestamps (same across all blocks). | High |
 | `message_truncated` | boolean | Whether Claude stopped mid-generation. | High |
 | `message_stop_reason` | string | e.g. `stop_sequence`, `max_tokens`, `tool_use`. | High |
+| `thinking_mode` | string | Claude's per-message thinking setting (e.g. `auto`). | High |
+| `on_visible_path` | boolean | True when the message is on the chain from `current_leaf_message_uuid` to the root, i.e. what the user last saw. Edited prompts and regenerated answers are exported too, with `false`. | High |
 | `raw_block_json` | JSON string | **The full raw content block, for future-proofing.** If a new Claude content type appears, you can parse it from here even before the extractor is updated. | High |
 
 #### 5.3.3 `claude_sources.csv` — one row per citation
@@ -261,15 +269,17 @@ Generated only when at least one content block has a non-empty `citations[]` arr
 | `source` | string | `attachments`, `files`, `files_v2`, or `sync_sources` — which array it came from. | High |
 | `file_uuid` | string | Claude's internal file ID. | Medium |
 | `file_name`, `file_type`, `file_size` | string, string, int | Standard file metadata. | Medium |
-| `extracted_text` | string | If Claude extracted text from the file (PDFs, docs), it lives here. | Low |
+| `extracted_text` | string | If Claude extracted text from the file (PDFs, docs), it lives here. Scrubbed when PII scrubbing is on. | High |
 | `raw_json` | JSON string | Full raw item — same future-proofing role as `raw_block_json`. | High |
 
 #### 5.3.5 `claude_messages_canonical.csv` — one row per message
 
-See §5.6 for the shared canonical schema. Claude-specific fields in `platform_specific_json` include:
+See §5.11 for the shared canonical schema. Claude-specific fields in `platform_specific_json` include:
 
 - `sender` — the raw `human`/`assistant` value before role normalization.
 - `content_types` — array of block types in document order (e.g. `["thinking", "tool_use", "text"]`).
+- `on_visible_path`, `thinking_mode` — as in `claude_messages`.
+- `thinking_text`, `thinking_summary`, `tool_result_text` — the reasoning and tool-result text that is kept **out** of the canonical `text` column (which holds the answer's text blocks only).
 - `has_thinking`, `has_tool_use`, `has_tool_result`, `has_attachments` — convenience booleans.
 - `truncated`, `stop_reason`, `updated_at`.
 
@@ -285,6 +295,7 @@ Two modes: **AI Overview** (the summary box above search results) and **AI Mode*
 | `source_page_url` | string | The Google results URL. | High |
 | `captured_at` | ISO 8601 | When the content script read the DOM. | High |
 | `ai_overview_text` | string | The full Overview text. | High |
+| `ai_overview_text_cleaned` | string | Cleaned for NLP. | High |
 | `source_urls`, `source_titles` | string | Comma-joined. For a cleaner per-row shape, use `google_sources.csv`. | High |
 | `follow_up_questions` | string | Comma-joined suggested follow-ups. | High |
 | `follow_up_count` | int | Convenience count. | High |
@@ -293,10 +304,11 @@ Two modes: **AI Overview** (the summary box above search results) and **AI Mode*
 
 | Column | Type | Meaning | Confidence |
 |---|---|---|---|
-| `conversation_title` | string | AI Mode's conversation title. | High |
+| `conversation_id` | string | The search query from the page URL; also names the ZIP and the files. | High |
+| `conversation_title` | string | The first user turn's text (or the query). | High |
 | `turn_index` | int | Position of the turn (0-based). | High |
 | `role` | string | `user` or `assistant`. | High |
-| `text` | string | Turn content. | High |
+| `text`, `text_cleaned` | string | Turn content, raw and cleaned. | High |
 | `source_urls`, `source_titles` | string | Comma-joined per turn. | High |
 
 #### 5.4.3 `google_sources.csv` — one row per source URL
@@ -305,7 +317,7 @@ Two modes: **AI Overview** (the summary box above search results) and **AI Mode*
 |---|---|---|---|
 | `platform` | string | Always `google_search`. | High |
 | `mode` | string | `ai_overview` or `ai_mode`. | High |
-| `conversation_id` | string | The query (overview) or conversation title (mode). | High |
+| `conversation_id` | string | The search query (both modes). | High |
 | `turn_index` | int / empty | Turn position (mode only). | High |
 | `url`, `url_clean` | string | Raw + UTM-stripped. | High |
 | `title` | string | Source title. | High |
@@ -319,7 +331,7 @@ Two modes: **AI Overview** (the summary box above search results) and **AI Mode*
 | `conversation_id` | string | Copilot's conversation ID. | High |
 | `message_id` | string | Result ID. | High |
 | `role` | string | `user` or `assistant` (normalized from Copilot's `human`/`ai`). | High |
-| `text` | string | Message text. | High |
+| `text`, `text_cleaned` | string | Message text, raw and cleaned. | High |
 | `created_at` | ISO 8601 | Message timestamp. | High |
 | `channel` | string | Copilot channel (e.g. `web`). | Medium |
 | `mode` | string | Copilot mode / model identifier. | Medium |
@@ -328,7 +340,126 @@ Two modes: **AI Overview** (the summary box above search results) and **AI Mode*
 
 Note: Copilot does not currently emit a dedicated sources CSV because the extractor does not surface Copilot's source array yet.
 
-### 5.6 Canonical schema (all platforms)
+### 5.6 Microsoft 365 Copilot CSVs
+
+Captured from the Chathub WebSocket frames; **not yet validated against raw captures** (see `docs/validation.md`).
+
+#### 5.6.1 `m365_copilot_conversation.csv` — one row per message
+
+| Column | Type | Meaning | Confidence |
+|---|---|---|---|
+| `conversation_id`, `message_id`, `request_id` | string | Conversation, message and request identifiers from the frame. | Medium |
+| `author`, `role` | string | Raw `user`/`bot` and the normalised `user`/`assistant`. | Medium |
+| `text`, `text_cleaned`, `spoken_text` | string | Message text (raw, cleaned) and the spoken-text variant if present. | Medium |
+| `message_type`, `content_origin`, `turn_state`, `response_identifier`, `offense`, `input_method` | string | Frame metadata as sent by the service. | Medium |
+| `turn_count` | int | Turn number within the conversation. | Medium |
+| `created_at` | ISO 8601 | Frame timestamp. | Medium |
+| `source_count`, `suggested_count` | int | Number of cited sources / suggested follow-ups on the message. | Medium |
+| `adaptive_cards_json`, `raw_json` | JSON string | Adaptive cards and the full raw frame. | Medium |
+
+#### 5.6.2 `m365_copilot_sources.csv` — one row per cited source
+
+`platform`, `conversation_id`, `request_id`, `message_type`, `source_index`, `provider_name`, `title`, `snippet`, `url`, `url_clean`, `search_query`, `image_link`, `raw_json`. (Medium.)
+
+### 5.7 Perplexity CSVs
+
+#### 5.7.1 `perplexity_metadata.csv` — one row per thread
+
+`conversation_id`, `title`, `created_at`, `updated_at`, `num_turns`, `num_sources`, `page_count` (how many paginated thread pages were merged). (High.)
+
+#### 5.7.2 `perplexity_messages.csv` — two rows per turn (user, assistant)
+
+| Column | Type | Meaning | Confidence |
+|---|---|---|---|
+| `conversation_id` | string | Thread UUID. | High |
+| `message_id`, `parent_id` | string | `<entry uuid>:user` / `<entry uuid>:assistant`; each turn's user row points at the previous assistant row. | High |
+| `entry_uuid`, `turn_index` | string, int | The thread entry and its position. | High |
+| `role` | string | `user` or `assistant`. | High |
+| `text`, `text_cleaned` | string | The question (user row) or the answer (assistant row). | High |
+| `code_text` | string | Code blocks of the answer, joined. | Medium |
+| `reasoning_text` | string | Perplexity's reasoning / plan blocks, as sent (not verified on real data). | Medium |
+| `created_at` | ISO 8601 | Entry timestamp. | High |
+| `model_identifier`, `status`, `source_count` | string, string, int | Display model, entry status, number of sources. | High |
+
+#### 5.7.3 `perplexity_sources.csv` — one row per cited web result
+
+`conversation_id`, `entry_uuid`, `turn_index`, `source_index`, `source_block_type`, `url`, `url_clean`, `title`, `snippet`, `domain`, `publication_date`. (High.)
+
+### 5.8 Grok CSVs
+
+#### 5.8.1 `grok_metadata.csv` — one row per conversation
+
+`conversation_id`, `title`, `create_time`, `modify_time`, `temporary`, `system_prompt_name`, `media_types`, `num_messages`, `num_user_messages`, `num_assistant_messages`, `num_messages_with_web_search`, `num_messages_with_attachments`, `num_messages_with_generated_images`. (High; the id comes from the page URL because Grok's payload carries none.)
+
+#### 5.8.2 `grok_messages.csv` — one row per message
+
+| Column | Type | Meaning | Confidence |
+|---|---|---|---|
+| `conversation_id`, `message_id`, `parent_message_id` | string | Identifiers; `parent_message_id` is Grok's `parentResponseId`. | High |
+| `turn_index` | int | Position in the response list. | High |
+| `sender`, `role` | string | Raw `human`/`assistant` and the normalised role. | High |
+| `text`, `text_cleaned` | string | Message text; `text_cleaned` strips Grok's inline citation markup. | High |
+| `model_identifier` | string | Model name on the response. | High |
+| `created_at` | ISO 8601 | Response timestamp. | High |
+| `manual`, `partial`, `shared` | boolean | Grok flags on the response. | Medium |
+| `has_web_search`, `has_attachments`, `has_generated_images`, `tools_used`, `xpost_ids`, `feedback_labels` | boolean / string | Feature signals and references. | Medium |
+| `raw_message_json` | JSON string | The full raw response. | High |
+
+#### 5.8.3 `grok_sources.csv` — one row per web / X result
+
+Mirrors the other sources files (`url`, `url_clean`, `title`, `snippet`, …). (Medium.)
+
+### 5.9 DeepSeek CSVs
+
+#### 5.9.1 `deepseek_metadata.csv` — one row per session
+
+`conversation_id`, `title`, `title_type`, `model_type`, `pinned`, `version`, `updated_at`, `num_messages`, `num_user_messages`, `num_assistant_messages`, `num_messages_with_search`, `num_messages_with_thinking`, `num_messages_with_files`. (High.)
+
+#### 5.9.2 `deepseek_messages.csv` — one row per message
+
+| Column | Type | Meaning | Confidence |
+|---|---|---|---|
+| `conversation_id`, `message_id`, `parent_message_id` | string | Session id and DeepSeek's integer message ids (stringified). | High |
+| `turn_index` | int | Position in the message list. | High |
+| `role`, `sender` | string | Normalised role and the raw `USER`/`ASSISTANT`. | High |
+| `text`, `text_cleaned` | string | The request (user) or the response fragments (assistant). | High |
+| `thinking_text`, `thinking_text_cleaned` | string | DeepSeek's `THINK` fragments, as sent. | High |
+| `model` | string | Model on the message (schema 1.1.0). | High |
+| `created_at`, `status`, `quasi_status`, `conversation_mode` | string | Message metadata. | Medium |
+| `search_enabled`, `search_triggered`, `thinking_enabled`, `ban_regenerate`, `has_pending_fragment`, `has_search_fragment`, `has_tool_fragment`, `has_file_fragment` | boolean | Feature flags and fragment signals. | Medium |
+| `fragment_count`, `fragment_types`, `incomplete_message` | int / string | Fragment summary. | High |
+| `feedback_json`, `token_usage_json`, `raw_message_json` | JSON string | Feedback, token usage and the full raw message. | High |
+
+#### 5.9.3 `deepseek_sources.csv` — one row per search result
+
+`platform`, `conversation_id`, `message_id`, `fragment_id`, `fragment_type`, `source_index`, `cite_index` (DeepSeek's citation number), `url`, `url_clean`, `title`, `snippet`, `site_name`, `provider`, `published_at`, `raw_json`. (High.)
+
+### 5.10 Mistral CSVs
+
+#### 5.10.1 `mistral_metadata.csv` — one row per chat
+
+`conversation_id`, `title`, `generated_title`, `user_title`, `product_type`, `visibility`, `permission`, `pinned`, `created_at`, `updated_at`, `organization_id`, `project_id`, `model_alias`, `reasoning_effort`, `features`, `integrations`, `libraries`, `num_messages`, `num_user_messages`, `num_assistant_messages`, `num_messages_with_tool_call`, `num_messages_with_reasoning`, `num_messages_with_search`, `num_messages_with_files`, `num_cited_sources`. (Medium; the chat half of the payload can be absent, in which case these are empty.)
+
+#### 5.10.2 `mistral_messages.csv` — one row per message
+
+| Column | Type | Meaning | Confidence |
+|---|---|---|---|
+| `conversation_id`, `message_id`, `parent_message_id` | string | Identifiers. | High |
+| `turn_index` | int | Mistral's `turn`, in conversation order (the API sends newest-first; the export is oldest-first). | High |
+| `role` | string | `user` or `assistant`. | High |
+| `text`, `text_cleaned` | string | The rendered answer (top-level `content`), or the non-reasoning text chunks joined. | High |
+| `reasoning_text`, `reasoning_text_cleaned` | string | Chunks Mistral marks as reasoning, as sent. | High |
+| `model_identifier`, `created_at`, `status`, `generation_status` | string | Model and generation metadata. | Medium |
+| `moderation_category`, `moderation_blocked_category`, `reaction`, `visibility`, `is_accelerated_answer`, `agent_id` | string / boolean | Message metadata. | Low |
+| `version`, `version_count` | int | Revision number and count for edited / regenerated messages. | Medium |
+| `chunk_count`, `chunk_types`, `tool_names`, `has_reasoning`, `has_tool_call`, `has_search_result`, `has_files`, `cited_source_count` | int / string / boolean | Chunk summary. | High |
+| `content_chunks_json`, `files_json`, `raw_message_json` | JSON string | The chunk list, files and the full raw message. | High |
+
+#### 5.10.3 `mistral_sources.csv` — one row per cited source or search result
+
+`platform`, `conversation_id`, `message_id`, `source_list` (`cited` or `tool_call`), `source_index`, `source_id`, `type`, `url`, `url_clean`, `title`, `snippet`, `site_name`, `published_at`, `tool_name`, `raw_json`. (Medium.)
+
+### 5.11 Canonical schema (all platforms)
 
 Every `*_messages_canonical.csv` has these 14 columns, in this order:
 
@@ -341,14 +472,14 @@ Every `*_messages_canonical.csv` has these 14 columns, in this order:
 | `parent_message_id` | Parent in the conversation tree, if applicable. |
 | `turn_index` | Message position (BFS depth for ChatGPT, raw `index` for Claude, turn number for Google AI Mode). |
 | `role` | Normalized to `user` / `assistant` / `system` / `tool`. (Claude's `human` → `user`.) |
-| `text` | Full concatenated text of the message. For Claude this joins every content block, including extended-thinking blocks and tool results. |
+| `text` | The message's answer text. For Claude this is the `text` blocks only; thinking summaries and tool results are in `platform_specific_json`. For Perplexity and DeepSeek, code and reasoning text are likewise kept in `platform_specific_json`. |
 | `text_cleaned` | `text` with whitespace and markup normalised (see `utils/text_cleaner.js`); the raw `text` is always kept alongside. |
 | `created_at_iso` | ISO 8601 UTC. |
 | `model_identifier` | Model slug if known; empty for Claude in the current version. |
 | `schema_version`, `extractor_version` | Provenance. |
 | `platform_specific_json` | JSON with everything that doesn't fit the canonical columns — content types, tool-use flags, has_attachments, status fields, etc. |
 
-### 5.7 `{platform}_manifest_{slug}.json`
+### 5.12 `{platform}_manifest_{slug}.json`
 
 Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_2026-10-13T11-58-12Z.json`). Open it in any text editor — it is the first thing to read when you receive a new export, because it tells you what settings produced the file and which CSVs are supposed to be in the archive.
 
@@ -371,7 +502,8 @@ Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_
 
 - **`donor_id`** is a UUID generated locally in the browser the first time the donor exports. It is stored for one year, then rotated. It is not linked to any OpenAI / Anthropic / Google / Microsoft account.
 - **Study salt (optional):** if the donor configures a `study_salt`, the `donor_id` in every CSV is `HMAC-SHA256(uuid, salt)`. Donors across studies cannot be joined, so pooling data across studies is safe.
-- **PII scrubbing (optional):** if the donor enables PII scrubbing, text columns are passed through a regex scrubber for emails, phone numbers, IPs, JWTs, SSNs, credit cards, and long tokens. Redactions become `<REDACTED:EMAIL>` etc. The manifest's `telemetry.pii_redactions_total` counts redactions.
+- **PII scrubbing (optional):** if the donor enables PII scrubbing, every string cell of every file is passed through the scrubber (emails, phone numbers, IPs, JWTs, API keys, SSNs, credit cards, long tokens); JSON columns are scrubbed inside their string values so they stay valid, and identifiers, timestamps and URLs are preserved. Redactions become `<REDACTED:EMAIL>` etc. The manifest's `telemetry.pii_redactions_total` counts redactions across all files. Names and addresses are not detected.
+- **Consent record:** the browser stores when, and to which version of the consent text, the donor agreed (`consent_version`, `consent_given_at`). This is not written into the export.
 
 ---
 
@@ -379,7 +511,8 @@ Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_
 
 1. **Per-block vs per-message grain for Claude.** `claude_messages.csv` has multiple rows per message. If you count rows thinking you're counting messages, you'll over-count any Claude conversation that used extended thinking or tool calls. Use the canonical CSV (one row per message) when that's what you need.
 2. **Role vocabulary differs across platforms.** ChatGPT uses `user`/`assistant`/`system`/`tool`. Claude uses `human`/`assistant`. Google uses `user`/`assistant`. Copilot normalizes to `user`/`assistant`. The canonical CSV normalizes all of these.
-3. **Orphaned ChatGPT nodes.** The old ChatGPT API returns a tree. Branched/regenerated/deleted messages are reachable in the tree but may have been dropped from the user's visible timeline. `turn_number == ""` flags them.
+3. **Branches.** ChatGPT and Claude exports contain every branch: edited prompts and regenerated answers appear as extra messages that share a parent. Filter on `on_visible_path == true` to get the thread the donor saw on screen; keep everything to study revisions. ChatGPT nodes unreachable from the root have `turn_number == ""`.
+8. **Leading `'` in cells.** Any cell that starts with `=`, `+`, `-`, `@`, `|` or a tab gets a `'` prefix so spreadsheets do not run it as a formula; a message beginning with `- item` is stored as `'- item`. Strip it in your pipeline (rule in `METHODS.md`).
 4. **Timestamps.** All times are normalized to ISO 8601 UTC.
 5. **`platform_specific_json` is a string, not a parsed object.** You will need to parse it before accessing nested keys.
 6. **Empty CSVs.** `claude_sources.csv`, `claude_attachments.csv`, `chatgpt_sources.csv`, `chatgpt_message_urls.csv`, and `chatgpt_donor_context.csv` are only emitted when there is at least one row. Check for file presence before loading.
