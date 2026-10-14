@@ -186,22 +186,32 @@ const state = {
   capture: {
     waitingSince: null,   // timestamp when we first found no data for this ID
     waitingForId: null,   // which conversationId we're waiting for
-    lastTurnCount: 0,     // highest turn count reported by content scripts
-    tickerId: null        // interval id for the loading-phase ticker
+    lastTurnCount: 0      // highest turn count reported by content scripts
   }
 };
 
-// Loading-phase ticker. Nothing starts it any more (the Google branch only
-// ever stops it); kept until the dead-code sweep removes the capture ticker
-// state as a whole.
-function stopCaptureTicker() {
-  if (!state.capture.tickerId) return;
-  clearInterval(state.capture.tickerId);
-  state.capture.tickerId = null;
-}
-
 // How long to show "loading" before switching to the "not captured" warning.
 const CAPTURE_LOADING_TIMEOUT_MS = 15000;
+
+/**
+ * Milliseconds we have been waiting for `key` (a conversation id or a
+ * platform id). Restarts the timer when the key changes.
+ * @param {string} key
+ * @returns {number}
+ */
+function elapsedWaitingFor(key) {
+  const now = Date.now();
+  if (state.capture.waitingForId !== key) {
+    state.capture.waitingSince = now;
+    state.capture.waitingForId = key;
+  }
+  return now - (state.capture.waitingSince || now);
+}
+
+function clearWaiting() {
+  state.capture.waitingSince = null;
+  state.capture.waitingForId = null;
+}
 
 /**
  * Produce the detail-line for a stuck/loading status card. Centralises the
@@ -452,8 +462,11 @@ function displayError(errorType, options = {}) {
     fullDetail = `${detailMessage} ${troubleshootingTip}`;
   }
 
-  // Update UI with error
-  updateStatus('error', errorConfig.message, fullDetail);
+  // "Not a conversation yet" and "unsupported page" are information about
+  // where the user is, not failures: show them as polite info, not as an
+  // error (D-L4/L5).
+  const statusType = (errorType === 'NO_CONVERSATION_ID' || errorType === 'UNSUPPORTED_PLATFORM') ? 'info' : 'error';
+  updateStatus(statusType, errorConfig.message, fullDetail);
 
   // Store error in state for potential retry logic
   state.export.lastError = {
@@ -588,17 +601,10 @@ function updateStatus(type, message, detail = '', { elapsedMs = null } = {}) {
     statusDetail.textContent = newDetail;
   }
 
-  // Ensure ARIA live region announcements work properly
-  // aria-atomic="true" ensures the entire status card content is announced
-  statusCard.setAttribute('aria-atomic', 'true');
-
-  // Set aria-live to "polite" for non-critical updates, "assertive" for errors
-  // This ensures screen readers announce status changes appropriately
-  if (type === 'error') {
-    statusCard.setAttribute('aria-live', 'assertive');
-  } else {
-    statusCard.setAttribute('aria-live', 'polite');
-  }
+  // The card is role="status" aria-live="polite" aria-atomic="true" in the
+  // markup and stays polite for every state: an assertive region inside a
+  // status role is contradictory, and nothing else is being announced when
+  // an export fails, so polite is heard just as promptly.
 
   // Restore focus if it was on an interactive element
   if (activeElementId && activeElement && activeElement.tagName !== 'BODY') {
@@ -1393,8 +1399,7 @@ async function checkAndUpdateUI() {
 
         if (hasData) {
           // Data is ready for export — clear the loading timer
-          state.capture.waitingSince = null;
-          state.capture.waitingForId = null;
+          clearWaiting();
           updateStatus(
             'success',
             `Ready to export ${platform.name} conversation.`,
@@ -1403,13 +1408,7 @@ async function checkAndUpdateUI() {
           updateExportButton(true);
           updateFilePreview(title || 'conversation');
         } else {
-          const now = Date.now();
-          // Reset timer when we move to a different conversation
-          if (state.capture.waitingForId !== conversationId) {
-            state.capture.waitingSince = now;
-            state.capture.waitingForId = conversationId;
-          }
-          const elapsed = now - (state.capture.waitingSince || now);
+          const elapsed = elapsedWaitingFor(conversationId);
 
           if (elapsed < CAPTURE_LOADING_TIMEOUT_MS) {
             // Brief loading phase — data may arrive any second. Show an
@@ -1458,39 +1457,8 @@ async function checkAndUpdateUI() {
       return;
     }
 
-    // For API interception platforms (Claude, Copilot without conversation ID)
-    // These platforms capture data via local client-side API interception
-    if (platform.id === 'claude') {
-      updateStatus(
-        'success',
-        'Ready to export Claude conversation.',
-        'Data is captured locally as you chat. Click below to export.'
-      );
-      updateExportButton(true);
-
-      // Try to get title for Claude if available
-      try {
-        const { title } = await checkConversationData(tab, platform, state.platform.conversationId);
-        updateFilePreview(title || 'conversation');
-      } catch {
-        updateFilePreview('conversation');
-      }
-
-    } else if (platform.id === 'perplexity') {
-      updateStatus(
-        'success',
-        'Ready to export Perplexity thread.',
-        'Data is captured locally as the thread loads. Click below to export.'
-      );
-      updateExportButton(true);
-      try {
-        const { title } = await checkConversationData(tab, platform, state.platform.conversationId);
-        updateFilePreview(title || 'thread');
-      } catch {
-        updateFilePreview('thread');
-      }
-
-    } else if (platform.id === 'm365_copilot') {
+    // Platforms whose conversation id is not in the URL.
+    if (platform.id === 'm365_copilot') {
       // M365 Copilot captures over SignalR WebSocket. The conversationId isn't
       // in the page URL — content.js tracks it per-socket and reports the
       // latest capture. Export is gated on `isComplete` so a mid-stream export
@@ -1504,7 +1472,8 @@ async function checkAndUpdateUI() {
           updateStatus(
             'info',
             `Waiting for a ${platform.name} conversation.`,
-            'Open or start a chat and send a message — the extension captures as the response streams.'
+            'Open or start a chat and send a message — the extension captures as the response streams.',
+            { elapsedMs: elapsedWaitingFor('m365_copilot:waiting') }
           );
           updateExportButton(false);
           hideFilePreview();
@@ -1512,6 +1481,7 @@ async function checkAndUpdateUI() {
           // Pick the latest (array is in insertion order; last entry is newest).
           const latest = conversations[conversations.length - 1];
           if (latest.isComplete) {
+            clearWaiting();
             updateStatus(
               'success',
               `Ready to export ${platform.name} conversation.`,
@@ -1523,7 +1493,8 @@ async function checkAndUpdateUI() {
             updateStatus(
               'loading',
               `${platform.name} is still replying…`,
-              'Export unlocks when the response finishes streaming.'
+              'Export unlocks when the response finishes streaming.',
+              { elapsedMs: elapsedWaitingFor(`m365_copilot:${latest.id || 'replying'}`) }
             );
             updateExportButton(false);
             hideFilePreview();
@@ -1563,7 +1534,6 @@ async function checkAndUpdateUI() {
         );
 
         if (hasData) {
-          stopCaptureTicker();
           const isAIMode = (() => {
             try { return new URL(tab.url).searchParams.get('udm') === '50'; } catch { return false; }
           })();
@@ -1598,7 +1568,6 @@ async function checkAndUpdateUI() {
           // state at the moment it opens. Showing a progress UI would promise
           // something we don't deliver. Instead, give the user the single
           // instruction that actually works: close and reopen.
-          stopCaptureTicker();
           const isAIMode = (() => {
             try { return new URL(tab.url).searchParams.get('udm') === '50'; } catch { return false; }
           })();
@@ -1621,7 +1590,6 @@ async function checkAndUpdateUI() {
         // script is still re-injecting). Same honest instruction: the popup
         // won't recover on its own while it stays open.
         popupLogError('checkConversationData', error, { platformId: platform.id });
-        stopCaptureTicker();
         updateStatus(
           'info',
           'Still waiting on this page.',
@@ -1674,8 +1642,8 @@ async function handleExportClick() {
     const waitTime = Math.ceil((exportRateLimit.minInterval - timeSinceLastExport) / 1000);
     updateStatus(
       'warning',
-      'Please wait before exporting again',
-      `Rate limit: Please wait ${waitTime} second${waitTime !== 1 ? 's' : ''} between exports.`
+      'Please wait before exporting again.',
+      `Try again in ${waitTime} second${waitTime !== 1 ? 's' : ''}.`
     );
     popupLogError('handleExportClick', 'Rate limit: minimum interval', {
       timeSinceLastExport,
@@ -1694,9 +1662,9 @@ async function handleExportClick() {
     const oldestExport = Math.min(...exportRateLimit.recentExports);
     const waitTime = Math.ceil((60000 - (now - oldestExport)) / 1000);
     updateStatus(
-      'error',
-      'Too many exports',
-      `Rate limit: Maximum ${exportRateLimit.maxExportsPerMinute} exports per minute. Please wait ${waitTime} second${waitTime !== 1 ? 's' : ''}.`
+      'warning',
+      'Too many exports in a row.',
+      `The extension allows ${exportRateLimit.maxExportsPerMinute} exports per minute. Try again in ${waitTime} second${waitTime !== 1 ? 's' : ''}.`
     );
     popupLogError('handleExportClick', 'Rate limit: max per minute exceeded', {
       recentExportsCount: exportRateLimit.recentExports.length,
@@ -1882,27 +1850,6 @@ async function handleExportClick() {
 // ============================================================================
 // KEYBOARD NAVIGATION
 // ============================================================================
-
-/**
- * Handle keyboard events for accessibility
- * Ensures Enter and Space keys work on all interactive elements
- * @param {KeyboardEvent} event - Keyboard event
- */
-function handleKeyboardNavigation(event) {
-  const target = event.target;
-
-  // Handle Enter and Space keys on buttons (native behavior, but ensure consistency)
-  if (target.tagName === 'BUTTON' && (event.key === 'Enter' || event.key === ' ')) {
-    event.preventDefault();
-    target.click();
-  }
-
-  // Handle Enter and Space keys on summary elements (native behavior, but ensure consistency)
-  if (target.tagName === 'SUMMARY' && (event.key === 'Enter' || event.key === ' ')) {
-    // Native behavior handles this, but we can add custom logic if needed
-    // For now, let the native behavior work
-  }
-}
 
 /**
  * Close the browser-action popup on Escape.
@@ -2122,8 +2069,9 @@ function initMainUI() {
   const exportBtn = document.getElementById('exportBtn');
   exportBtn.addEventListener('click', handleExportClick);
 
-  document.addEventListener('keydown', handleKeyboardNavigation);
   // Esc handler is attached in init() so it also fires on the consent panel.
+  // Enter/Space on buttons is native; no synthetic click() (it double-fired
+  // with key repeat).
 
   setupTabOrder();
   verifyNoKeyboardTraps();

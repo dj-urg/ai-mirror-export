@@ -20,7 +20,7 @@
   --color-success: #12bc00;
   --color-success-bg: #e3f7e1;
   --color-success-border: #a5d6a7;
-  --color-success-text: #2e7d32;
+  --color-success-text: #246b29; /* 5.3:1 on --color-success-bg (was 4.56:1) */
   --color-warning: #ff9400;
   --color-warning-bg: #fff4e5;
   --color-warning-border: #ffcc80;
@@ -49,13 +49,28 @@
   --badge-chatgpt-text: #0a6b52;
   --badge-claude-strong: #d97706;
   --badge-claude-bg: #fef3c7;
-  --badge-claude-text: #b45309;
+  --badge-claude-text: #92400e; /* 6.0:1 on --badge-claude-bg (was 4.51:1) */
   --badge-copilot-strong: #0078d4;
   --badge-copilot-bg: #e6f2ff;
   --badge-copilot-text: #005a9e;
   --badge-deepseek-strong: #7c3aed;
   --badge-deepseek-bg: #f3e8ff;
   --badge-deepseek-text: #6d28d9;
+  --badge-perplexity-strong: #20808d;
+  --badge-perplexity-bg: #e6f4f5;
+  --badge-perplexity-text: #175a63;
+  --badge-grok-strong: #374151;
+  --badge-grok-bg: #eef0f3;
+  --badge-grok-text: #1f2937;
+  --badge-mistral-strong: #e8590c;
+  --badge-mistral-bg: #fff0e6;
+  --badge-mistral-text: #a63f05;
+  --badge-m365_copilot-strong: #5b2dbf;
+  --badge-m365_copilot-bg: #efe9fb;
+  --badge-m365_copilot-text: #4a1fa0;
+  --badge-google_search-strong: #1a73e8;
+  --badge-google_search-bg: #e8f0fe;
+  --badge-google_search-text: #174ea6;
   --badge-metadata-bg: #dbeafe;
   --badge-metadata-text: #1d4ed8;
 
@@ -174,6 +189,21 @@
     --badge-deepseek-strong: #a97aff;
     --badge-deepseek-bg: #2a1a3d;
     --badge-deepseek-text: #c4a3ff;
+    --badge-perplexity-strong: #5fc3cf;
+    --badge-perplexity-bg: #11363a;
+    --badge-perplexity-text: #a9e3e9;
+    --badge-grok-strong: #c0c6d0;
+    --badge-grok-bg: #2b3038;
+    --badge-grok-text: #e2e6ec;
+    --badge-mistral-strong: #ffa366;
+    --badge-mistral-bg: #3d2010;
+    --badge-mistral-text: #ffc69e;
+    --badge-m365_copilot-strong: #b396ff;
+    --badge-m365_copilot-bg: #261a3d;
+    --badge-m365_copilot-text: #d0c2ff;
+    --badge-google_search-strong: #8ab4f8;
+    --badge-google_search-bg: #1a2a44;
+    --badge-google_search-text: #c2d7ff;
     --badge-metadata-bg: #1a2b4d;
     --badge-metadata-text: #a3c8ff;
 
@@ -239,6 +269,21 @@ html[data-force-color-scheme="dark"] {
   --badge-deepseek-strong: #a97aff;
   --badge-deepseek-bg: #2a1a3d;
   --badge-deepseek-text: #c4a3ff;
+  --badge-perplexity-strong: #5fc3cf;
+  --badge-perplexity-bg: #11363a;
+  --badge-perplexity-text: #a9e3e9;
+  --badge-grok-strong: #c0c6d0;
+  --badge-grok-bg: #2b3038;
+  --badge-grok-text: #e2e6ec;
+  --badge-mistral-strong: #ffa366;
+  --badge-mistral-bg: #3d2010;
+  --badge-mistral-text: #ffc69e;
+  --badge-m365_copilot-strong: #b396ff;
+  --badge-m365_copilot-bg: #261a3d;
+  --badge-m365_copilot-text: #d0c2ff;
+  --badge-google_search-strong: #8ab4f8;
+  --badge-google_search-bg: #1a2a44;
+  --badge-google_search-text: #c2d7ff;
   --badge-metadata-bg: #1a2b4d;
   --badge-metadata-text: #a3c8ff;
 
@@ -565,8 +610,8 @@ strong {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;  /* WCAG 2.5.8 minimum target size */
+  height: 24px;
   padding: 0;
   margin-top: -2px;
   margin-right: -4px;
@@ -585,6 +630,19 @@ strong {
 .preview-banner__dismiss:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
+.preview-banner__link {
+  color: var(--color-text-primary);
+  text-decoration: underline;
+}
+
+.preview-banner__link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
 }
 
 /* ============================================
@@ -645,17 +703,39 @@ strong {
 .platform-badge--deepseek .platform-badge__name { color: var(--badge-deepseek-text); }
 
 .platform-badge--perplexity {
-  border-color: #20808d;
-  background-color: #e6f4f5;
+  border-color: var(--badge-perplexity-strong);
+  background-color: var(--badge-perplexity-bg);
 }
+.platform-badge--perplexity .platform-badge__icon { color: var(--badge-perplexity-strong); }
+.platform-badge--perplexity .platform-badge__name { color: var(--badge-perplexity-text); }
 
-.platform-badge--perplexity .platform-badge__icon {
-  color: #20808d;
+.platform-badge--grok {
+  border-color: var(--badge-grok-strong);
+  background-color: var(--badge-grok-bg);
 }
+.platform-badge--grok .platform-badge__icon { color: var(--badge-grok-strong); }
+.platform-badge--grok .platform-badge__name { color: var(--badge-grok-text); }
 
-.platform-badge--perplexity .platform-badge__name {
-  color: #175a63;
+.platform-badge--mistral {
+  border-color: var(--badge-mistral-strong);
+  background-color: var(--badge-mistral-bg);
 }
+.platform-badge--mistral .platform-badge__icon { color: var(--badge-mistral-strong); }
+.platform-badge--mistral .platform-badge__name { color: var(--badge-mistral-text); }
+
+.platform-badge--m365_copilot {
+  border-color: var(--badge-m365_copilot-strong);
+  background-color: var(--badge-m365_copilot-bg);
+}
+.platform-badge--m365_copilot .platform-badge__icon { color: var(--badge-m365_copilot-strong); }
+.platform-badge--m365_copilot .platform-badge__name { color: var(--badge-m365_copilot-text); }
+
+.platform-badge--google_search {
+  border-color: var(--badge-google_search-strong);
+  background-color: var(--badge-google_search-bg);
+}
+.platform-badge--google_search .platform-badge__icon { color: var(--badge-google_search-strong); }
+.platform-badge--google_search .platform-badge__name { color: var(--badge-google_search-text); }
 
 /* ============================================
    MAIN CONTENT AREA
@@ -1475,6 +1555,7 @@ strong {
   outline: 2px solid var(--color-focus);
   outline-offset: 1px;
   border-color: var(--color-focus);
+  box-shadow: var(--focus-ring);
 }
 
 /* ============================================
@@ -1813,6 +1894,12 @@ a:focus-visible {
   margin-top: 2px;
   cursor: pointer;
   accent-color: var(--color-primary);
+}
+
+.consent-panel__checkbox:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
 }
 
 .consent-panel__label-text {

@@ -42,9 +42,12 @@ export const ERROR_TYPES = {
     troubleshooting: 'Please check that the extension has permission to access this site in your browser settings.'
   },
   NETWORK_ERROR: {
-    message: 'Network error',
-    detail: 'Unable to communicate with the page.',
-    troubleshooting: 'Check your internet connection and try refreshing the page.'
+    // Raised when tabs.sendMessage rejects for a reason other than a missing
+    // content script. It is a page/extension communication problem, not an
+    // internet problem.
+    message: 'Could not reach the page',
+    detail: 'The extension could not talk to this tab.',
+    troubleshooting: 'Reload the tab, wait for it to finish loading, then try again.'
   },
   UNKNOWN_ERROR: {
     message: 'An unexpected error occurred',
