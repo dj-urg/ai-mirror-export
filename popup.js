@@ -226,7 +226,7 @@ const CAPTURE_LOADING_TIMEOUT_MS = 15000;
  * @param {boolean} [opts.stuck]   — true to use the past-threshold variant
  * @returns {string}
  */
-function formatStuckDetail({ elapsedMs, threshold, mechanism, platformName, stuck = false }) {
+function formatStuckDetail({ threshold, mechanism, platformName, stuck = false }) {
   const prefix = platformName ? `${platformName}: ` : '';
   if (!stuck) {
     // Pre-threshold loading phase. The elapsed seconds are shown by the
