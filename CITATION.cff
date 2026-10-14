@@ -14,7 +14,7 @@ authors:
     given-names: "Daniel"
     affiliation: "Vrije Universiteit Brussel"
     email: "daniel.jurg@vub.be"
-repository-code: "https://github.com/dj-urg/AI-Dialogue-Insight-Extension"
+repository-code: "https://github.com/dj-urg/ai-mirror-export"
 url: "https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/"
 version: "3.0.0"
 keywords:

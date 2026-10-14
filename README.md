@@ -8,7 +8,7 @@ Export your AI chat conversations to CSV, entirely on your own device.
 
 [![Mozilla Add-on version](https://img.shields.io/amo/v/local-ai-chat-exporter?label=Firefox%20Add-on&color=orange)](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
 [![Mozilla Add-on users](https://img.shields.io/amo/users/local-ai-chat-exporter?label=users&color=blue)](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
-[![CI](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/actions/workflows/ci.yml/badge.svg)](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/actions/workflows/ci.yml)
+[![CI](https://github.com/dj-urg/ai-mirror-export/actions/workflows/ci.yml/badge.svg)](https://github.com/dj-urg/ai-mirror-export/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-see%20repository-lightgrey)](#license)
 
 ### [Install from Firefox Add-ons &rarr;](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
@@ -16,7 +16,7 @@ Export your AI chat conversations to CSV, entirely on your own device.
 </div>
 
 > [!WARNING]
-> **Development Preview.** This extension is in active development. Behaviour may change between releases, and you may encounter bugs. Please verify your exports before using them in a study, and report issues on the [GitHub tracker](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/issues).
+> **Development Preview.** This extension is in active development. Behaviour may change between releases, and you may encounter bugs. Please verify your exports before using them in a study, and report issues on the [GitHub tracker](https://github.com/dj-urg/ai-mirror-export/issues).
 
 <div align="center">
 
@@ -158,8 +158,8 @@ CI runs the Node test suite on every push (unit tests, byte-exact golden exports
 <summary>Local setup &amp; running the extension</summary>
 
 ```bash
-git clone https://github.com/dj-urg/AI-Dialogue-Insight-Extension.git
-cd AI-Dialogue-Insight-Extension
+git clone https://github.com/dj-urg/ai-mirror-export.git
+cd ai-mirror-export
 npm install
 npm run lint          # ESLint
 npm run lint:web-ext  # web-ext lint
@@ -199,8 +199,8 @@ Baseline PNGs and axe reports are gitignored (`dev/baselines/`); only the script
 
 ## License
 
-No license file is checked in yet. Until one is added, treat the code as "all rights reserved" and open an [issue](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/issues) if you want to reuse it. A permissive license will be added before the first stable Add-on release.
+No license file is checked in yet. Until one is added, treat the code as "all rights reserved" and open an [issue](https://github.com/dj-urg/ai-mirror-export/issues) if you want to reuse it. A permissive license will be added before the first stable Add-on release.
 
 ## Contact
 
-Maintainer: Daniel Jurg — Vrije Universiteit Brussel. Bugs, extraction regressions, and schema questions all go to the [issue tracker](https://github.com/dj-urg/AI-Dialogue-Insight-Extension/issues).
+Maintainer: Daniel Jurg — Vrije Universiteit Brussel. Bugs, extraction regressions, and schema questions all go to the [issue tracker](https://github.com/dj-urg/ai-mirror-export/issues).

@@ -169,7 +169,7 @@ by the hooks.)
 
 - Mozilla AMO version is cryptographically signed by Mozilla, so what
   users install matches what you review.
-- Development history: <https://github.com/dj-urg/AI-Dialogue-Insight-Extension>
+- Development history: <https://github.com/dj-urg/ai-mirror-export>
   (tag `v3.0.0` on `main` for this release; the extractor version in
   every export equals the add-on version).
 - The source submitted matches the GitHub tree 1:1 — no bundler, no
