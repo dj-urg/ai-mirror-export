@@ -113,6 +113,31 @@ for (const s of PLATFORM_SCENARIOS) {
     }
   }
 
+  // The real-data validation (2026-10-14) found planted values surviving in
+  // a Claude export with an uploaded file and citations. Make sure those
+  // files are actually produced and scrubbed here, not merely absent.
+  if (s.id === 'claude_rich') {
+    const names = [...result.entries.keys()];
+    const att = names.find(n => n.startsWith('claude_attachments_'));
+    const src = names.find(n => n.startsWith('claude_sources_'));
+    assert('claude_rich: attachments CSV present', Boolean(att), names.join(','));
+    assert('claude_rich: sources CSV present', Boolean(src), names.join(','));
+    if (att) {
+      const rows = parseCsv(utf8(result.entries.get(att))).rows;
+      assert('claude_rich: extracted_text was scrubbed', rows.some(r => r.extracted_text.includes('<REDACTED:EMAIL>')));
+      assert('claude_rich: attachment raw_json was scrubbed', rows.some(r => r.raw_json.includes('<REDACTED:EMAIL>')));
+    }
+    if (src) {
+      const rows = parseCsv(utf8(result.entries.get(src))).rows;
+      assert('claude_rich: citation title was scrubbed', rows.some(r => r.title.includes('<REDACTED:EMAIL>')));
+      assert('claude_rich: citation snippet was scrubbed', rows.some(r => r.snippet.includes('<REDACTED:EMAIL>')));
+    }
+    const msgs = names.find(n => n.startsWith('claude_messages_1'));
+    const rows = parseCsv(utf8(result.entries.get(msgs))).rows;
+    assert('claude_rich: tool_input_json was scrubbed', rows.some(r => r.tool_input_json.includes('<REDACTED:EMAIL>')));
+    assert('claude_rich: thinking text was scrubbed', rows.some(r => r.content_type === 'thinking' && r.text.includes('<REDACTED:EMAIL>')));
+  }
+
   if (manifest) {
     const t = manifest.telemetry || {};
     assert(`${s.id}: manifest says scrubbing was on`, t.pii_scrub_enabled === true);
