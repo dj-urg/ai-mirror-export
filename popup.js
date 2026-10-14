@@ -130,12 +130,17 @@ const PLATFORMS = {
 };
 
 // ============================================================================
-// ERROR HANDLING CONFIGURATION
+// SHARED MODULES
 // ============================================================================
 
-// Error taxonomy and platform troubleshooting are defined in shared/errors.js
-// (loaded via popup.html). See shared/errors.js for ERROR_TYPES and
-// PLATFORM_TROUBLESHOOTING.
+import { EXTENSION_CONFIG, getPlatformByUrl } from './config/settings.js';
+import {
+  ERROR_TYPES,
+  PLATFORM_TROUBLESHOOTING,
+  formatAuthFailureCopy,
+  sanitizeErrorMessage
+} from './shared/errors.js';
+import { logDebug, logError } from './shared/logger.js';
 
 // ============================================================================
 // STATE MANAGEMENT
@@ -183,15 +188,9 @@ const state = {
   }
 };
 
-// Fast ticker that keeps the loading status fresh (elapsed seconds, "Captured
-// N turns so far…" etc.) without blasting the content script with queries.
-// Runs only while a wait is in progress.
-function startCaptureTicker() {
-  if (state.capture.tickerId) return;
-  state.capture.tickerId = setInterval(() => {
-    debouncedCheckAndUpdateUI();
-  }, 1000);
-}
+// Loading-phase ticker. Nothing starts it any more (the Google branch only
+// ever stops it); kept until the dead-code sweep removes the capture ticker
+// state as a whole.
 function stopCaptureTicker() {
   if (!state.capture.tickerId) return;
   clearInterval(state.capture.tickerId);
@@ -258,13 +257,6 @@ const exportRateLimit = {
 };
 
 // ============================================================================
-// SHARED CONFIGURATION LOADING (from config/settings.js)
-// ============================================================================
-
-import { EXTENSION_CONFIG, getPlatformByUrl } from './config/settings.js';
-
-
-// ============================================================================
 // PLATFORM DETECTION
 // ============================================================================
 
@@ -290,11 +282,6 @@ function detectPlatform(url) {
     // Validate hostname is not empty
     if (!hostname || hostname.trim() === '') {
       _console.warn('[Security] Empty hostname detected in URL:', url);
-      return null;
-    }
-
-    if (typeof getPlatformByUrl !== 'function') {
-      _console.error('Configuration not loaded: getPlatformByUrl is not available');
       return null;
     }
 
@@ -351,11 +338,6 @@ function checkConversationId(platform, url) {
 // ============================================================================
 
 /**
- * Sanitization of error messages is handled by shared/errors.js.
- * This file relies on the global sanitizeErrorMessage defined there.
- */
-
-/**
  * Log detailed error information using shared logger with popup context.
  * @param {string} context - Context where error occurred
  * @param {Error|string} error - Error object or message
@@ -381,11 +363,7 @@ function popupLogError(context, error, additionalInfo = {}) {
     logData.errorStack = errorStack;
   }
 
-  if (typeof logError === 'function') {
-    logError('popup', errorMessage, logData);
-  } else {
-    _console.error('[popup] [ERROR]', errorMessage, logData);
-  }
+  logError('popup', errorMessage, logData);
 }
 
 /**
@@ -408,11 +386,7 @@ function popupLogDebug(context, message, additionalInfo = {}) {
     }
   };
 
-  if (typeof logDebug === 'function') {
-    logDebug('popup', message, logData);
-  } else {
-    _console.log('[popup] [DEBUG]', message, logData);
-  }
+  logDebug('popup', message, logData);
 }
 
 /**
@@ -453,7 +427,7 @@ function displayError(errorType, options = {}) {
   }
 
   // Determine detail message
-  let detailMessage = customDetail || errorConfig.detail;
+  const detailMessage = customDetail || errorConfig.detail;
 
   // Determine troubleshooting tip
   let troubleshootingTip = customTroubleshooting || errorConfig.troubleshooting;
@@ -652,7 +626,6 @@ function updateExportButton(enabled, text = null, showSpinner = false) {
   const hasSpinnerChanged = buttonIcon.classList.contains('spinner') !== showSpinner;
 
   // Update state
-  const previousCanExport = state.export.canExport;
   state.export.canExport = enabled;
 
   // Keep polling running at all times so the popup can detect in-place tab
@@ -1122,12 +1095,7 @@ function platformDisplayName(platformId) {
  * copy comes from shared/errors.js via formatAuthFailureCopy().
  */
 function renderAuthFailure(platformId, platformName) {
-  const copy = (typeof formatAuthFailureCopy === 'function')
-    ? formatAuthFailureCopy(platformName || platformDisplayName(platformId))
-    : {
-        message: `Please sign in to ${platformName || 'the platform'}.`,
-        detail: 'It looks like you are signed out. Sign in on the tab, then reopen this popup.'
-      };
+  const copy = formatAuthFailureCopy(platformName || platformDisplayName(platformId));
   updateStatus('error', copy.message, copy.detail);
   updateExportButton(false);
   hideFilePreview();
@@ -1157,30 +1125,6 @@ function startPolling(interval = 10000) {
   }, interval);
 
   _console.log(`[Popup] Fallback polling started with ${interval}ms interval`);
-}
-
-/**
- * Stop polling for status updates
- */
-function stopPolling() {
-  if (!state.polling.isPolling) {
-    return;
-  }
-
-  state.polling.isPolling = false;
-
-  if (state.polling.intervalId) {
-    clearInterval(state.polling.intervalId);
-    state.polling.intervalId = null;
-  }
-
-  // Clear any pending debounce timeout
-  if (state.polling.debounceTimeout) {
-    clearTimeout(state.polling.debounceTimeout);
-    state.polling.debounceTimeout = null;
-  }
-
-  _console.log('[Popup] Polling stopped');
 }
 
 /**
@@ -1421,7 +1365,7 @@ async function checkAndUpdateUI() {
       try {
         const { title } = await checkConversationData(tab, platform, state.platform.conversationId);
         updateFilePreview(title || 'conversation');
-      } catch (e) {
+      } catch {
         updateFilePreview('conversation');
       }
 
@@ -1435,7 +1379,7 @@ async function checkAndUpdateUI() {
       try {
         const { title } = await checkConversationData(tab, platform, state.platform.conversationId);
         updateFilePreview(title || 'thread');
-      } catch (e) {
+      } catch {
         updateFilePreview('thread');
       }
 
@@ -1974,31 +1918,6 @@ function focusInitialTarget() {
 }
 
 /**
- * Ensure focus is maintained during UI state changes
- * Prevents focus loss when status updates or button state changes
- */
-function maintainFocus() {
-  const activeElement = document.activeElement;
-
-  // If focus is on an element that's about to be updated, maintain focus
-  if (activeElement && activeElement.id) {
-    // Store the focused element ID
-    const focusedId = activeElement.id;
-
-    // After DOM updates, restore focus if the element still exists
-    requestAnimationFrame(() => {
-      const element = document.getElementById(focusedId);
-      if (element && element !== document.activeElement) {
-        // Only restore focus if it was lost
-        if (document.activeElement === document.body) {
-          element.focus();
-        }
-      }
-    });
-  }
-}
-
-/**
  * Verify no keyboard traps exist
  * Ensures all focusable elements can be reached and exited via keyboard
  * @returns {boolean} True if no keyboard traps detected
@@ -2015,7 +1934,7 @@ function verifyNoKeyboardTraps() {
 
   // Check that all focusable elements are reachable
   let allReachable = true;
-  focusableElements.forEach((element, index) => {
+  focusableElements.forEach((element) => {
     // Check if element is visible and not hidden
     const style = window.getComputedStyle(element);
     if (style.display === 'none' || style.visibility === 'hidden') {
@@ -2059,27 +1978,6 @@ function setupTabOrder() {
   }
 
   _console.log('Tab order configured for keyboard navigation');
-}
-
-/**
- * Handle focus management during state changes
- * Ensures focus is not lost when UI updates
- */
-function handleFocusDuringStateChange() {
-  // Store the currently focused element before state change
-  const activeElement = document.activeElement;
-  const activeElementId = activeElement?.id;
-
-  // Return a function to restore focus after state change
-  return () => {
-    if (activeElementId) {
-      const element = document.getElementById(activeElementId);
-      if (element && document.activeElement === document.body) {
-        // Focus was lost, restore it
-        element.focus();
-      }
-    }
-  };
 }
 
 // ============================================================================

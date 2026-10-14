@@ -94,7 +94,7 @@ for (const r of runs) {
     assert(`${r.run}: ${n} is non-empty`, text.length > BOM.length + 1);
   }
   let manifest = null;
-  try { manifest = JSON.parse(utf8(result.entries.get(manifestName))); } catch (_e) { /* asserted below */ }
+  try { manifest = JSON.parse(utf8(result.entries.get(manifestName))); } catch { /* asserted below */ }
   assert(`${r.run}: manifest parses`, manifest !== null);
   if (manifest) {
     assert(`${r.run}: manifest.platform`, manifest.platform === r.platform, manifest.platform);

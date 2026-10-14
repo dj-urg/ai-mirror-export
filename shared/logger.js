@@ -1,24 +1,18 @@
 /**
- * Shared Logging Utility
- * 
+ * Shared Logging Utility (ES module, used by popup.js)
+ *
  * Provides centralized logging with:
  * - Debug flag control
- * - Log levels (debug, info, warn, error)
  * - Sensitive data redaction
  * - Consistent formatting
+ *
+ * Content and inject scripts carry their own copy because they run as
+ * classic scripts in page contexts that cannot import modules.
  */
 
 // Configuration
 const IS_PRODUCTION = true; // Set to false to enable all console output during development
 const DEBUG_MODE = false;   // Set to true (with IS_PRODUCTION=false) for verbose debug logs
-
-// Log levels
-const LogLevel = {
-  DEBUG: 'debug',
-  INFO: 'info',
-  WARN: 'warn',
-  ERROR: 'error'
-};
 
 /**
  * Redact sensitive information from data
@@ -103,7 +97,7 @@ function redactSensitiveData(data) {
  * @param {string} message - Log message
  * @param {any} data - Optional data to log
  */
-function logDebug(platform, message, data = null) {
+export function logDebug(platform, message, data = null) {
   if (IS_PRODUCTION || !DEBUG_MODE) return;
 
   if (data) {
@@ -115,44 +109,12 @@ function logDebug(platform, message, data = null) {
 }
 
 /**
- * Log info message (always shown)
- * @param {string} platform - Platform name
- * @param {string} message - Log message
- * @param {any} data - Optional data to log
- */
-function logInfo(platform, message, data = null) {
-  if (IS_PRODUCTION) return;
-  if (data) {
-    const redacted = redactSensitiveData(data);
-    console.log(`[${platform}]`, message, redacted);
-  } else {
-    console.log(`[${platform}]`, message);
-  }
-}
-
-/**
- * Log warning message (always shown)
- * @param {string} platform - Platform name
- * @param {string} message - Log message
- * @param {any} data - Optional data to log
- */
-function logWarn(platform, message, data = null) {
-  if (IS_PRODUCTION) return;
-  if (data) {
-    const redacted = redactSensitiveData(data);
-    console.warn(`[${platform}] [WARN]`, message, redacted);
-  } else {
-    console.warn(`[${platform}] [WARN]`, message);
-  }
-}
-
-/**
  * Log error message (always shown)
  * @param {string} platform - Platform name
  * @param {string} message - Log message
  * @param {any} data - Optional data to log
  */
-function logError(platform, message, data = null) {
+export function logError(platform, message, data = null) {
   if (IS_PRODUCTION) return;
   if (data) {
     const redacted = redactSensitiveData(data);

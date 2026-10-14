@@ -198,10 +198,6 @@
     return null;
   }
 
-  function normalizeText(s) {
-    return (s || '').replace(/\s+/g, ' ').replace(/ /g, ' ').trim();
-  }
-
   // ==========================================================================
   // Follow-up / related questions
   // ==========================================================================
@@ -337,7 +333,7 @@
       const next = i + 1 < markers.length ? markers[i + 1].heading : null;
 
       let text = '';
-      let sources = [];
+      const sources = [];
       if (marker.role === 'user') {
         text = marker.label;
       } else {

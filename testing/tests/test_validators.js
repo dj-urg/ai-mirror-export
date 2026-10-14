@@ -258,7 +258,7 @@ async function run() {
         let result;
         try {
             result = validateRow(bad, 'chatgpt_messages');
-        } catch (e) {
+        } catch {
             threw = true;
         }
         assert(!threw, `validateRow(${JSON.stringify(bad)}) did not throw`);

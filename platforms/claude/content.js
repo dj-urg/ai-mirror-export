@@ -102,14 +102,6 @@
     }
   }
 
-  function logError(message, data = null) {
-    if (IS_PRODUCTION) return;
-    if (data) {
-      console.error(`[${PLATFORM}] [ERROR]`, message, redactSensitiveData(data));
-    } else {
-      console.error(`[${PLATFORM}] [ERROR]`, message);
-    }
-  }
 
   /**
    * Store conversation with memory management
@@ -473,7 +465,7 @@
           .catch(error => sendResponse({ success: false, error: error.message }));
       };
 
-      let conversationData = capturedConversations.get(conversationId);
+      const conversationData = capturedConversations.get(conversationId);
       if (!conversationData) {
         activelyFetchAndStore(conversationId).then(data => {
           if (!data) {

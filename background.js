@@ -20,8 +20,7 @@ import {
   generateMetadataCSV as generateClaudeMetadataCSV,
   generateMessagesCSV as generateClaudeMessagesCSV,
   generateSourcesCSV as generateClaudeSourcesCSV,
-  generateAttachmentsCSV as generateClaudeAttachmentsCSV,
-  generateMessagesCanonicalCSV as generateClaudeMessagesCanonicalCSV
+  generateAttachmentsCSV as generateClaudeAttachmentsCSV
 } from './platforms/claude/extractor.js';
 import {
   extractPerplexityConversation,
@@ -41,7 +40,8 @@ import {
   generateMessagesCSV as generateDeepSeekMessagesCSV,
   generateSourcesCSV as generateDeepSeekSourcesCSV
 } from './platforms/deepseek/extractor.js';
-import { EXTENSION_CONFIG } from './config/settings.js';
+import { EXTENSION_CONFIG, getPlatformByUrl } from './config/settings.js';
+import { sanitizeErrorMessage } from './shared/errors.js';
 import { escapeCSVField, generateCSV } from './utils/csv.js';
 import {
   SCHEMA_VERSIONS,
@@ -55,7 +55,6 @@ import {
 } from './utils/manifest.js';
 import {
   scrubText,
-  scrubRows,
   countRedactions,
   DEFAULT_SCRUB_COLUMNS,
   PII_RULESET_VERSION,
@@ -1514,7 +1513,7 @@ async function clearExportFailureBadge(tabId) {
 
 try {
   // URL change → re-evaluate the icon + clear per-tab auth state.
-  browser.tabs.onUpdated.addListener((tabId, info, tab) => {
+  browser.tabs.onUpdated.addListener((tabId, info) => {
     if (info && typeof info.url === 'string') {
       applyIconStateForTab(tabId, info.url);
       // URL change → the user navigated; previous auth-failed state no

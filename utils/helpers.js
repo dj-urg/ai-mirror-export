@@ -89,7 +89,7 @@ function sanitizeTimestamp(rawTimestamp) {
   try {
     const date = new Date(rawTimestamp);
     return isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
-  } catch (error) {
+  } catch {
     return new Date().toISOString();
   }
 }
@@ -169,7 +169,7 @@ function deepSearchForProperty(obj, property, maxDepth = 5, currentDepth = 0, vi
           return result;
         }
       }
-    } catch (e) {
+    } catch {
       // Skip inaccessible properties
     }
   }

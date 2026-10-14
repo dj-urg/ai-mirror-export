@@ -115,14 +115,6 @@
     return m[1].split(',').map(s => s.trim()).filter(Boolean);
   }
 
-  function isMessageAllRequest(url) {
-    return trpcProcedures(url).includes('message.all');
-  }
-
-  function isChatByIdRequest(url) {
-    return trpcProcedures(url).includes('chat.byId');
-  }
-
   function isInterestingRequest(url) {
     const procs = trpcProcedures(url);
     return procs.includes('message.all') || procs.includes('chat.byId');

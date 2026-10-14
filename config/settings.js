@@ -141,7 +141,6 @@ export function getPlatformByUrl(url) {
   } catch (error) {
     // Non-fatal: if url cannot be parsed, we just treat it as unsupported.
     if (EXTENSION_CONFIG.debug.enabled) {
-      // eslint-disable-next-line no-console
       console.error('Error parsing URL in getPlatformByUrl:', error);
     }
     return null;

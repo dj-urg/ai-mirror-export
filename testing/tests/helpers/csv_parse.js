@@ -4,7 +4,7 @@
  * optional leading BOM. Returns an array of row objects keyed by header.
  */
 export function parseCsv(text) {
-  let s = text.startsWith('﻿') ? text.slice(1) : text;
+  const s = text.startsWith('﻿') ? text.slice(1) : text;
   const records = [];
   let row = [];
   let field = '';

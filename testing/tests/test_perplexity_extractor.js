@@ -17,11 +17,6 @@ let passed = 0;
 let failed = 0;
 const failures = [];
 
-function assert(cond, msg) {
-  if (cond) passed++;
-  else { failed++; failures.push(msg); }
-}
-
 function assertEq(actual, expected, msg) {
   if (JSON.stringify(actual) === JSON.stringify(expected)) passed++;
   else {
@@ -36,11 +31,6 @@ function assertIncludes(hay, needle, msg) {
     failed++;
     failures.push(`${msg}\n  expected to include: ${needle}\n  in: ${(hay || '').slice(0, 200)}...`);
   }
-}
-
-function assertNotIncludes(hay, needle, msg) {
-  if (typeof hay === 'string' && !hay.includes(needle)) passed++;
-  else { failed++; failures.push(`${msg}\n  unexpected substring: ${needle}`); }
 }
 
 // ---------------------------------------------------------------------------

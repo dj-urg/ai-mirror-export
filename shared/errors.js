@@ -1,11 +1,11 @@
-// Shared error taxonomy and sanitization helpers for AI Chat Exporter
-// Used by popup UI and can be reused by background/content scripts.
+// Shared error taxonomy and sanitization helpers for AI Chat Exporter.
+// ES module: imported by popup.js and background.js.
 
 /**
  * Error types and their corresponding user-friendly messages.
  * These are UI-agnostic and describe the "error model".
  */
-const ERROR_TYPES = {
+export const ERROR_TYPES = {
   NO_ACTIVE_TAB: {
     message: 'Unable to access current tab',
     detail: 'Please try closing and reopening the popup.',
@@ -69,7 +69,7 @@ const ERROR_TYPES = {
  * @param {string} platformDisplayName — "Claude", "ChatGPT", etc.
  * @returns {{message: string, detail: string}}
  */
-function formatAuthFailureCopy(platformDisplayName) {
+export function formatAuthFailureCopy(platformDisplayName) {
   return {
     message: `Please sign in to ${platformDisplayName} to continue.`,
     detail: `It looks like you are signed out of ${platformDisplayName}. Sign in on the ${platformDisplayName} tab, then reopen this popup.`
@@ -80,7 +80,7 @@ function formatAuthFailureCopy(platformDisplayName) {
  * Platform-specific troubleshooting tips.
  * These are also UI-agnostic and can be surfaced anywhere.
  */
-const PLATFORM_TROUBLESHOOTING = {
+export const PLATFORM_TROUBLESHOOTING = {
   chatgpt: {
     noConversationId: 'Make sure you are on a conversation page (URL should contain /c/).',
     noData: 'Try scrolling through the conversation to ensure all messages are loaded.',
@@ -115,7 +115,7 @@ const PLATFORM_TROUBLESHOOTING = {
  * @param {string} message - Raw error message
  * @returns {string} Sanitized error message
  */
-function sanitizeErrorMessage(message) {
+export function sanitizeErrorMessage(message) {
   if (!message) return 'An error occurred';
 
   // Ensure message is a string
@@ -165,15 +165,3 @@ function sanitizeErrorMessage(message) {
   return sanitized;
 }
 
-// Expose on the global object for use in different execution contexts.
-// - In extension pages (popup), this runs as a classic script, so ERROR_TYPES,
-//   PLATFORM_TROUBLESHOOTING and sanitizeErrorMessage are available as globals.
-// - In the background service worker (module), this file can be imported for
-//   its side effects and will attach the same objects to the global scope.
-(function exposeErrorsToGlobal(globalObj) {
-  if (!globalObj) return;
-  globalObj.ERROR_TYPES = ERROR_TYPES;
-  globalObj.PLATFORM_TROUBLESHOOTING = PLATFORM_TROUBLESHOOTING;
-  globalObj.sanitizeErrorMessage = sanitizeErrorMessage;
-  globalObj.formatAuthFailureCopy = formatAuthFailureCopy;
-})(typeof self !== 'undefined' ? self : (typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : null)));

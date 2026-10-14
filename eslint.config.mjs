@@ -1,35 +1,12 @@
-// ESLint flat config (v9+). Behaviour-preserving translation of the former
-// .eslintrc.cjs: same rule set, same ignore patterns, same global environment.
-// `globals` is already present as a transitive dependency of ESLint itself.
+// ESLint flat config (v9+).
 //
-// A handful of cross-file identifiers below are not imported — they are
-// provided by sibling scripts loaded together in the same content-script,
-// background, or popup context via manifest.json/popup.html. Declaring them
-// as readonly globals matches runtime reality and preserves lint behaviour
-// (the old config would also have reported them as `no-undef` otherwise).
+// Globals are scoped per file. Only files that genuinely receive identifiers
+// from a sibling script loaded in the same page get them declared; everything
+// else (background.js, extractors, utils/, config/, dev/) is strictly
+// import-checked, so a missing `import` fails lint instead of surfacing as a
+// ReferenceError in Firefox (the review found two of those).
 
 import globals from 'globals';
-
-const sharedExtensionGlobals = {
-  browser: 'readonly',
-  chrome: 'readonly',
-  // From shared/message-security.js, loaded alongside each inject.js/content.js
-  MessageSecurity: 'readonly',
-  // From shared/errors.js
-  ERROR_TYPES: 'readonly',
-  PLATFORM_TROUBLESHOOTING: 'readonly',
-  formatAuthFailureCopy: 'readonly',
-  sanitizeErrorMessage: 'readonly',
-  // From shared/logger.js
-  logDebug: 'readonly',
-  logError: 'readonly',
-  // From config/settings.js
-  getPlatformByUrl: 'readonly',
-  // Loaded by DOM-based tests that pull extractor/platform code via <script>
-  detectPlatform: 'readonly',
-  extractTextFromContent: 'readonly',
-  flattenMetadata: 'readonly'
-};
 
 export default [
   {
@@ -38,7 +15,13 @@ export default [
       'web-ext-artifacts/**',
       'venv/**',
       'testing/data/**',
-      'submission.zip'
+      'submission.zip',
+      // Legacy, untracked, hand-run scripts kept locally for archaeology.
+      // Not part of `npm test`, not in git, never shipped.
+      'testing/tests/*.cjs',
+      'testing/tests/validate_*.js',
+      'testing/tests/check_*.js',
+      'testing/tests/local_*.js'
     ]
   },
   {
@@ -48,18 +31,33 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
-        ...globals.webextensions,
-        ...sharedExtensionGlobals
+        ...globals.webextensions
       }
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        caughtErrorsIgnorePattern: '^_'
+      }],
       'no-undef': 'error',
       'no-console': 'off',
       'no-implicit-globals': 'error',
       'eqeqeq': ['error', 'smart'],
       'prefer-const': 'warn',
       'no-var': 'error'
+    }
+  },
+  {
+    // Content and inject scripts are classic scripts. manifest.json loads
+    // shared/message-security.js in the same world ahead of each of them,
+    // which defines window.MessageSecurity.
+    files: ['platforms/**/inject.js', 'platforms/**/content.js', 'shared/message-security.js'],
+    languageOptions: {
+      sourceType: 'script',
+      globals: {
+        MessageSecurity: 'readonly'
+      }
     }
   },
   {

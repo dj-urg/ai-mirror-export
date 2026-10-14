@@ -16,8 +16,7 @@ import { escapeCSVField } from '../../utils/csv.js';
 import {
     SCHEMA_VERSIONS,
     EXTRACTOR_VERSION,
-    canonicalHeaders,
-    toIsoUtc
+    canonicalHeaders
 } from '../../utils/manifest.js';
 import { cleanText } from '../../utils/text_cleaner.js';
 
@@ -50,17 +49,6 @@ function countOrphanedNodes(conversationData) {
         if (!depths.has(id)) orphans++;
     }
     return orphans;
-}
-
-/**
- * Safely get nested property from object
- */
-function safeGet(obj, path, defaultValue = '') {
-    try {
-        return path.split('.').reduce((acc, part) => acc?.[part], obj) ?? defaultValue;
-    } catch {
-        return defaultValue;
-    }
 }
 
 /**

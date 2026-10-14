@@ -187,7 +187,7 @@
             logWarn('Failed to parse response', { error: error.message });
           });
       }
-    } catch (e) {
+    } catch {
       // Never interrupt the original fetch return
     }
 
