@@ -499,13 +499,22 @@
   }
 
   // ==========================================================================
-  // Active fetch – pull a fresh HTML snapshot of the current search URL and
-  // parse the overview from its semantic markers.
+  // Capture – read the live DOM; for classic AI Overview, fall back once per
+  // page/query to a re-fetch of the current search URL (the user's own
+  // query, with their cookies) and parse the server HTML.
+  //
+  // The re-fetch is bounded: `fetchAttempted` records every capture key for
+  // which the server HTML has been requested, so the MutationObserver, the
+  // URL poll and the export path can never request the same search page
+  // twice, and the popup's status poll (allowFetch: false) never requests
+  // it at all. Google's AI Mode is never re-fetched (its content is only in
+  // the live DOM).
   // ==========================================================================
 
   let fetchInFlight = null;
+  const fetchAttempted = new Map(); // captureKey -> timestamp of the one re-fetch
 
-  async function activelyCaptureAIOverview() {
+  async function activelyCaptureAIOverview({ allowFetch = true } = {}) {
     const query = currentQuery();
     if (!query) return null;
 
@@ -529,9 +538,14 @@
         ? extractAIMode(document, query, url)
         : extractOverview(document, query, url);
       if (!data && !isAIMode) {
-        // Fallback for classic AI Overview: re-fetch the search URL. The AI
-        // Mode case can't use this path because its content is injected by
-        // client-side JS and isn't in the server HTML.
+        // Fallback for classic AI Overview: re-fetch the search URL, at most
+        // once per page/query, and never from the popup's status poll. The
+        // AI Mode case can't use this path because its content is injected
+        // by client-side JS and isn't in the server HTML.
+        if (!allowFetch || fetchAttempted.has(key)) {
+          throw new Error('AI Overview not found in page');
+        }
+        fetchAttempted.set(key, Date.now());
         const resp = await fetch(url, {
           credentials: 'include',
           headers: { 'Accept': 'text/html,application/xhtml+xml' }
@@ -660,7 +674,9 @@
       };
 
       if (needFetch) {
-        activelyCaptureAIOverview()
+        // DOM-only: the popup polls every 2 s, and that must never turn into
+        // repeated requests to Google.
+        activelyCaptureAIOverview({ allowFetch: false })
           .then(data => respond(!data))
           .catch(() => respond(true));
         return true;
