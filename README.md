@@ -87,7 +87,7 @@ The extension hooks the chat site's own `fetch` calls, reads the conversation pa
 
 **What the extension does *not* do:**
 
-- No requests to anyone but the chat site you are on. The popup and background make no network requests at all (CSP `connect-src 'none'`); the per-site content scripts only make same-origin requests to that site, such as re-fetching the conversation you have open through the site's own API.
+- No requests to anyone but the chat site you are on. The popup and background make no network requests at all (CSP `connect-src 'none'`); the per-site content scripts only make same-origin requests to that site, such as re-fetching the conversation you have open through the site's own API. On DeepSeek that request carries the site's own login token read from the page's local storage, because DeepSeek rejects cookie-only requests; the token is never stored or exported. On Google the search page you are viewing is re-requested at most once per page and query.
 - No telemetry, analytics, or crash reporting.
 - No account linking. The `donor_id` is a UUID generated locally on first use, never tied to your ChatGPT / Claude / Microsoft / Google account.
 - No DOM scraping of chat sites. The exporter uses the site's own API payloads, so what you see is what you export. The one exception is Google Search, where the AI Overview exists only as rendered HTML and is read from the page.
@@ -96,7 +96,7 @@ The extension hooks the chat site's own `fetch` calls, reads the conversation pa
 
 | Permission | Reason |
 |---|---|
-| `activeTab`, `tabs` | Read the URL of the tab you clicked the icon on, so the popup knows which platform you are on. |
+| `activeTab` | Read the URL of the tab you clicked the icon on, so the popup knows which platform you are on. The toolbar icon state uses the host permissions below instead of the `tabs` permission, which this release does not request. |
 | `scripting` | Re-inject the Perplexity scripts at navigation time as a fallback when the manifest entry does not take effect (Perplexity only; every other site uses ordinary manifest content scripts). |
 | `downloads` | Save the ZIP to your Downloads folder. |
 | `storage` | Remember your privacy settings and the local `donor_id` across exports. |
@@ -131,18 +131,22 @@ The real risk is that your past chats may contain sensitive content you've forgo
 - **Everything runs locally.** The extension reads the chat site's own API responses, writes them to a ZIP, and saves it via the browser's download API. The extension-page CSP sets `connect-src 'none'`, so the popup and background cannot make requests; content scripts only talk to the site they run on. No telemetry, no server component, zero runtime npm dependencies.
 - **The page↔extension bridge is HMAC-signed** ([`shared/message-security.js`](shared/message-security.js)) — stops other scripts on the same tab from injecting fake data. It does *not* protect against the chat site itself; that site already has your conversation, so trusting it with the extraction is unavoidable by design.
 - **Updates ship through Mozilla.** No `update_url` in `manifest.json`, so updates flow through [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/) and are signed by Mozilla. Integrity depends on the publisher's AMO account (2FA enabled).
-- **PII scrubbing is pattern-based** ([`utils/pii.js`](utils/pii.js)) — matches emails, phones, API keys, credit cards, SSNs, long tokens. Misses free-text names, addresses, employer names, medical narrative. A reduction in exposure, not a guarantee. On/off and which categories is a per-study decision that must match the consent text.
+- **PII scrubbing is pattern-based** ([`utils/pii.js`](utils/pii.js)) — matches emails, phones, IP addresses, API keys, credit cards, SSNs, long tokens, in every file of the ZIP when it is on (canonical CSV and raw-JSON columns included). Misses free-text names, addresses, employer names, medical narrative. A reduction in exposure, not a guarantee. On/off is a per-study decision that must match the consent text.
 
-**Why ten Google locale permissions?** The Google Search content script only runs on `/search*` paths (and does nothing on the rest of Google) to read AI Overview text that is already visible in the page you're viewing; no search queries are sent anywhere by the extension. The locale set — `.com`, `.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au` — covers the European and English-speaking populations this release targets. Firefox will prompt existing users to approve the new permissions on update because the host list and the `tabs`/`scripting` permissions are new.
+**Why ten Google locale permissions?** The Google Search content script only runs on `/search*` paths (and does nothing on the rest of Google) to read AI Overview text that is already visible in the page you're viewing; no search queries are sent anywhere by the extension. The locale set — `.com`, `.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au` — covers the European and English-speaking populations this release targets. Firefox will prompt existing users to approve the new permissions on update because the host list and the `scripting` permission are new.
+
+## How this tool is verified
+
+Every commit runs the Node test suite (unit tests, byte-exact golden exports through the real `background.js` for all nine platforms with scrubbing off and on, a PII sweep that plants secrets in every fixture and searches every ZIP entry, schema, version, message-security and settings checks) plus ESLint, `web-ext lint`, a build check and an accessibility baseline of every popup state. Exports are additionally compared against real captures with an external toolkit. [`docs/validation.md`](docs/validation.md) lists the tests, the last results, the real-data method and its log, and what is not yet validated.
 
 ## For researchers
 
-- **[`METHODS.md`](METHODS.md)** — unit of analysis, content flattening rules, timestamp handling, Google selector fallback chain, and known limitations. Cite this in your methods section.
+- **[`METHODS.md`](METHODS.md)** — how each platform is captured and extracted, branches and the visible path, what reasoning text each platform exposes, the `text_cleaned` and CSV format rules, donor identity, the consent record and the manifest. Cite this in your methods section.
 - **[`STUDENT_GUIDE.md`](STUDENT_GUIDE.md)** — a per-column walk-through for donors and research assistants, written to make a received export legible on its own.
 
 **Donor identity.** `donor_id` is a UUID generated on first use and stored in `browser.storage.local`. If a donor enters a **study code** (salt) in Privacy settings, every `donor_id` in the ZIP becomes `HMAC-SHA256(uuid, salt)` — the same donor across different studies yields different IDs, so exports from studies that use different codes cannot be joined on `donor_id`.
 
-**PII scrubbing is best-effort.** The optional regex pass in [`utils/pii.js`](utils/pii.js) targets emails, phone numbers, IPv4 addresses, JWTs, bearer tokens, provider-prefixed keys (`sk-…`, `AKIA…`, `AIza…`, etc.), credit-card-shaped numbers (Luhn-checked), US SSNs, and long opaque tokens. Scrubbed values are replaced with tagged placeholders (`<REDACTED:EMAIL>`, …) and counted in the manifest. It will miss names, addresses, and anything that doesn't match these patterns. Treat it as a reduction in exposure, not a guarantee.
+**PII scrubbing is best-effort.** The optional pass in [`utils/pii.js`](utils/pii.js) targets emails, phone numbers, IPv4 addresses, JWTs, bearer tokens, provider-prefixed keys (`sk-…`, `AKIA…`, `AIza…`, etc.), credit-card-shaped numbers (Luhn-checked), US SSNs, and long opaque tokens, in every file of the ZIP; identifiers, timestamps and URLs are preserved so files stay joinable (see "PII scrubbing coverage" in `METHODS.md`). Scrubbed values are replaced with tagged placeholders (`<REDACTED:EMAIL>`, …) and counted in the manifest. It will miss names, addresses, and anything that doesn't match these patterns. Treat it as a reduction in exposure, not a guarantee.
 
 **How to cite.** The repository ships a [`CITATION.cff`](CITATION.cff), so GitHub shows a "Cite this repository" button in the sidebar. BibTeX / APA export is generated from that file.
 
