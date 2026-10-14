@@ -87,6 +87,7 @@ export const PLATFORM_TROUBLESHOOTING = {
     exportFailed: 'Try refreshing the page and waiting for the conversation to fully load before exporting.'
   },
   claude: {
+    noConversationId: 'Open an existing chat (the address should contain /chat/) or send a first message in a new one.',
     noData: 'Start a conversation first, then try exporting. Data is captured as you chat.',
     exportFailed: 'Make sure you have sent at least one message in the conversation before exporting.',
     authFailed: 'Sign in on your claude.ai tab, then reopen this popup.'
@@ -102,14 +103,27 @@ export const PLATFORM_TROUBLESHOOTING = {
     exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
   },
   deepseek: {
-    noConversationId: 'Make sure you are on a conversation page (URL should contain /a/chat/s/).',
-    noData: 'Reload the page so DeepSeek re-fetches the conversation, then try exporting again.',
+    noConversationId: 'Make sure you are on a conversation page (the address should contain /s/).',
+    noData: 'Send a message or reload the page so DeepSeek loads the conversation, then try exporting again.',
     exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
   },
   mistral: {
     noConversationId: 'Make sure you are on a conversation page (URL should contain /chat/ or /work/).',
     noData: 'Reload the page so Mistral re-fetches the conversation, then try exporting again.',
     exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
+  },
+  perplexity: {
+    noConversationId: 'Open a thread (the address should contain /search/), or ask a question to start one.',
+    noData: 'Reload the page so Perplexity loads the thread, then try exporting again.',
+    exportFailed: 'Reload the page and wait for the answer to finish before exporting.'
+  },
+  m365_copilot: {
+    noData: 'Open or start a chat and send a message. The extension captures the conversation as the reply streams in.',
+    exportFailed: 'Wait for the reply to finish streaming, then try exporting again. If it keeps failing, reload the page and send a new message.'
+  },
+  google_search: {
+    noData: 'Run a search that shows an AI Overview, or use AI Mode, wait for the reply, then close and reopen this popup.',
+    exportFailed: 'Close this popup, wait a second or two for the capture, then reopen it and try again.'
   }
 };
 
