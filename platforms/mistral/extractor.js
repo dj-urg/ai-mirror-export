@@ -100,26 +100,31 @@ function normalizeRole(role) {
 }
 
 /**
- * Concatenate every `text`-type chunk from a message's contentChunks into a
- * single string. Falls back to the top-level `content` string when chunks are
- * absent (user messages, legacy items). We deliberately exclude tool_call
- * payloads and reasoning scratchpads from the primary text — those are
- * surfaced in the structured columns and the raw JSON.
+ * Collect the user-visible answer text from a message. For assistant messages
+ * Mistral provides a top-level `content` string that is the final rendered
+ * answer (with resolved citation links). For user messages the chunks are
+ * null and the content string holds the raw prompt. Prefer `content` as the
+ * canonical display text and fall back to assembling non-reasoning text
+ * chunks when it is missing. Reasoning chunks (`_context.type === 'reasoning'`)
+ * are always excluded here; they belong in the `reasoning_text` column.
  */
 function assembleDisplayText(msg) {
   if (!msg || typeof msg !== 'object') return '';
+  if (typeof msg.content === 'string' && msg.content.length > 0) return msg.content;
   const chunks = Array.isArray(msg.contentChunks) ? msg.contentChunks : null;
   if (chunks && chunks.length > 0) {
     const texts = chunks
-      .filter(c => c && c.type === 'text' && typeof c.text === 'string')
-      // Mistral's final assistant answer is often emitted twice: once with
-      // `search-result://` placeholders and once with the resolved URLs.
-      // Dedupe adjacent identical chunks so we don't double the body.
+      .filter(c => {
+        if (!c || c.type !== 'text' || typeof c.text !== 'string') return false;
+        const ctx = c._context && c._context.type;
+        return ctx !== 'reasoning';
+      })
       .map(c => c.text)
+      // Dedupe adjacent identical chunks so streamed assistant replies that
+      // emit the same text twice do not double the body.
       .filter((t, i, arr) => i === 0 || t !== arr[i - 1]);
     if (texts.length > 0) return texts.join('\n\n');
   }
-  if (typeof msg.content === 'string') return msg.content;
   return '';
 }
 

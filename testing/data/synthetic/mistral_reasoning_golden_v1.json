@@ -1,0 +1,51 @@
+{
+  "_captured_conversation_id": "mistral-golden-0002",
+  "chat": {
+    "id": "mistral-golden-0002",
+    "title": "Synthetic Mistral reasoning fixture",
+    "createdAt": "2026-01-02T00:00:00.000Z",
+    "updatedAt": "2026-01-02T00:01:00.000Z",
+    "modelConfig": {
+      "model_alias": "magistral-medium",
+      "reasoning_effort": "high"
+    }
+  },
+  "messages": [
+    {
+      "id": "msg-4",
+      "chatId": "mistral-golden-0002",
+      "parentId": "msg-3",
+      "role": "assistant",
+      "model": "magistral-medium",
+      "turn": 1,
+      "createdAt": "2026-01-02T00:01:00.000Z",
+      "content": "The final rendered answer: CSV is defined informally by RFC 4180.",
+      "contentChunks": [
+        {
+          "type": "text",
+          "text": "Let me think about which RFC covers CSV.",
+          "_context": {
+            "type": "reasoning"
+          }
+        },
+        {
+          "type": "text",
+          "text": "Draft answer with placeholder [search-result://1]."
+        },
+        {
+          "type": "text",
+          "text": "The final rendered answer: CSV is defined informally by RFC 4180."
+        }
+      ]
+    },
+    {
+      "id": "msg-3",
+      "chatId": "mistral-golden-0002",
+      "parentId": null,
+      "role": "user",
+      "turn": 0,
+      "createdAt": "2026-01-02T00:00:00.000Z",
+      "content": "Which RFC defines CSV? Think it through."
+    }
+  ]
+}

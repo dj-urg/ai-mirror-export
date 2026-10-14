@@ -51,5 +51,53 @@ assert('schema_version for mistral_messages_canonical is known',
   typeof SCHEMA_VERSIONS.mistral_messages_canonical === 'string');
 assert('extractor_version non-empty', EXTRACTOR_VERSION.length > 0);
 
+// Second fixture: an assistant message with a top-level `content` string and
+// a reasoning chunk. `text` must be the rendered `content` (not the chunk
+// concatenation), reasoning must land only in `reasoning_text`.
+const FIXTURE2 = path.join(__dirname, '..', 'data', 'synthetic', 'mistral_reasoning_golden_v1.json');
+const data2 = JSON.parse(fs.readFileSync(FIXTURE2, 'utf8'));
+const result2 = extractMistralConversation(data2, {
+  donorId: 'golden-donor',
+  donorIdType: 'persistent',
+  downloadTime: '2026-01-01T00:00:00.000Z'
+});
+const assistant = result2.messages.find(m => m.role === 'assistant');
+const user = result2.messages.find(m => m.role === 'user');
+const assistantMsg = data2.messages.find(m => m.role === 'assistant');
+assert('reasoning fixture: assistant text is the top-level content',
+  assistant && assistant.text === assistantMsg.content, assistant && assistant.text);
+assert('reasoning fixture: assistant text excludes the reasoning chunk',
+  assistant && !assistant.text.includes('Let me think'));
+assert('reasoning fixture: assistant text excludes the draft chunk',
+  assistant && !assistant.text.includes('Draft answer'));
+assert('reasoning fixture: reasoning_text holds the reasoning chunk',
+  assistant && assistant.reasoning_text === 'Let me think about which RFC covers CSV.', assistant && assistant.reasoning_text);
+assert('reasoning fixture: has_reasoning flag set', assistant && assistant.has_reasoning === true);
+assert('reasoning fixture: user text is the prompt content',
+  user && user.text === 'Which RFC defines CSV? Think it through.');
+assert('reasoning fixture: model_identifier from message', assistant && assistant.model_identifier === 'magistral-medium');
+const canon2 = result2.messagesCanonicalCSV;
+assert('reasoning fixture: canonical text excludes reasoning', !canon2.includes('Let me think'));
+assert('reasoning fixture: canonical text carries the rendered answer', canon2.includes('The final rendered answer'));
+
+// Chunks-only fallback (no top-level content): non-reasoning text chunks are
+// joined, reasoning still excluded.
+const chunksOnly = extractMistralConversation({
+  _captured_conversation_id: 'mistral-golden-0003',
+  chat: null,
+  messages: [{
+    id: 'm1', role: 'assistant', turn: 0, createdAt: '2026-01-01T00:00:00.000Z',
+    contentChunks: [
+      { type: 'text', text: 'thinking...', _context: { type: 'reasoning' } },
+      { type: 'text', text: 'Part one.' },
+      { type: 'text', text: 'Part two.' }
+    ]
+  }]
+}, { donorId: 'd', donorIdType: 'persistent', downloadTime: '2026-01-01T00:00:00.000Z' });
+assert('chunks-only fallback joins non-reasoning chunks',
+  chunksOnly.messages[0].text === 'Part one.\n\nPart two.', chunksOnly.messages[0].text);
+assert('chunks-only fallback keeps reasoning separate',
+  chunksOnly.messages[0].reasoning_text === 'thinking...');
+
 console.log(`\nMistral golden test: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
