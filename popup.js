@@ -1940,8 +1940,8 @@ function handlePopupEscape(event) {
  *   - fallback              → focus the first focusable button
  */
 function focusInitialTarget() {
-  // Give the DOM one tick in case checkAndUpdateUI is still toggling
-  // disabled attributes between render phases.
+  // Give the DOM one tick so the attributes set by the last render phase
+  // (disabled, hidden) are in place before the focus target is chosen.
   requestAnimationFrame(() => {
     const consentCheckbox = document.getElementById('consentCheckbox');
     if (consentCheckbox && !consentCheckbox.disabled && consentCheckbox.offsetParent !== null) {
@@ -2128,7 +2128,6 @@ function initMainUI() {
   setupTabOrder();
   verifyNoKeyboardTraps();
   setupEventDrivenUpdates();
-  checkAndUpdateUI();
 
   hydratePrivacySettings();
   wirePrivacySettings();
@@ -2138,7 +2137,13 @@ function initMainUI() {
 
   startPolling(2000);
   verifyRuntimeIntegrity();
-  focusInitialTarget();
+
+  // Focus the primary action only once the first status check has resolved:
+  // before that the export button is still disabled and focus would stay on
+  // <body> (the harness mock resolves synchronously, which hid this).
+  checkAndUpdateUI()
+    .catch(() => {})
+    .then(() => focusInitialTarget());
 }
 
 /**
