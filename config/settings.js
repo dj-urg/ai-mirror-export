@@ -41,7 +41,7 @@ export const EXTENSION_CONFIG = {
     },
     perplexity: {
       name: 'Perplexity',
-      domains: ['perplexity.ai'],
+      domains: ['www.perplexity.ai'],
       enabled: true,
       contentScript: 'platforms/perplexity/content.js',
       injectScript: 'platforms/perplexity/inject.js'
@@ -76,9 +76,12 @@ export const EXTENSION_CONFIG = {
     },
     google_search: {
       name: 'Google AI Overview',
+      // Exactly the hosts in manifest.json. `www.` is deliberate: the
+      // content script only runs on www.google.<tld>/search*, so the toolbar
+      // must not light up on mail./docs./drive.google.com.
       domains: [
-        'google.com', 'google.be', 'google.nl', 'google.fr', 'google.de',
-        'google.co.uk', 'google.es', 'google.it', 'google.ca', 'google.com.au'
+        'www.google.com', 'www.google.be', 'www.google.nl', 'www.google.fr', 'www.google.de',
+        'www.google.co.uk', 'www.google.es', 'www.google.it', 'www.google.ca', 'www.google.com.au'
       ],
       enabled: true,
       contentScript: 'platforms/google_search/content.js'
@@ -110,7 +113,11 @@ export const EXTENSION_CONFIG = {
  */
 
 /**
- * Check if a hostname matches a domain (exact or subdomain).
+ * Check if a hostname matches a domain (exact or subdomain). Every entry in
+ * EXTENSION_CONFIG.platforms[].domains must correspond to a host in
+ * manifest.json's host_permissions / content_scripts matches, so that the
+ * popup, the toolbar icon and the background's sender check agree with
+ * where the content scripts actually run.
  * @param {string} hostname - The hostname to check.
  * @param {string} domain - The domain to match against.
  * @returns {boolean} True if hostname matches domain or is a subdomain.
