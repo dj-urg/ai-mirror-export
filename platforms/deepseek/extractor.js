@@ -27,6 +27,7 @@ import {
   toIsoUtc
 } from '../../utils/manifest.js';
 import { cleanText } from '../../utils/text_cleaner.js';
+import { stripUtmParams, toJsonCell, normalizeRole } from '../../utils/extract_helpers.js';
 
 
 // ============================================================================
@@ -37,27 +38,6 @@ const RESPONSE_TYPES = new Set(['RESPONSE', 'TEMPLATE_RESPONSE']);
 const SEARCH_FRAG_TYPES = new Set(['SEARCH', 'TOOL_SEARCH']);
 const TOOL_FRAG_TYPES = new Set(['TOOL_SEARCH', 'TOOL_OPEN', 'TOOL_FIND']);
 const FILE_FRAG_TYPES = new Set(['FILE']);
-
-function stripUtmParams(url) {
-  if (!url) return '';
-  try {
-    const u = new URL(url);
-    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-      .forEach(p => u.searchParams.delete(p));
-    return u.toString();
-  } catch {
-    return url;
-  }
-}
-
-function toJsonCell(value) {
-  if (value === null || value === undefined) return '';
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
-}
 
 /**
  * Unwrap the response shape into { conv, messages, conversationId }, where
@@ -84,19 +64,6 @@ function unwrap(data) {
   const conversationId = stampedId || (conv && conv.id) || '';
 
   return { conv, messages, conversationId };
-}
-
-/**
- * Normalize DeepSeek's role vocabulary to the canonical shape used across
- * platforms. DeepSeek sends uppercase roles (`USER`, `ASSISTANT`).
- */
-function normalizeRole(role) {
-  if (!role) return '';
-  const r = String(role).toLowerCase();
-  if (r === 'user' || r === 'human') return 'user';
-  if (r === 'assistant' || r === 'bot' || r === 'ai') return 'assistant';
-  if (r === 'system') return 'system';
-  return r;
 }
 
 // DeepSeek message ids / parent ids / fragment ids are integers in the API

@@ -24,6 +24,7 @@ import {
   toIsoUtc
 } from '../../utils/manifest.js';
 import { cleanText } from '../../utils/text_cleaner.js';
+import { stripUtmParams } from '../../utils/extract_helpers.js';
 
 
 // ---------------------------------------------------------------------------
@@ -45,18 +46,6 @@ function readEntryBlocks(entry) {
   if (Array.isArray(entry.answer_blocks)) return entry.answer_blocks;
   if (Array.isArray(entry.content_blocks)) return entry.content_blocks;
   return [];
-}
-
-function stripUtmParams(url) {
-  if (!url) return '';
-  try {
-    const u = new URL(url);
-    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-      .forEach(p => u.searchParams.delete(p));
-    return u.toString();
-  } catch {
-    return url;
-  }
 }
 
 // Block names we treat as answer text. Order determines reading precedence

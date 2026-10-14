@@ -27,32 +27,12 @@ import {
   toIsoUtc
 } from '../../utils/manifest.js';
 import { cleanText } from '../../utils/text_cleaner.js';
+import { stripUtmParams, toJsonCell, normalizeRole } from '../../utils/extract_helpers.js';
 
 
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-function stripUtmParams(url) {
-  if (!url) return '';
-  try {
-    const u = new URL(url);
-    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-      .forEach(p => u.searchParams.delete(p));
-    return u.toString();
-  } catch {
-    return url;
-  }
-}
-
-function toJsonCell(value) {
-  if (value === null || value === undefined) return '';
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
-}
 
 /**
  * Unwrap the conversation shape into { conv, messages, conversationId }, where
@@ -93,18 +73,6 @@ function unwrap(data) {
     [];
   const conversationId = stampedId || data.conversationId || data.id || '';
   return { conv: data, messages, conversationId };
-}
-
-/**
- * Normalize Grok's sender/role vocabulary to the canonical shape used across
- * platforms. Grok uses `human` for user turns.
- */
-function normalizeRole(sender) {
-  if (!sender) return '';
-  const s = String(sender).toLowerCase();
-  if (s === 'human' || s === 'user') return 'user';
-  if (s === 'assistant' || s === 'ai' || s === 'bot') return 'assistant';
-  return s;
 }
 
 /**

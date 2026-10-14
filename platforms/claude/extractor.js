@@ -27,47 +27,12 @@ import {
   toIsoUtc
 } from '../../utils/manifest.js';
 import { cleanText } from '../../utils/text_cleaner.js';
+import { stripUtmParams, toJsonCell, normalizeRole } from '../../utils/extract_helpers.js';
 
 
 // ============================================================================
 // HELPERS
 // ============================================================================
-
-/**
- * Strip UTM tracking parameters from a URL for cross-source deduplication.
- */
-function stripUtmParams(url) {
-  if (!url) return '';
-  try {
-    const u = new URL(url);
-    ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-      .forEach(p => u.searchParams.delete(p));
-    return u.toString();
-  } catch {
-    return url;
-  }
-}
-
-/**
- * Serialize a value to JSON for a CSV cell. Falls back to '' on circular refs.
- */
-function toJsonCell(value) {
-  if (value === null || value === undefined) return '';
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
-}
-
-/**
- * Normalize a Claude sender string to the canonical role vocabulary used by
- * every platform's _messages_canonical.csv: human → user.
- */
-function normalizeRole(sender) {
-  if (sender === 'human') return 'user';
-  return sender || '';
-}
 
 /**
  * Extract the text payload from a single content block based on its type.

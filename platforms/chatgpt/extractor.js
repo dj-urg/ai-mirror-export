@@ -19,6 +19,7 @@ import {
     canonicalHeaders
 } from '../../utils/manifest.js';
 import { cleanText } from '../../utils/text_cleaner.js';
+import { stripUtmParams } from '../../utils/extract_helpers.js';
 
 
 // ============================================================================
@@ -58,22 +59,6 @@ function countOrphanedNodes(conversationData) {
 function unixToISO(ts) {
     if (!ts) return '';
     return new Date(ts * 1000).toISOString();
-}
-
-/**
- * Strip UTM tracking parameters from a URL.
- * Falls back to the original string if parsing fails.
- */
-function stripUtmParams(url) {
-    if (!url) return '';
-    try {
-        const u = new URL(url);
-        ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']
-            .forEach(p => u.searchParams.delete(p));
-        return u.toString();
-    } catch {
-        return url;
-    }
 }
 
 /**
