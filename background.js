@@ -1101,6 +1101,17 @@ async function handleConversationData(message) {
         extractionTelemetry = conversationData.extraction_telemetry || null;
       }
 
+      if (rawRows.length === 0) {
+        // Every message failed to flatten (or the payload had none). Do not
+        // ship an empty CSV; tell the popup instead.
+        broadcastExportResult({
+          platform,
+          outcome: 'empty_export',
+          reason: 'No messages could be extracted from this conversation'
+        });
+        return;
+      }
+
       const scrubFlat = scrubIfEnabled(rawRows, scrubColumns, piiScrubEnabled, piiScrubOptions);
       const scrubbedRows = scrubFlat.rows;
       mergeScrubCounts(piiStats, scrubFlat);
@@ -1156,8 +1167,13 @@ async function handleConversationData(message) {
       return;
     }
 
-    if (csvFiles.length === 0) {
+    if (csvFiles.length === 0 || csvFiles.every(f => !f.content)) {
       _console.warn(`[${platform}] No data extracted from conversation`);
+      broadcastExportResult({
+        platform,
+        outcome: 'empty_export',
+        reason: 'No data could be extracted from this conversation'
+      });
       return;
     }
 
