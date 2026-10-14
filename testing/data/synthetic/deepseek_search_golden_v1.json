@@ -1,0 +1,79 @@
+{
+  "code": 0,
+  "msg": "",
+  "data": {
+    "biz_code": 0,
+    "biz_msg": "",
+    "biz_data": {
+      "chat_session": {
+        "id": "deepseek-golden-0002",
+        "title": "Synthetic DeepSeek search fixture",
+        "title_type": "AUTO",
+        "model_type": "deepseek-reasoner",
+        "pinned": false,
+        "version": 1,
+        "updated_at": 1767312060
+      },
+      "chat_messages": [
+        {
+          "message_id": 10,
+          "parent_id": null,
+          "role": "USER",
+          "model": "",
+          "fragments": [
+            {
+              "id": 100,
+              "type": "REQUEST",
+              "content": "What year was the CSV RFC published? Search for it."
+            }
+          ],
+          "inserted_at": 1767312000,
+          "search_enabled": true
+        },
+        {
+          "message_id": 11,
+          "parent_id": 10,
+          "role": "ASSISTANT",
+          "model": "deepseek-reasoner",
+          "fragments": [
+            {
+              "id": 101,
+              "type": "THINK",
+              "content": "The user wants the publication year of RFC 4180."
+            },
+            {
+              "id": 102,
+              "type": "TOOL_SEARCH",
+              "search_results": [
+                {
+                  "url": "https://example.org/rfc4180?utm_source=synthetic",
+                  "title": "RFC 4180 overview",
+                  "snippet": "RFC 4180 was published in October 2005.",
+                  "site_name": "example.org",
+                  "cite_index": 1,
+                  "published_at": "2025-01-01T00:00:00Z"
+                },
+                {
+                  "url": "https://example.org/csv-history",
+                  "title": "A short history of CSV",
+                  "snippet": "CSV predates its RFC by decades.",
+                  "site_name": "example.org",
+                  "cite_index": 2
+                }
+              ]
+            },
+            {
+              "id": 103,
+              "type": "RESPONSE",
+              "content": "RFC 4180 was published in October 2005."
+            }
+          ],
+          "inserted_at": 1767312060,
+          "search_enabled": true,
+          "search_triggered": true,
+          "thinking_enabled": true
+        }
+      ]
+    }
+  }
+}

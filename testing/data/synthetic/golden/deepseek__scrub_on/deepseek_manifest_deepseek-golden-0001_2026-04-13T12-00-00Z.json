@@ -19,18 +19,18 @@
     {
       "filename": "deepseek_messages_deepseek-golden-0001_2026-04-13T12-00-00Z.csv",
       "schema": "deepseek_messages",
-      "schema_version": "1.0.0",
+      "schema_version": "1.1.0",
       "rows": 2,
-      "bytes": 1728,
-      "sha256": "b034ceefacfc6898af0ab85e72a90654c98cc7e8176b230f49d2be8018a53f8d"
+      "bytes": 1722,
+      "sha256": "e53126700dd13436c243a0d2a90f8dd83d460bb06c59898baa9f3b1492bae475"
     },
     {
       "filename": "deepseek_messages_canonical_deepseek-golden-0001_2026-04-13T12-00-00Z.csv",
       "schema": "deepseek_messages_canonical",
       "schema_version": "1.0.0",
       "rows": 2,
-      "bytes": 1393,
-      "sha256": "c5e23e80b7888a026aa61d631decdbb10de7e85bd46ad49b2a057fcad307b034"
+      "bytes": 1406,
+      "sha256": "e1372a06064936da60d0db9770148dafdd108c979d6075abdbce3ee9b80f966d"
     }
   ],
   "telemetry": {

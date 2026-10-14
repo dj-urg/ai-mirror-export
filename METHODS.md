@@ -50,6 +50,17 @@ The `telemetry` object carries PII-scrubbing provenance:
 
 Default behavior ships `URL: false` so URLs are preserved in exports; news / sources studies rely on them. There is no popup control for this option in 3.0.0; a researcher who wants URL stripping has to set `pii_scrub_options` to `{ "URL": true }` in the extension's local storage (for example via the add-on debugger) on each participant's browser before they export.
 
+## Schema versions
+
+Every CSV carries a `schema_version` column (per file type) next to `extractor_version`; the manifest repeats both per file. The version table lives in `utils/manifest.js` (`SCHEMA_VERSIONS`). Changes in 3.0.0:
+
+| Schema | Version | Change |
+|---|---|---|
+| `deepseek_messages` | 1.1.0 | `model_class` and `model_name` (always empty: DeepSeek's API carries the model under `model`) replaced by a single `model` column. The canonical `model_identifier` is read from the same field. |
+| `deepseek_sources` | 1.1.0 | `cite_index` added (DeepSeek's citation number for the result, when present); `fragment_id` is now always a string. |
+
+All other schemas remain at 1.0.0.
+
 ## Known limitations
 
 Google selectors are brittle to Google's ongoing A/B tests of DOM structure and locale labels; a layout change may silently reduce the capture rate. The model identifier for Claude is not recorded (empty `model_identifier`); for Copilot the canonical `model_identifier` carries the conversation `mode` rather than a model name. Per-turn timestamps are not available on Google AI Mode.

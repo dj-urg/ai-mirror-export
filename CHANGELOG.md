@@ -16,6 +16,7 @@
 - **Breaking change: the export format changed from one CSV to a ZIP of CSVs.** Existing analysis scripts that read a single `.csv` need updating to unpack the `.zip` first and read the individual files inside. See [`METHODS.md`](METHODS.md) for the schema of each file in the bundle.
 - **Donor identifiers are pseudonymous, not anonymous.** The `donor_id` in every CSV is a locally-generated UUID (not linked to any account), but it's stable across all of that donor's exports, so multiple exports from the same install can be joined. Add an optional **study code** in Privacy settings to turn `donor_id` into `HMAC-SHA256(uuid, salt)` so the same donor across different studies yields different IDs.
 - **Optional PII scrubbing** (pattern-based, best-effort). Enable in Privacy settings to replace emails, phone numbers, API keys, and other patterned secrets with placeholders. Links in message text are kept intact (except URLs that embed credentials).
+- **DeepSeek schema 1.1.0.** `deepseek_messages` replaces the always-empty `model_class`/`model_name` columns with `model` (the key DeepSeek's API actually uses); `deepseek_sources` gains `cite_index` and stringified `fragment_id`. See the schema-version table in [`METHODS.md`](METHODS.md).
 - **`text_cleaned` column and row validation.** Message CSVs now carry a `text_cleaned` column (whitespace/markup-normalised copy of `text`; the raw `text` is always kept) and the manifest records a per-file validation summary.
 
 ### Why Firefox is asking for permissions again

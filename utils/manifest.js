@@ -34,8 +34,10 @@ export const SCHEMA_VERSIONS = Object.freeze({
   grok_sources: '1.0.0',
   grok_messages_canonical: '1.0.0',
   deepseek_metadata: '1.0.0',
-  deepseek_messages: '1.0.0',
-  deepseek_sources: '1.0.0',
+  // 1.1.0: `model_class`/`model_name` (always empty: the API carries `model`)
+  // replaced by `model`; `cite_index` added to sources; fragment ids stringified.
+  deepseek_messages: '1.1.0',
+  deepseek_sources: '1.1.0',
   deepseek_messages_canonical: '1.0.0',
   mistral_metadata: '1.0.0',
   mistral_messages: '1.0.0',

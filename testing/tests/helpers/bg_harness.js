@@ -253,6 +253,8 @@ export const PLATFORM_SCENARIOS = Object.freeze([
     fixture: 'grok_golden_v1.json', senderUrl: 'https://grok.com/c/grok-golden-0001' },
   { id: 'deepseek', platform: 'deepseek', messageType: 'DEEPSEEK_CONVERSATION_DATA',
     fixture: 'deepseek_golden_v1.json', senderUrl: 'https://chat.deepseek.com/a/chat/s/deepseek-golden-0001' },
+  { id: 'deepseek_search', platform: 'deepseek', messageType: 'DEEPSEEK_CONVERSATION_DATA',
+    fixture: 'deepseek_search_golden_v1.json', senderUrl: 'https://chat.deepseek.com/a/chat/s/deepseek-golden-0002' },
   { id: 'mistral', platform: 'mistral', messageType: 'MISTRAL_CONVERSATION_DATA',
     fixture: 'mistral_golden_v1.json', senderUrl: 'https://chat.mistral.ai/chat/mistral-golden-0001' },
   { id: 'mistral_reasoning', platform: 'mistral', messageType: 'MISTRAL_CONVERSATION_DATA',

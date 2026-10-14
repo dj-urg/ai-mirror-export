@@ -1,0 +1,65 @@
+{
+  "manifest_schema_version": "1.1.0",
+  "extractor_version": "3.0.0",
+  "platform": "deepseek",
+  "conversation_id": "deepseek-golden-0002",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "deepseek_metadata_deepseek-golden-0002_2026-04-13T12-00-00Z.csv",
+      "schema": "deepseek_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 480,
+      "sha256": "a33c9e0f4a84c208942dd0c7d599f66fc32598a97127e7fe88d868a2ef269667"
+    },
+    {
+      "filename": "deepseek_messages_deepseek-golden-0002_2026-04-13T12-00-00Z.csv",
+      "schema": "deepseek_messages",
+      "schema_version": "1.1.0",
+      "rows": 2,
+      "bytes": 2362,
+      "sha256": "4d4d1505ce08c798b2af49fbc56368ac38ff5d3a16e876a50c78c45da70a5745"
+    },
+    {
+      "filename": "deepseek_sources_deepseek-golden-0002_2026-04-13T12-00-00Z.csv",
+      "schema": "deepseek_sources",
+      "schema_version": "1.1.0",
+      "rows": 2,
+      "bytes": 1234,
+      "sha256": "3cfe9a3f63fdc147febf0c688b52e777aa7ec7ab862c09c83303bdde39754c2f"
+    },
+    {
+      "filename": "deepseek_messages_canonical_deepseek-golden-0002_2026-04-13T12-00-00Z.csv",
+      "schema": "deepseek_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 2,
+      "bytes": 1345,
+      "sha256": "e21200014c6e9de067f0e6808074ed6ad0af2654c5399363a62cd5df23f7cc04"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": true,
+    "pii_scrub_options": {
+      "URL": false
+    },
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "orphaned_nodes": 0,
+    "validation": {
+      "deepseek_messages": {
+        "valid": true,
+        "total_rows": 2,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

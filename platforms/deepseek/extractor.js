@@ -99,6 +99,9 @@ function normalizeRole(role) {
   return r;
 }
 
+// DeepSeek message ids / parent ids / fragment ids are integers in the API
+// payload. Stringify everywhere so the CSV and validators (which expect
+// strings) stay consistent.
 function messageId(msg) {
   if (!msg || typeof msg !== 'object') return '';
   const id = msg.message_id;
@@ -111,6 +114,11 @@ function parentId(msg) {
   const id = msg.parent_id;
   if (id === null || id === undefined) return '';
   return String(id);
+}
+
+function stringifyId(v) {
+  if (v === null || v === undefined) return '';
+  return String(v);
 }
 
 /**
@@ -276,8 +284,7 @@ function extractConversationMessages(conversationData) {
       text_cleaned: cleanText(rawText),
       thinking_text: think,
       thinking_text_cleaned: think ? cleanText(think) : '',
-      model_class: m.model_class || '',
-      model_name: m.model_name || '',
+      model: m.model || '',
       created_at: createdAt(m),
       status: m.status || '',
       quasi_status: m.quasi_status || '',
@@ -318,8 +325,7 @@ function generateMessagesCSV(messages) {
     'text_cleaned',
     'thinking_text',
     'thinking_text_cleaned',
-    'model_class',
-    'model_name',
+    'model',
     'created_at',
     'status',
     'quasi_status',
@@ -383,9 +389,10 @@ function extractSources(conversationData) {
         rows.push({
           conversation_id: conversationId,
           message_id: msgId,
-          fragment_id: frag.id || '',
+          fragment_id: stringifyId(frag.id),
           fragment_type: frag.type || '',
           source_index: i,
+          cite_index: typeof r.cite_index === 'number' ? r.cite_index : '',
           url,
           url_clean: stripUtmParams(url),
           title: r.title || '',
@@ -414,6 +421,7 @@ function generateSourcesCSV(sources) {
     'fragment_id',
     'fragment_type',
     'source_index',
+    'cite_index',
     'url',
     'url_clean',
     'title',
@@ -462,7 +470,7 @@ function generateMessagesCanonicalCSV(conversationData, { donorId, donorIdType, 
       text: rawText,
       text_cleaned: cleanText(rawText),
       created_at_iso: createdAt(m),
-      model_identifier: m.model_class || m.model_name || '',
+      model_identifier: m.model || '',
       schema_version: schemaVersion,
       extractor_version: EXTRACTOR_VERSION,
       platform_specific_json: JSON.stringify({
