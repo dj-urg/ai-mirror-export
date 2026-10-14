@@ -184,6 +184,8 @@ testing/tests/*
 !testing/tests/test_mistral_golden.js
 !testing/tests/test_background_golden.js
 !testing/tests/test_chatgpt_golden.js
+!testing/tests/test_version_consistency.js
+!testing/tests/test_pii_sweep.js
 !testing/tests/helpers/
 !testing/tests/helpers/**
 # Synthetic (hand-built) fixtures used by the golden tests. Real-origin
