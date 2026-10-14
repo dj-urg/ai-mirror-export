@@ -473,35 +473,4 @@
 
   logDebug('WebSocket interceptor installed');
 
-  // Diagnostic snapshot exposed to the page console. Read-only summary of
-  // every instrumented socket's current capture state. Use from DevTools:
-  //   window.__m365CopilotDebug()
-  // Returns conversationId, isComplete, message counts, metadata — nothing
-  // that would leak the access_token or raw frames.
-  try {
-    Object.defineProperty(window, '__m365CopilotDebug', {
-      value: () => {
-        const out = allCaptures.map(c => ({
-          conversationId: c.conversationId,
-          isComplete: c.isComplete,
-          messageCount: c.messages.size,
-          messageTypes: Array.from(c.messages.values())
-            .map(m => `${m.author || '?'}:${m.messageType || '-'}`)
-            .reduce((acc, k) => { acc[k] = (acc[k] || 0) + 1; return acc; }, {}),
-          hasFlushTimer: Boolean(c.flushTimer),
-          hasIdleTimer: Boolean(c.idleTimer),
-          firstFrameAt: c.metadata.first_frame_at,
-          lastFrameAt: c.metadata.last_frame_at,
-          chatTitle: c.metadata.default_chat_name || null
-        }));
-        return {
-          note: 'Live capture state. For raw frames, re-run the shadow-capture snippet.',
-          sockets: out.length ? out : '(no Chathub sockets instrumented in this page lifetime)'
-        };
-      },
-      writable: false,
-      configurable: false
-    });
-  } catch { /* page may have already defined something; ignore */ }
-
 })();

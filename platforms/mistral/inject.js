@@ -299,13 +299,4 @@
     return originalXhrSend.apply(this, args);
   };
 
-  // Expose the helper names needed by tests / debugging without leaking the
-  // secret or the capture state.
-  Object.defineProperty(window, '__mistralExporterIsInterestingRequest', {
-    value: isInterestingRequest,
-    writable: false,
-    configurable: false,
-    enumerable: false
-  });
-
 })();

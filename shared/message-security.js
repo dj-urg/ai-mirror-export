@@ -205,9 +205,19 @@
     module.exports = MessageSecurity;
   }
 
-  // Export for Browser (Global)
-  if (typeof window !== 'undefined') {
-    window.MessageSecurity = MessageSecurity;
+  // Export for the browser. inject.js and content.js are separate classic
+  // scripts loaded after this file in the same world, so the only way to
+  // hand them the API is a window property. Non-enumerable and defined
+  // once: the file can be evaluated more than once in a page (Perplexity is
+  // injected by manifest and by the scripting API).
+  if (typeof window !== 'undefined' && !window.MessageSecurity) {
+    try {
+      Object.defineProperty(window, 'MessageSecurity', {
+        value: MessageSecurity, enumerable: false, configurable: false, writable: false
+      });
+    } catch (_) {
+      window.MessageSecurity = MessageSecurity;
+    }
   }
 
 })(typeof window !== 'undefined' ? window : this);
