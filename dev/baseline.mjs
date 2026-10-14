@@ -176,56 +176,53 @@ async function captureOne(page, state, theme, outDir) {
   const pngPath = path.join(outDir, `${name}.png`);
   const jsonPath = path.join(outDir, `${name}.axe.json`);
 
-  // Resolve the popup iframe's Frame handle from the element itself. Scanning
-  // page.frames() can return a frame that is about to be detached by the
-  // srcdoc swap, which then makes every evaluate on it time out. Retry a few
-  // times in case the new frame has not attached yet.
-  let popupFrame = null;
-  for (let i = 0; i < 20 && !popupFrame; i++) {
-    const handle = await page.$('#popupFrame');
-    const f = handle ? await handle.contentFrame() : null;
-    if (f && !f.isDetached()) popupFrame = f;
-    else await page.waitForTimeout(100);
-  }
-
+  // Run axe and read the status card from the harness page, reaching into
+  // the popup iframe through contentDocument (same origin). Playwright's
+  // Frame handles for a srcdoc iframe go stale across reloads and then every
+  // evaluate on them hangs; the parent document never does.
   let axeResults = { violations: [], passes: [], incomplete: [], inapplicable: [] };
-  if (!popupFrame) {
-    axeResults.error = 'popup iframe not found';
-  } else {
-    try {
-      const axeSource = await getAxeSource();
-      await withTimeout(popupFrame.addScriptTag({ content: axeSource }), 5000, 'addScriptTag');
-      axeResults = await withTimeout(
-        popupFrame.evaluate(() => window.axe.run(document, {
-          runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'] }
-        })),
-        10000, 'axe.run'
-      );
-    } catch (e) {
-      axeResults.error = String(e.message || e);
-    }
-  }
-
-  // Record what the status card says, so a state can be checked without
-  // eyeballing the PNG, and scroll the popup back to the top: focus moves
-  // (e.g. the auto-export click) can leave the document scrolled.
   let status = null;
-  if (popupFrame) {
-    try {
-      status = await withTimeout(popupFrame.evaluate(() => {
-        window.scrollTo(0, 0);
-        const card = document.querySelector('.status-card');
-        const text = (id) => (document.getElementById(id)?.textContent || '').trim();
-        return {
-          type: card ? [...card.classList].find((c) => c.startsWith('status-card--'))?.replace('status-card--', '') : null,
-          message: text('statusMessage'),
-          detail: text('statusDetail'),
-          exportDisabled: document.getElementById('exportBtn')?.disabled ?? null
-        };
-      }), 5000, 'status read');
-    } catch (e) {
-      status = { error: String(e.message || e) };
-    }
+  try {
+    const axeSource = await getAxeSource();
+    const r = await withTimeout(page.evaluate(async ({ axeSource }) => {
+      const iframe = document.getElementById('popupFrame');
+      const w = iframe && iframe.contentWindow;
+      const d = iframe && iframe.contentDocument;
+      if (!w || !d) throw new Error('popup iframe not found');
+      if (d.readyState !== 'complete' || !d.getElementById('exportBtn')) {
+        throw new Error(`popup document not ready (${d.readyState})`);
+      }
+      if (!w.axe) {
+        const script = d.createElement('script');
+        script.textContent = axeSource;
+        d.head.appendChild(script);
+      }
+      w.scrollTo(0, 0);
+      const card = d.querySelector('.status-card');
+      const text = (id) => (d.getElementById(id)?.textContent || '').trim();
+      const status = {
+        type: card ? [...card.classList].find((c) => c.startsWith('status-card--'))?.replace('status-card--', '') : null,
+        message: text('statusMessage'),
+        detail: text('statusDetail'),
+        exportDisabled: d.getElementById('exportBtn')?.disabled ?? null
+      };
+      const axe = await w.axe.run(d, {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa', 'best-practice'] }
+      });
+      return {
+        status,
+        violations: axe.violations.map((v) => ({
+          id: v.id, impact: v.impact, description: v.description, help: v.help, helpUrl: v.helpUrl, tags: v.tags,
+          nodes: v.nodes.map((n) => ({ target: n.target, html: n.html?.slice(0, 300), failureSummary: n.failureSummary }))
+        })),
+        passCount: axe.passes.length,
+        incompleteCount: axe.incomplete.length
+      };
+    }, { axeSource }), 20000, 'axe run');
+    status = r.status;
+    axeResults = { violations: r.violations, passes: new Array(r.passCount), incomplete: new Array(r.incompleteCount) };
+  } catch (e) {
+    axeResults.error = String(e.message || e);
   }
 
   // Shoot the iframe only.
@@ -243,19 +240,7 @@ async function captureOne(page, state, theme, outDir) {
     theme,
     url: page.url(),
     status,
-    violations: (axeResults.violations || []).map((v) => ({
-      id: v.id,
-      impact: v.impact,
-      description: v.description,
-      help: v.help,
-      helpUrl: v.helpUrl,
-      tags: v.tags,
-      nodes: v.nodes.map((n) => ({
-        target: n.target,
-        html: n.html?.slice(0, 300),
-        failureSummary: n.failureSummary
-      }))
-    })),
+    violations: axeResults.violations || [],
     passCount: (axeResults.passes || []).length,
     incompleteCount: (axeResults.incomplete || []).length,
     error: axeResults.error
@@ -305,7 +290,14 @@ async function capture(label) {
     let problems = 0;
     for (const state of STATES) {
       for (const theme of THEMES) {
-        const r = await captureOne(page, state, theme, outDir);
+        // A capture that produced no axe result or no status read is
+        // retried before it counts as a problem; the harness reload is
+        // occasionally raced by the previous document being torn down.
+        let r = await captureOne(page, state, theme, outDir);
+        for (let attempt = 2; r.problems > 0 && attempt <= 3; attempt++) {
+          console.log(`  [retry ${attempt}] ${state}/${theme}`);
+          r = await captureOne(page, state, theme, outDir);
+        }
         total += r.count;
         problems += r.problems;
       }
