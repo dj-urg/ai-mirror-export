@@ -65,9 +65,10 @@ permissions are needed.
   donor-ID pseudonymisation when a study salt is set). Replaces the previous
   single-CSV download.
 - **UX overhaul:** dark theme (`prefers-color-scheme: dark`), WCAG 2.2 AA
-  keyboard + focus pass, in-popup confirmation card (replaces
-  `window.confirm`), Development Preview banner + tag, trust footer,
-  "What's in the file?" section describing the ZIP contents.
+  keyboard + focus pass, a "Review your export" step after the download
+  (with a "Show in Downloads" button that calls `downloads.show`),
+  Development Preview banner + tag, trust footer, "What's in the file?"
+  section describing the ZIP contents.
 - **Error handling:** downloads/ZIP failures, empty exports, Claude 401
   (auth) failures, and timeouts now surface specific messages instead of
   hung spinners. Toolbar `!` badge when the most recent export on a tab

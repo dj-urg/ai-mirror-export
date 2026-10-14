@@ -77,7 +77,7 @@ Fresh profile only:
 - Agree + continue → main UI opens; focus should move to export button
 - Close the popup; reopen → main UI opens directly, no consent gate
 
-## 5. Error flows (steps 8a–8e)
+## 5. Error flows (steps 8a–8d)
 
 ### Download / ZIP failure (8a)
 Hard to reproduce reliably; close enough:
@@ -111,13 +111,6 @@ Hard to reproduce reliably; close enough:
   - ChatGPT/Claude/Copilot: "Reload the tab in your browser, then
     reopen this popup."
   - Google: "Close this popup, wait a second or two, then reopen it."
-
-### Large-export confirm (8e)
-- Open a ChatGPT conversation with more than 500 messages (or lower the
-  threshold in `popup.js` temporarily)
-- Click Export → the in-popup confirm card should appear (no
-  `window.confirm` dialog)
-- `Esc` or Cancel should dismiss; "Export anyway" should proceed
 
 ## 6. Trust surface sanity (step 7)
 
