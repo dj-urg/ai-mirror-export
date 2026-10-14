@@ -41,6 +41,29 @@ await expectOutcome('claude missing chat_messages',
   { messageType: 'CLAUDE_CONVERSATION_DATA', payload: { uuid: 'x' }, senderUrl: 'https://claude.ai/chat/x' },
   'invalid_data', 'MISSING_FIELDS');
 
+// Grok: a payload without the stamped id is named from the id the content
+// script sends alongside (derived from the page URL), never "unknown".
+{
+  const r = await runExport({
+    messageType: 'GROK_CONVERSATION_DATA',
+    payload: { responses: [{ responseId: 'r1', sender: 'human', message: 'hi', timestamp: '2026-01-01T00:00:00.000Z' }] },
+    senderUrl: 'https://grok.com/c/0a1b2c3d-0000-4000-8000-000000000001',
+    conversationId: '0a1b2c3d-0000-4000-8000-000000000001'
+  });
+  assert('grok hint: zip downloaded', r.filename !== null);
+  assert('grok hint: zip named from the hinted id', r.filename === 'grok_0a1b2c3d-0000-4000-8000-000000000001_2026-04-13T12-00-00Z.zip', r.filename);
+  const manifestName = [...r.entries.keys()].find(n => n.endsWith('.json'));
+  const manifest = JSON.parse(new TextDecoder().decode(r.entries.get(manifestName)));
+  assert('grok hint: manifest conversation_id from the hint', manifest.conversation_id === '0a1b2c3d-0000-4000-8000-000000000001', manifest.conversation_id);
+  const bad = await runExport({
+    messageType: 'GROK_CONVERSATION_DATA',
+    payload: { responses: [{ responseId: 'r1', sender: 'human', message: 'hi', timestamp: '2026-01-01T00:00:00.000Z' }] },
+    senderUrl: 'https://grok.com/c/x',
+    conversationId: '../evil id'
+  });
+  assert('grok hint: malformed hint is ignored', bad.filename === 'grok_unknown_2026-04-13T12-00-00Z.zip', bad.filename);
+}
+
 // Sender/type validation: nothing happens at all for a mismatched origin.
 const mismatch = await runExport({
   messageType: 'CLAUDE_CONVERSATION_DATA', payload: { uuid: 'x', chat_messages: [{ uuid: 'm', sender: 'human', content: [{ type: 'text', text: 'hi' }] }] },

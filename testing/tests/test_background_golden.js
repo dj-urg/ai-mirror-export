@@ -81,6 +81,9 @@ for (const r of runs) {
   assert(`${r.run}: zip name starts with platform`, result.filename.startsWith(`${r.platform}_`), result.filename);
   assert(`${r.run}: zip name carries the frozen timestamp`,
     result.filename.endsWith('_2026-04-13T12-00-00Z.zip'), result.filename);
+  // Every platform must resolve a conversation id: an export named
+  // `<platform>_unknown_…` cannot be traced back to its conversation.
+  assert(`${r.run}: zip name is not "unknown"`, !/_unknown_/.test(result.filename), result.filename);
 
   // Structural invariants that hold regardless of the golden content.
   const names = [...result.entries.keys()];
@@ -98,6 +101,8 @@ for (const r of runs) {
   assert(`${r.run}: manifest parses`, manifest !== null);
   if (manifest) {
     assert(`${r.run}: manifest.platform`, manifest.platform === r.platform, manifest.platform);
+    assert(`${r.run}: manifest.conversation_id is set`,
+      typeof manifest.conversation_id === 'string' && manifest.conversation_id.length > 0, String(manifest.conversation_id));
     assert(`${r.run}: manifest.download_time frozen`, manifest.download_time === FROZEN_ISO, manifest.download_time);
     assert(`${r.run}: manifest.telemetry.pii_scrub_enabled`,
       manifest.telemetry.pii_scrub_enabled === Boolean(r.settings.pii_scrub_enabled));

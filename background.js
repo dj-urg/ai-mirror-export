@@ -862,6 +862,12 @@ function pushCsv(list, stem, schemaName, content, slug) {
 async function handleConversationData(message) {
   const platform = message.platform || 'unknown';
   const conversationData = message.payload;
+  // Optional id the content script derived from the page URL; used for
+  // naming only when the payload itself yields none.
+  const hintedConversationId = (typeof message.conversationId === 'string'
+    && /^[A-Za-z0-9._:-]{1,128}$/.test(message.conversationId))
+    ? message.conversationId
+    : null;
 
   if (!conversationData) {
     _console.error(`[${platform}] No conversation data in message`);
@@ -902,7 +908,7 @@ async function handleConversationData(message) {
     // its name to be matched back to the manifest / archive. On Google the
     // id is the search query (free text), so it is scrubbed like any other
     // text cell when scrubbing is on; elsewhere it is an opaque id.
-    const rawConversationId = resolveConversationId(conversationData);
+    const rawConversationId = resolveConversationId(conversationData) || hintedConversationId;
     const conversationIdForNaming = (cellScrubber && typeof rawConversationId === 'string')
       ? cellScrubber('conversation_id', rawConversationId)
       : rawConversationId;
@@ -1443,7 +1449,7 @@ browser.runtime.onMessage.addListener((message, sender) => {
   }
 
   const tabId = sender.tab.id;
-  handleConversationData({ platform: expectedPlatform, payload: message.payload })
+  handleConversationData({ platform: expectedPlatform, payload: message.payload, conversationId: message.conversationId })
     .then((result) => {
       // Clear any stale "!" badge from a previous failed export on this tab.
       if (typeof tabId === 'number') clearExportFailureBadge(tabId);

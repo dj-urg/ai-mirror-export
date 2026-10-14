@@ -149,7 +149,7 @@ export async function loadBackground() {
  * @param {number} [opts.timeoutMs]
  * @returns {Promise<{filename: string|null, entries: Map<string, Uint8Array>, broadcasts: object[]}>}
  */
-export async function runExport({ messageType, payload, senderUrl, settings = {}, timeoutMs = 8000 }) {
+export async function runExport({ messageType, payload, senderUrl, settings = {}, conversationId = undefined, timeoutMs = 8000 }) {
   await loadBackground();
   if (pending) throw new Error('[bg_harness] runExport is not re-entrant');
 
@@ -181,7 +181,9 @@ export async function runExport({ messageType, payload, senderUrl, settings = {}
     const ret = await withSilencedConsole(async () => {
       // Deep-clone so background cannot mutate the caller's fixture.
       const cloned = JSON.parse(JSON.stringify(payload));
-      return listeners[0]({ type: messageType, payload: cloned }, currentSender, () => {});
+      const msg = { type: messageType, payload: cloned };
+      if (conversationId !== undefined) msg.conversationId = conversationId;
+      return listeners[0](msg, currentSender, () => {});
     });
     if (ret === true) throw new Error('[bg_harness] listener unexpectedly returned true');
     await done;

@@ -376,7 +376,11 @@
         browser.runtime.sendMessage({
           type: MESSAGE_TYPE,
           payload: data,
-          platform: 'grok'
+          platform: 'grok',
+          // Grok's payload carries no id of its own; the id from the page URL
+          // names the export when the stamped `_captured_conversation_id` is
+          // missing (seen in a real export named grok_unknown_…).
+          conversationId
         }).then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
       };
