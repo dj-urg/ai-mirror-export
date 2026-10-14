@@ -143,10 +143,10 @@ function resolveConversationId(conversationData) {
 
 /**
  * Normalize per-category scrub options from storage. Unknown keys are dropped
- * and every advertised key is coerced to boolean, so `pii_scrub_options` in
- * the manifest always has the same shape regardless of what was stored.
- * Defaults: every advertised key is `false` so the published behavior stays
- * byte-identical until a popup toggle is wired up.
+ * and every advertised key is coerced to boolean, so the options object
+ * always has the same shape regardless of what was stored. The manifest
+ * writes it only when scrubbing is on (`{}` when off; see manifestExtras).
+ * Defaults: every advertised key is `false`; there is no popup toggle.
  */
 function normalizeScrubOptions(stored) {
   const out = {};
@@ -159,7 +159,7 @@ function normalizeScrubOptions(stored) {
 
 /**
  * Load per-donor privacy settings. Non-fatal if storage is unavailable.
- * `study_salt` is the HMAC key for donor_id anonymization; empty means use raw UUID.
+ * `study_salt` is the HMAC key for donor_id pseudonymisation; empty means use raw UUID.
  */
 async function loadPrivacySettings() {
   try {

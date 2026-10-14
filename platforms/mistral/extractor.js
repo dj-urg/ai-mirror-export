@@ -60,8 +60,7 @@ function unwrap(data) {
   const chat = data.chat && typeof data.chat === 'object' ? data.chat : null;
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
   // Mistral's API returns newest-first; reverse to oldest-first for the CSV.
-  // Secondary sort by `turn` so a batch that arrives slightly out of order
-  // still ends up in conversational sequence.
+  // (No secondary sort: the API order is kept as received.)
   const messages = [...rawMessages].reverse();
   const conversationId =
     (typeof data._captured_conversation_id === 'string' && data._captured_conversation_id) ||

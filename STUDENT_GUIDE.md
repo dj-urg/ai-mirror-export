@@ -121,7 +121,7 @@ Each table below lists columns, their meaning, type, and a **confidence score**:
 - **Medium** — follows the platform's observed API shape, matched by the extractor's defensive code, but not exercised by a fixture.
 - **Low** — the extractor codes for the shape defensively; not yet seen in fixtures or real data. Verify against your own exports.
 
-### 5.1 Shared donor columns (every CSV)
+### 5.1 Shared provenance columns (every platform-specific CSV; the canonical CSVs carry `donor_id`, `schema_version` and `extractor_version` and keep the rest in `platform_specific_json`)
 
 | Column | Type | Meaning | Confidence |
 |---|---|---|---|
@@ -149,7 +149,7 @@ Each table below lists columns, their meaning, type, and a **confidence score**:
 | `num_user_messages` | int | Human-authored messages. | High |
 | `num_assistant_messages` | int | Model replies. | High |
 | `num_tool_messages` | int | Tool/function-call messages (e.g. web search, code interpreter). | High |
-| `num_orphaned_nodes` | int | Nodes present in the mapping but unreachable from the root — signals branched/regenerated turns silently dropped. Only applies to `mapping` format. | High |
+| `num_orphaned_nodes` | int | Nodes present in the mapping but unreachable from the root. They are still exported, with an empty `turn_number`. Only applies to `mapping` format. | High |
 
 #### 5.2.2 `chatgpt_messages.csv` — one row per node
 
@@ -501,7 +501,7 @@ Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_
 ## 6. Privacy and donor identity
 
 - **`donor_id`** is a UUID generated locally in the browser the first time the donor exports. It is stored for one year, then rotated. It is not linked to any OpenAI / Anthropic / Google / Microsoft account.
-- **Study salt (optional):** if the donor configures a `study_salt`, the `donor_id` in every CSV is `HMAC-SHA256(uuid, salt)`. Donors across studies cannot be joined, so pooling data across studies is safe.
+- **Study code (optional):** if the donor enters a study code, the `donor_id` in every CSV is `HMAC-SHA256(uuid, code)`. Exports made under different study codes cannot be joined on `donor_id`; exports made with the same code (or none) can.
 - **PII scrubbing (optional):** if the donor enables PII scrubbing, every string cell of every file is passed through the scrubber (emails, phone numbers, IPs, JWTs, API keys, SSNs, credit cards, long tokens); JSON columns are scrubbed inside their string values so they stay valid, and identifiers, timestamps and URLs are preserved. Redactions become `<REDACTED:EMAIL>` etc. The manifest's `telemetry.pii_redactions_total` counts redactions across all files. Names and addresses are not detected.
 - **Consent record:** the browser stores when, and to which version of the consent text, the donor agreed (`consent_version`, `consent_given_at`). This is not written into the export.
 
@@ -512,11 +512,11 @@ Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_
 1. **Per-block vs per-message grain for Claude.** `claude_messages.csv` has multiple rows per message. If you count rows thinking you're counting messages, you'll over-count any Claude conversation that used extended thinking or tool calls. Use the canonical CSV (one row per message) when that's what you need.
 2. **Role vocabulary differs across platforms.** ChatGPT uses `user`/`assistant`/`system`/`tool`. Claude uses `human`/`assistant`. Google uses `user`/`assistant`. Copilot normalizes to `user`/`assistant`. The canonical CSV normalizes all of these.
 3. **Branches.** ChatGPT and Claude exports contain every branch: edited prompts and regenerated answers appear as extra messages that share a parent. Filter on `on_visible_path == true` to get the thread the donor saw on screen; keep everything to study revisions. ChatGPT nodes unreachable from the root have `turn_number == ""`.
-8. **Leading `'` in cells.** Any cell that starts with `=`, `+`, `-`, `@`, `|` or a tab gets a `'` prefix so spreadsheets do not run it as a formula; a message beginning with `- item` is stored as `'- item`. Strip it in your pipeline (rule in `METHODS.md`).
 4. **Timestamps.** All times are normalized to ISO 8601 UTC.
 5. **`platform_specific_json` is a string, not a parsed object.** You will need to parse it before accessing nested keys.
 6. **Empty CSVs.** `claude_sources.csv`, `claude_attachments.csv`, `chatgpt_sources.csv`, `chatgpt_message_urls.csv`, and `chatgpt_donor_context.csv` are only emitted when there is at least one row. Check for file presence before loading.
 7. **BOM.** Every CSV starts with a UTF-8 BOM. Spreadsheet tools handle this automatically; naive loaders may leave `﻿` in the first column name — point them at UTF-8-with-BOM encoding.
+8. **Leading `'` in cells.** Any cell that starts with `=`, `+`, `-`, `@`, `|` or a tab gets a `'` prefix so spreadsheets do not run it as a formula; a message beginning with `- item` is stored as `'- item`. Strip it in your pipeline (rule in `METHODS.md`).
 
 ---
 
