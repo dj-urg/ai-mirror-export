@@ -2,7 +2,7 @@
 
 ### Why the `scripting` permission is needed
 
-Used in `background.js` (the `ensurePerplexityContentScripts` block near line 1360 and the `tabs.onUpdated` injector that follows it) for Perplexity only. Two call sites:
+Used in `background.js` (the `ensurePerplexityContentScripts` block, line 1461, and the `tabs.onUpdated` injector inside it, line 1506) for Perplexity only. Two call sites:
 
 1. `scripting.registerContentScripts` at background startup — re-registers
    the Perplexity content scripts via the scripting API as a fallback
@@ -16,13 +16,19 @@ manifest's `content_scripts` array (`shared/message-security.js`,
 `platforms/perplexity/inject.js`, `platforms/perplexity/content.js`).
 No file is fetched from the network; no code is generated at runtime.
 
-**Root cause status: not fully identified.** The code comment at
-`background.js:1357` notes "manifest content_scripts entries for
-Perplexity do not reliably take effect in some Firefox builds, even
-though structurally identical entries work for every other platform."
-Which Firefox version(s) show it and a reduced test case have not been
-isolated. The `scripting` fallback is a defensive measure that has
-worked reliably in dogfood use.
+Because the same files can therefore reach a page up to three times
+(manifest, registered script, executeScript), both Perplexity files are
+idempotent: `platforms/perplexity/inject.js` (line 24) returns early
+when a non-enumerable `__aiChatExporterPerplexityInjectInstalled` flag
+is already set on `window`, and `platforms/perplexity/content.js` (line
+20) does the same in its isolated-world global. A second evaluation
+therefore wraps nothing and registers no second listener.
+
+**Root cause status: not fully identified.** The code comment above
+`ensurePerplexityContentScripts` notes that the manifest entries for
+Perplexity did not reliably take effect in some Firefox builds during
+development, although structurally identical entries work for every
+other platform. Which Firefox version(s) show it has not been isolated.
 
 **Reproduction notes** for anyone trying to isolate the underlying bug:
 
@@ -30,15 +36,14 @@ worked reliably in dogfood use.
    the repo root
 2. Visit <https://www.perplexity.ai/> in the launched profile; sign in
 3. Open a thread
-4. In the page devtools console, check:
-   `document.documentElement.getAttribute('data-perplexity-exporter-content-loaded')`
-   — a null result means the content script didn't inject
+4. In the page devtools console, check
+   `Object.getOwnPropertyDescriptor(window, '__aiChatExporterPerplexityInjectInstalled')`
+   — undefined means the MAIN-world hook did not install
 5. Also check `window.fetch.toString().startsWith('async function')` —
    if false, the inject-world fetch hook isn't installed either
 
 The `scripting` permission can be dropped from a future release once the
-root cause is identified and the manifest entry fixed. Tracked in
-`docs/ux-audit.md` §10.
+root cause is identified and the manifest entry fixed.
 
 
 
@@ -50,16 +55,19 @@ permissions are needed.
 
 - **Six new supported platforms:** Perplexity, Grok, Microsoft 365 Copilot,
   DeepSeek, Mistral, and **Google Search AI Overview / AI Mode**.
-- **New permissions:**
-  - `tabs` — the popup needs the active tab's URL to decide which platform
-    is on screen and whether the toolbar icon should be colour or grey.
+- **New permissions** (`tabs` is *not* requested: the popup uses
+  `activeTab`, and the toolbar icon state relies on the host permissions,
+  since Firefox only exposes a tab's URL for permitted hosts):
   - `scripting` — some Perplexity rollouts don't honour the manifest
     `content_scripts` entry at tab-navigation time; `scripting.executeScript`
     at `tabs.onUpdated(loading)` is the belt-and-suspenders fallback. It
     only ever injects the same shipped files already declared in the
     manifest; it doesn't fetch anything from the network.
-  - **10 Google locale host permissions** (`.com, .be, .nl, .fr, .de, .co.uk,
-    .es, .it, .ca, .com.au`). See §Google below for the full justification.
+  - **Host permissions for the five new chat sites** (`www.perplexity.ai`,
+    `grok.com`, `chat.deepseek.com`, `chat.mistral.ai`,
+    `m365.cloud.microsoft`) and **10 Google locale hosts** (`.com, .be, .nl,
+    .fr, .de, .co.uk, .es, .it, .ca, .com.au`). See §Google below for the
+    Google justification.
 - **ZIP export format:** every export is now a ZIP of CSVs plus a
   `<platform>_manifest_…json` sidecar (checksums, schema versions, HMAC
   donor-ID pseudonymisation when a study salt is set). Replaces the previous
@@ -88,10 +96,12 @@ activity to search pages. Narrowing the host pattern is planned.
 
 No new search queries are sent to Google by the extension. The content
 script observes the user's **own already-performed** search in the
-page's DOM. When the AI Overview renders late it re-requests the same
-search URL the user is viewing (a same-origin `fetch` with the user's
-own cookies) to read the server-rendered HTML. There is no `window.fetch`
-hook on Google.
+page's DOM. When a classic AI Overview is not in the live DOM it
+re-requests the same search URL the user is viewing (a same-origin
+`fetch` with the user's own cookies) to read the server-rendered HTML,
+**at most once per page and query** (`platforms/google_search/content.js`,
+`fetchAttempted`, line 519) and never from the popup's status poll; AI
+Mode is never re-requested. There is no `window.fetch` hook on Google.
 
 ## Network behaviour — nothing leaves the browser
 
@@ -107,6 +117,16 @@ current search page as described above. Nothing is ever sent to any
 third party. Processing is entirely local, and the ZIP is written to
 the user's own Downloads folder via `browser.downloads.download` with a
 local blob URL.
+
+**DeepSeek token handling.** DeepSeek's `/api/v0/chat/history_messages`
+endpoint rejects cookie-only requests, so
+`platforms/deepseek/content.js` reads the bearer token DeepSeek itself
+stores in the page's `localStorage` (`userToken`; `readUserToken`, line
+146) and attaches it to that one same-origin request (line 200). The
+extension repeats the site's own request with the site's own credential;
+the token is never stored, logged, exported or sent anywhere else. The
+refresh runs when the popup opens and when the user exports, because
+DeepSeek streams new replies without re-requesting its history.
 
 `data_collection_permissions` is set to `"none"`.
 
@@ -125,10 +145,13 @@ by the hooks.)
   conversation-API responses. The hook runs in the MAIN world (page
   context) and forwards the response bodies via HMAC-SHA256-signed
   `postMessage` to the ISOLATED-world content script, which validates
-  the signature and a 30-second timestamp window before accepting (see
-  `shared/message-security.js`). This stops other page scripts (ad
-  trackers, unrelated extensions, userscripts) from forging fake
-  conversation data into exports.
+  the signature, a 30-second timestamp window and a once-only nonce
+  (replays are rejected; `shared/message-security.js` line 187 and the
+  per-platform content scripts) before accepting. The shared
+  `window.MessageSecurity` API is defined once, read-only and
+  non-enumerable. This stops other page scripts (ad trackers, unrelated
+  extensions, userscripts) from forging fake conversation data into
+  exports.
 - `platforms/m365_copilot/inject.js` — hooks the `WebSocket`
   constructor's `send` and `message` events because M365 Copilot
   streams responses over WebSocket rather than HTTP. Same signed-
@@ -146,7 +169,8 @@ by the hooks.)
 - Mozilla AMO version is cryptographically signed by Mozilla, so what
   users install matches what you review.
 - Development history: <https://github.com/dj-urg/AI-Dialogue-Insight-Extension>
-  (branch `release/3.0.0` for this release).
+  (tag `v3.0.0` on `main` for this release; the extractor version in
+  every export equals the add-on version).
 - The source submitted matches the GitHub tree 1:1 — no bundler, no
   minifier, no build-time code generation. The `web-ext build` output
   is exactly the files on disk minus `dev/`, `docs/`, `testing/`,
