@@ -34,15 +34,37 @@ const STATES = [
   'supported_ready_chatgpt',
   'supported_ready_claude',
   'supported_ready_copilot',
+  'supported_ready_m365_copilot',
+  'supported_ready_perplexity',
+  'supported_ready_grok',
+  'supported_ready_deepseek',
+  'supported_ready_mistral',
   'supported_ready_google_overview',
-  'supported_ready_google_ai_mode_capturing',
-  'supported_loading_data',
+  'supported_ready_google_ai_mode',
+  'supported_idle_chatgpt',
+  'supported_idle_claude',
+  'supported_idle_copilot',
+  'supported_idle_m365_copilot',
+  'supported_replying_m365_copilot',
+  'supported_idle_perplexity',
+  'supported_idle_grok',
+  'supported_idle_deepseek',
+  'supported_idle_mistral',
   'loading_tab_navigating',
   'error_unsupported',
   'error_no_conversation_id',
   'error_content_script_not_loaded',
   'error_no_data_google',
   'auth_failed_claude',
+  'auth_failed_deepseek',
+  'export_result_success',
+  'export_result_download_failed',
+  'export_result_processing_failed',
+  'export_result_empty_export',
+  'export_result_invalid_data',
+  'export_no_data',
+  'export_failed',
+  'export_rate_limited',
   'consent_first_run'
 ];
 
@@ -135,11 +157,16 @@ async function captureOne(page, state, theme, outDir) {
   // interactive dev; either path produces the same palette.
   await page.emulateMedia({ colorScheme: theme });
 
-  // One atomic setState + one reload, with an awaitable ready-signal.
-  await page.evaluate(
-    ({ state, theme }) => window.__harness.setState(state, theme),
-    { state, theme }
-  );
+  // One atomic setState + one reload, with an awaitable ready-signal. Both
+  // waits are bounded: if the mock's ready message is ever missed, the run
+  // logs a warning and moves on instead of hanging forever.
+  await withTimeout(
+    page.evaluate(
+      ({ state, theme }) => window.__harness.setState(state, theme),
+      { state, theme }
+    ),
+    12000, `${state}/${theme} setState`
+  ).catch((e) => console.log(`  [warn] ${e.message}`));
   await withTimeout(
     page.evaluate(() => window.__harnessReady),
     8000, `${state}/${theme} ready`
@@ -149,13 +176,16 @@ async function captureOne(page, state, theme, outDir) {
   const pngPath = path.join(outDir, `${name}.png`);
   const jsonPath = path.join(outDir, `${name}.axe.json`);
 
-  // Resolve the popup iframe's Frame handle. page.mainFrame() is the harness;
-  // any other frame is the popup. Retry a few times in case the srcdoc swap
-  // hasn't attached a new frame yet.
+  // Resolve the popup iframe's Frame handle from the element itself. Scanning
+  // page.frames() can return a frame that is about to be detached by the
+  // srcdoc swap, which then makes every evaluate on it time out. Retry a few
+  // times in case the new frame has not attached yet.
   let popupFrame = null;
-  for (let i = 0; i < 10 && !popupFrame; i++) {
-    popupFrame = page.frames().find((f) => f !== page.mainFrame() && !f.isDetached());
-    if (!popupFrame) await page.waitForTimeout(100);
+  for (let i = 0; i < 20 && !popupFrame; i++) {
+    const handle = await page.$('#popupFrame');
+    const f = handle ? await handle.contentFrame() : null;
+    if (f && !f.isDetached()) popupFrame = f;
+    else await page.waitForTimeout(100);
   }
 
   let axeResults = { violations: [], passes: [], incomplete: [], inapplicable: [] };
@@ -176,6 +206,28 @@ async function captureOne(page, state, theme, outDir) {
     }
   }
 
+  // Record what the status card says, so a state can be checked without
+  // eyeballing the PNG, and scroll the popup back to the top: focus moves
+  // (e.g. the auto-export click) can leave the document scrolled.
+  let status = null;
+  if (popupFrame) {
+    try {
+      status = await withTimeout(popupFrame.evaluate(() => {
+        window.scrollTo(0, 0);
+        const card = document.querySelector('.status-card');
+        const text = (id) => (document.getElementById(id)?.textContent || '').trim();
+        return {
+          type: card ? [...card.classList].find((c) => c.startsWith('status-card--'))?.replace('status-card--', '') : null,
+          message: text('statusMessage'),
+          detail: text('statusDetail'),
+          exportDisabled: document.getElementById('exportBtn')?.disabled ?? null
+        };
+      }), 5000, 'status read');
+    } catch (e) {
+      status = { error: String(e.message || e) };
+    }
+  }
+
   // Shoot the iframe only.
   try {
     const iframeHandle = await page.$('#popupFrame');
@@ -190,6 +242,7 @@ async function captureOne(page, state, theme, outDir) {
     state,
     theme,
     url: page.url(),
+    status,
     violations: (axeResults.violations || []).map((v) => ({
       id: v.id,
       impact: v.impact,
@@ -209,6 +262,9 @@ async function captureOne(page, state, theme, outDir) {
   };
   await fs.writeFile(jsonPath, JSON.stringify(slim, null, 2));
 
+  const problems = [slim.error, status && status.error].filter(Boolean);
+  if (problems.length > 0) console.log(`  [warn] ${name}: ${problems.join('; ')}`);
+
   const count = slim.violations.length;
   const impactCounts = slim.violations.reduce((acc, v) => {
     acc[v.impact || 'minor'] = (acc[v.impact || 'minor'] || 0) + 1;
@@ -219,7 +275,7 @@ async function captureOne(page, state, theme, outDir) {
     .map((k) => `${k.slice(0, 1).toUpperCase()}${impactCounts[k]}`)
     .join(' ');
   console.log(`  ${name.padEnd(55)} violations=${String(count).padStart(2)}  ${impactStr}`);
-  return count;
+  return { count, problems: problems.length };
 }
 
 async function capture(label) {
@@ -246,12 +302,19 @@ async function capture(label) {
     console.log(`Capturing ${STATES.length} states × ${THEMES.length} themes → dev/baselines/${label}/`);
 
     let total = 0;
+    let problems = 0;
     for (const state of STATES) {
       for (const theme of THEMES) {
-        total += await captureOne(page, state, theme, outDir);
+        const r = await captureOne(page, state, theme, outDir);
+        total += r.count;
+        problems += r.problems;
       }
     }
     console.log(`\nTotal axe violations: ${total}`);
+    if (problems > 0) {
+      console.log(`Captures with errors (no axe result or no status read): ${problems} — see [warn] lines above`);
+      process.exitCode = 1;
+    }
     console.log(`Saved to dev/baselines/${label}/`);
   } finally {
     await browser.close();

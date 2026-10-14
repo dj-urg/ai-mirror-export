@@ -21,11 +21,26 @@
             <option value="supported_ready_chatgpt" selected>ChatGPT — ready</option>
             <option value="supported_ready_claude">Claude — ready</option>
             <option value="supported_ready_copilot">Copilot — ready</option>
+            <option value="supported_ready_m365_copilot">Microsoft 365 Copilot — ready</option>
+            <option value="supported_ready_perplexity">Perplexity — ready</option>
+            <option value="supported_ready_grok">Grok — ready</option>
+            <option value="supported_ready_deepseek">DeepSeek — ready</option>
+            <option value="supported_ready_mistral">Mistral — ready</option>
             <option value="supported_ready_google_overview">Google AI Overview — ready</option>
-            <option value="supported_ready_google_ai_mode_capturing">Google AI Mode — capturing</option>
+            <option value="supported_ready_google_ai_mode">Google AI Mode — ready</option>
+          </optgroup>
+          <optgroup label="Supported — idle (nothing captured yet)">
+            <option value="supported_idle_chatgpt">ChatGPT — capturing</option>
+            <option value="supported_idle_claude">Claude — idle</option>
+            <option value="supported_idle_copilot">Copilot — capturing</option>
+            <option value="supported_idle_m365_copilot">Microsoft 365 Copilot — waiting for a chat</option>
+            <option value="supported_replying_m365_copilot">Microsoft 365 Copilot — still replying</option>
+            <option value="supported_idle_perplexity">Perplexity — capturing</option>
+            <option value="supported_idle_grok">Grok — capturing</option>
+            <option value="supported_idle_deepseek">DeepSeek — capturing</option>
+            <option value="supported_idle_mistral">Mistral — capturing</option>
           </optgroup>
           <optgroup label="Loading / transitional">
-            <option value="supported_loading_data">Supported, capturing data</option>
             <option value="loading_tab_navigating">Tab still navigating</option>
           </optgroup>
           <optgroup label="Errors">
@@ -33,7 +48,18 @@
             <option value="error_no_conversation_id">On supported site, no conversation</option>
             <option value="error_content_script_not_loaded">Content script not loaded</option>
             <option value="error_no_data_google">Google — no overview on page</option>
-            <option value="auth_failed_claude">Popup opened after Claude auth failure (401)</option>
+            <option value="auth_failed_claude">Popup opened after Claude sign-out</option>
+            <option value="auth_failed_deepseek">Popup opened after DeepSeek sign-out</option>
+          </optgroup>
+          <optgroup label="Export outcomes (Export is clicked for you)">
+            <option value="export_result_success">Background confirmed the download</option>
+            <option value="export_result_download_failed">Background: download failed</option>
+            <option value="export_result_processing_failed">Background: could not build the export</option>
+            <option value="export_result_empty_export">Background: no messages to export</option>
+            <option value="export_result_invalid_data">Background: conversation data incomplete</option>
+            <option value="export_no_data">Content script: no data available</option>
+            <option value="export_failed">Content script: generic export failure</option>
+            <option value="export_rate_limited">Popup rate limiter (two clicks)</option>
           </optgroup>
           <optgroup label="First run">
             <option value="consent_first_run">Consent panel (first run)</option>
@@ -44,12 +70,19 @@
       <label class="harness-field">
         <span class="harness-field__label">Export outcome (click Export in the popup)</span>
         <select id="exportOutcome" class="harness-field__input">
-          <option value="success" selected>Succeed quickly</option>
+          <option value="" selected>Use the preset's outcome (default: succeed quickly)</option>
+          <option value="success">Succeed quickly</option>
+          <option value="success_result">Succeed, then background confirms with the file name</option>
           <option value="hang">Hang (shows Exporting… forever)</option>
           <option value="network_error">Fail: NETWORK_ERROR</option>
+          <option value="content_script_missing">Fail: content script not loaded</option>
           <option value="no_data">Fail: NO_DATA_AVAILABLE</option>
-          <option value="rate_limit">Fail: rate limit</option>
           <option value="export_failed">Fail: generic export failed</option>
+          <option value="download_failed">Background: download failed</option>
+          <option value="processing_failed">Background: could not build the export</option>
+          <option value="empty_export">Background: no messages to export</option>
+          <option value="invalid_data">Background: conversation data incomplete</option>
+          <option value="rate_limit">Popup rate limiter (click Export twice within 2 s)</option>
         </select>
       </label>
 

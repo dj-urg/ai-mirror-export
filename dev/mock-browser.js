@@ -14,9 +14,7 @@
     ? window.__HARNESS_STATE__
     : 'supported_ready_chatgpt';
 
-  const EXPORT_OUTCOME = typeof window.__HARNESS_EXPORT_OUTCOME__ === 'string'
-    ? window.__HARNESS_EXPORT_OUTCOME__
-    : 'success';
+  const EXPORT_OUTCOME = 'success';
 
   const FIXTURES = window.__HARNESS_FIXTURES__ || { tabs: {}, conversations: {} };
 
@@ -44,11 +42,64 @@
       tab: FIXTURES.tabs.google_overview,
       conversationsResponse: FIXTURES.conversations.google_overview
     },
-    supported_ready_google_ai_mode_capturing: {
+    supported_ready_google_ai_mode: {
       tab: FIXTURES.tabs.google_ai_mode,
-      conversationsResponse: FIXTURES.conversations.google_ai_mode_capturing
+      conversationsResponse: FIXTURES.conversations.google_ai_mode
     },
-    supported_loading_data: {
+    supported_ready_perplexity: {
+      tab: FIXTURES.tabs.perplexity,
+      conversationsResponse: FIXTURES.conversations.perplexity
+    },
+    supported_ready_grok: {
+      tab: FIXTURES.tabs.grok,
+      conversationsResponse: FIXTURES.conversations.grok
+    },
+    supported_ready_deepseek: {
+      tab: FIXTURES.tabs.deepseek,
+      conversationsResponse: FIXTURES.conversations.deepseek
+    },
+    supported_ready_mistral: {
+      tab: FIXTURES.tabs.mistral,
+      conversationsResponse: FIXTURES.conversations.mistral
+    },
+    supported_ready_m365_copilot: {
+      tab: FIXTURES.tabs.m365_copilot,
+      conversationsResponse: FIXTURES.conversations.m365_copilot_ready
+    },
+    // Idle: on a supported site, nothing captured yet.
+    supported_idle_claude: {
+      tab: FIXTURES.tabs.claude,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_idle_copilot: {
+      tab: FIXTURES.tabs.copilot,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_idle_perplexity: {
+      tab: FIXTURES.tabs.perplexity,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_idle_grok: {
+      tab: FIXTURES.tabs.grok,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_idle_deepseek: {
+      tab: FIXTURES.tabs.deepseek,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_idle_mistral: {
+      tab: FIXTURES.tabs.mistral,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_idle_m365_copilot: {
+      tab: FIXTURES.tabs.m365_copilot,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_replying_m365_copilot: {
+      tab: FIXTURES.tabs.m365_copilot,
+      conversationsResponse: FIXTURES.conversations.m365_copilot_replying
+    },
+    supported_idle_chatgpt: {
       // Supported URL, data not yet captured. popup.js shows "capturing..."
       // and after ~15s swaps to the reload prompt.
       tab: FIXTURES.tabs.chatgpt,
@@ -83,8 +134,60 @@
       tab: FIXTURES.tabs.claude,
       conversationsResponse: FIXTURES.conversations.empty,
       authFailed: { platform: 'claude', where: 'conversation' }
+    },
+    auth_failed_deepseek: {
+      tab: FIXTURES.tabs.deepseek,
+      conversationsResponse: FIXTURES.conversations.empty,
+      authFailed: { platform: 'deepseek', where: 'history_messages' }
+    },
+    // Export outcomes rendered as presets so the baseline can capture them.
+    // harness.js clicks Export after load; the outcome drives the mock.
+    export_result_success: {
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'success_result'
+    },
+    export_result_download_failed: {
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'download_failed'
+    },
+    export_result_processing_failed: {
+      tab: FIXTURES.tabs.claude,
+      conversationsResponse: FIXTURES.conversations.claude,
+      autoExport: 'processing_failed'
+    },
+    export_result_empty_export: {
+      tab: FIXTURES.tabs.claude,
+      conversationsResponse: FIXTURES.conversations.claude,
+      autoExport: 'empty_export'
+    },
+    export_result_invalid_data: {
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'invalid_data'
+    },
+    export_no_data: {
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'no_data'
+    },
+    export_failed: {
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'export_failed'
+    },
+    export_rate_limited: {
+      // Two clicks within two seconds trip popup.js's own rate limiter.
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'rate_limit'
     }
   };
+
+  // Expose the preset table so harness.js can read autoExport without
+  // duplicating it.
+  window.__HARNESS_STATE_MAP__ = STATE_MAP;
 
   function currentState() {
     return STATE_MAP[STATE] || STATE_MAP.supported_ready_chatgpt;
@@ -152,25 +255,65 @@
     return Promise.resolve({ success: true });
   }
 
+  // runtime.onMessage listeners registered by popup.js. background.js
+  // broadcasts EXPORT_RESULT through this channel, so the mock must be able
+  // to deliver one for the export-outcome presets to render.
+  const runtimeListeners = [];
+  function dispatchRuntimeMessage(message) {
+    const sender = { id: 'ai-chat-exporter@harness' };
+    for (const fn of runtimeListeners) {
+      try { fn(message, sender, () => {}); } catch (_) { /* popup handles its own errors */ }
+    }
+  }
+  function broadcastExportResult(detail, delayMs = 400) {
+    setTimeout(() => dispatchRuntimeMessage({ type: 'EXPORT_RESULT', detail }), delayMs);
+  }
+
+  const outcome = (typeof window.__HARNESS_EXPORT_OUTCOME__ === 'string')
+    ? window.__HARNESS_EXPORT_OUTCOME__
+    : (currentState().autoExport || EXPORT_OUTCOME);
+
   function handleExport() {
-    switch (EXPORT_OUTCOME) {
+    const ok = (delay = 350) => new Promise((resolve) => setTimeout(() => resolve({ success: true }), delay));
+    switch (outcome) {
       case 'hang':
         // Keep the Exporting… state visible forever.
         return new Promise(() => {});
-      case 'network_error':
-        return Promise.reject(new Error('NETWORK_ERROR: fetch failed'));
-      case 'no_data':
-        return Promise.reject(new Error('NO_DATA_AVAILABLE'));
       case 'rate_limit':
-        return Promise.reject(new Error('EXPORT_FAILED: Rate limit exceeded'));
+        // First click fails fast so the button is re-enabled; harness.js
+        // then clicks again inside popup.js's two-second window.
+        return Promise.resolve({ success: false, error: 'Something went wrong while exporting' });
+      case 'network_error':
+        // tabs.sendMessage rejected with something other than "Receiving
+        // end does not exist" → popup shows NETWORK_ERROR.
+        return Promise.reject(new Error('fetch failed'));
+      case 'content_script_missing':
+        return Promise.reject(new Error('Could not establish connection. Receiving end does not exist.'));
+      case 'no_data':
+        // Content script answers, but has nothing for this conversation.
+        return Promise.resolve({ success: false, error: 'No data available for this conversation' });
       case 'export_failed':
-        return Promise.reject(new Error('EXPORT_FAILED: Something went wrong'));
+        // Content script answers with a generic failure.
+        return Promise.resolve({ success: false, error: 'Something went wrong while exporting' });
+      case 'download_failed':
+        broadcastExportResult({ platform: 'chatgpt', outcome: 'download_failed', reason: 'Download failed', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip' });
+        return ok();
+      case 'processing_failed':
+        broadcastExportResult({ platform: 'claude', outcome: 'processing_failed', reason: 'Processing failed' });
+        return ok();
+      case 'empty_export':
+        broadcastExportResult({ platform: 'claude', outcome: 'empty_export', reason: 'Claude chat_messages array is empty' });
+        return ok();
+      case 'invalid_data':
+        broadcastExportResult({ platform: 'chatgpt', outcome: 'invalid_data', reason: 'ChatGPT mapping is not a plain object' });
+        return ok();
+      case 'success_result':
+        broadcastExportResult({ platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip' });
+        return ok();
       case 'success':
       default:
         // Simulate a brief delay so the Exporting… state is visible.
-        return new Promise((resolve) => {
-          setTimeout(() => resolve({ success: true }), 350);
-        });
+        return ok();
     }
   }
 
@@ -212,7 +355,13 @@
     },
     runtime: {
       id: 'ai-chat-exporter@harness',
-      onMessage: { addListener: noop, removeListener: noop },
+      onMessage: {
+        addListener: (fn) => { if (typeof fn === 'function') runtimeListeners.push(fn); },
+        removeListener: (fn) => {
+          const i = runtimeListeners.indexOf(fn);
+          if (i >= 0) runtimeListeners.splice(i, 1);
+        }
+      },
       // State-aware runtime.sendMessage so popup → background queries like
       // GET_AUTH_STATE return the right thing per harness preset.
       sendMessage: async (msg) => {

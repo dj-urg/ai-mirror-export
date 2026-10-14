@@ -53,13 +53,48 @@
   // callers always get a Promise for the *current* reload.
   window.__harnessReady = Promise.resolve();
 
-  function trackReady() {
+  // Presets whose point is an export outcome click Export for you once the
+  // popup has rendered. The table lives in mock-browser.js (STATE_MAP[x]
+  // .autoExport); the iframe exposes it as window.__HARNESS_STATE_MAP__.
+  function autoExportFor(state) {
+    try {
+      const map = iframe.contentWindow && iframe.contentWindow.__HARNESS_STATE_MAP__;
+      return map && map[state] && map[state].autoExport ? map[state].autoExport : null;
+    } catch (_) { return null; }
+  }
+
+  function clickExportInPopup() {
+    const doc = iframe.contentDocument;
+    const btn = doc && doc.getElementById('exportBtn');
+    if (btn && !btn.disabled) { btn.click(); return true; }
+    return false;
+  }
+
+  function trackReady(state) {
     window.__harnessReady = new Promise((resolve) => {
       const handler = (ev) => {
         if (ev.data?.type === 'HARNESS_MOCK_READY') {
           window.removeEventListener('message', handler);
           // Give popup.js's init() + the first checkAndUpdateUI a tick.
-          setTimeout(resolve, 400);
+          setTimeout(() => {
+            const auto = autoExportFor(state);
+            if (!auto) { resolve(); return; }
+            const clicked = clickExportInPopup();
+            logEvent(clicked ? `auto-export: clicked Export (${auto})` : 'auto-export: Export button not enabled');
+            if (auto === 'rate_limit') {
+              // The first click fails and popup.js re-enables the button
+              // after ~500 ms; a second click inside the 2 s window trips
+              // the popup's own rate limiter.
+              setTimeout(() => {
+                const again = clickExportInPopup();
+                logEvent(again ? 'auto-export: second click' : 'auto-export: second click skipped (button disabled)');
+              }, 900);
+              setTimeout(resolve, 1600);
+              return;
+            }
+            // Let the mock's response / EXPORT_RESULT broadcast land.
+            setTimeout(resolve, 900);
+          }, 400);
         }
       };
       window.addEventListener('message', handler);
@@ -71,14 +106,17 @@
     const outcome = outcomeSelect.value;
     const theme = currentTheme();
 
-    trackReady();
+    trackReady(state);
     const popupHtml = await originalPopupHtmlPromise;
 
     // Inject the mock and fixtures ahead of the shared scripts. Keep the
     // original popup.html untouched on disk.
+    // An empty outcome means "whatever the preset says" (mock-browser.js
+    // falls back to the preset's autoExport, then to plain success).
     const injection = [
       `<script>window.__HARNESS_STATE__ = ${JSON.stringify(state)};` +
-        `window.__HARNESS_EXPORT_OUTCOME__ = ${JSON.stringify(outcome)};</script>`,
+        (outcome ? `window.__HARNESS_EXPORT_OUTCOME__ = ${JSON.stringify(outcome)};` : '') +
+        `</script>`,
       `<script src="${repoRoot}dev/fixtures.js"></script>`,
       `<script src="${repoRoot}dev/mock-browser.js"></script>`
     ].join('\n');
@@ -135,7 +173,7 @@
   // Setting values via .value/.checked bypasses the change-event listeners,
   // so we trigger exactly one reload and return a Promise for completion.
   window.__harness = {
-    async setState(state, theme = 'light', outcome = 'success') {
+    async setState(state, theme = 'light', outcome = '') {
       stateSelect.value = state;
       outcomeSelect.value = outcome;
       const themeInput = document.querySelector(`input[name="theme"][value="${theme}"]`);
