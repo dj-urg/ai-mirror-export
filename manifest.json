@@ -13,7 +13,7 @@
       }
     }
   },
-  "description": "Export conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral and Google Search AI Overview to CSV. All processing happens locally in your browser.",
+  "description": "Export conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, Google Gemini and Google Search AI Overview to CSV. All processing happens locally in your browser.",
   "homepage_url": "https://github.com/dj-urg/ai-mirror-export",
   "permissions": [
     "activeTab",
@@ -31,6 +31,7 @@
     "https://grok.com/*",
     "https://chat.deepseek.com/*",
     "https://chat.mistral.ai/*",
+    "https://gemini.google.com/*",
     "https://m365.cloud.microsoft/*",
     "https://www.google.com/*",
     "https://www.google.be/*",
@@ -192,6 +193,15 @@
       "js": [
         "shared/message-security.js",
         "platforms/mistral/content.js"
+      ],
+      "run_at": "document_start"
+    },
+    {
+      "matches": [
+        "https://gemini.google.com/*"
+      ],
+      "js": [
+        "platforms/gemini/content.js"
       ],
       "run_at": "document_start"
     },

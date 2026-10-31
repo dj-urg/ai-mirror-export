@@ -65,6 +65,9 @@
   --badge-mistral-strong: #e8590c;
   --badge-mistral-bg: #fff0e6;
   --badge-mistral-text: #a63f05;
+  --badge-gemini-strong: #5a67d8;
+  --badge-gemini-bg: #eaecfb;
+  --badge-gemini-text: #3c4a9c;
   --badge-m365_copilot-strong: #5b2dbf;
   --badge-m365_copilot-bg: #efe9fb;
   --badge-m365_copilot-text: #4a1fa0;
@@ -188,6 +191,9 @@
     --badge-mistral-strong: #ffa366;
     --badge-mistral-bg: #3d2010;
     --badge-mistral-text: #ffc69e;
+    --badge-gemini-strong: #a8b3ff;
+    --badge-gemini-bg: #222a52;
+    --badge-gemini-text: #c8d0ff;
     --badge-m365_copilot-strong: #b396ff;
     --badge-m365_copilot-bg: #261a3d;
     --badge-m365_copilot-text: #d0c2ff;
@@ -571,6 +577,13 @@ strong {
 }
 .platform-badge--mistral .platform-badge__icon { color: var(--badge-mistral-strong); }
 .platform-badge--mistral .platform-badge__name { color: var(--badge-mistral-text); }
+
+.platform-badge--gemini {
+  border-color: var(--badge-gemini-strong);
+  background-color: var(--badge-gemini-bg);
+}
+.platform-badge--gemini .platform-badge__icon { color: var(--badge-gemini-strong); }
+.platform-badge--gemini .platform-badge__name { color: var(--badge-gemini-text); }
 
 .platform-badge--m365_copilot {
   border-color: var(--badge-m365_copilot-strong);

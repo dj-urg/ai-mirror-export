@@ -50,6 +50,13 @@ import {
   generateSourcesCSV as generateMistralSourcesCSV,
   generateMessagesCanonicalCSV as generateMistralMessagesCanonicalCSV
 } from './platforms/mistral/extractor.js';
+import {
+  extractGeminiConversation,
+  generateMetadataCSV as generateGeminiMetadataCSV,
+  generateMessagesCSV as generateGeminiMessagesCSV,
+  generateSourcesCSV as generateGeminiSourcesCSV,
+  generateMessagesCanonicalCSV as generateGeminiMessagesCanonicalCSV
+} from './platforms/gemini/extractor.js';
 import { EXTENSION_CONFIG, getPlatformByUrl } from './config/settings.js';
 import { sanitizeErrorMessage } from './shared/errors.js';
 import { escapeCSVField, generateCSV } from './utils/csv.js';
@@ -611,6 +618,14 @@ function validateConversationData(data, platform) {
         return { isValid: false, code: 'EMPTY', error: 'Mistral messages array is empty' };
       }
       break;
+    case 'gemini':
+      if (!Array.isArray(data.messages)) {
+        return { isValid: false, code: 'MISSING_FIELDS', error: 'Gemini data missing required messages array' };
+      }
+      if (data.messages.length === 0) {
+        return { isValid: false, code: 'EMPTY', error: 'Gemini messages array is empty' };
+      }
+      break;
     default:
       _console.warn(`[${platform}] Unknown platform, skipping detailed validation`);
       break;
@@ -1100,6 +1115,31 @@ async function handleConversationData(message) {
 
       perSchemaValidation.mistral_messages = validateRows(scrubMessages.rows, 'mistral_messages');
 
+    } else if (platform === 'gemini') {
+      const result = extractGeminiConversation(conversationData, { donorId, donorIdType, downloadTime });
+
+      const scrubMetadata = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
+      mergeScrubCounts(piiStats, scrubMetadata);
+      const scrubMessages = scrubRowsIfEnabled(result.messages, piiScrubEnabled, piiScrubOptions, platform);
+      mergeScrubCounts(piiStats, scrubMessages);
+      const scrubSources = scrubRowsIfEnabled(result.sources, piiScrubEnabled, piiScrubOptions, platform);
+      mergeScrubCounts(piiStats, scrubSources);
+
+      pushCsv(csvFiles, 'gemini_metadata', 'gemini_metadata',
+        generateGeminiMetadataCSV(scrubMetadata.rows[0] || result.metadata), slug);
+      pushCsv(csvFiles, 'gemini_messages', 'gemini_messages',
+        generateGeminiMessagesCSV(scrubMessages.rows), slug);
+      if (scrubSources.rows.length > 0) {
+        pushCsv(csvFiles, 'gemini_sources', 'gemini_sources',
+          generateGeminiSourcesCSV(scrubSources.rows), slug);
+      }
+      pushCsv(csvFiles, 'gemini_messages_canonical', 'gemini_messages_canonical',
+        cellScrubber
+          ? generateGeminiMessagesCanonicalCSV(conversationData, { donorId, donorIdType, downloadTime, scrubCell: cellScrubber })
+          : result.messagesCanonicalCSV, slug);
+
+      perSchemaValidation.gemini_messages = validateRows(scrubMessages.rows, 'gemini_messages');
+
     } else if (platform === 'copilot' || platform === 'm365_copilot' || platform === 'google_search') {
       const handler =
         platform === 'copilot' ? CopilotHandler :
@@ -1314,6 +1354,7 @@ const MESSAGE_TYPE_TO_PLATFORM = {
   GROK_CONVERSATION_DATA: 'grok',
   DEEPSEEK_CONVERSATION_DATA: 'deepseek',
   MISTRAL_CONVERSATION_DATA: 'mistral',
+  GEMINI_CONVERSATION_DATA: 'gemini',
   GOOGLE_SEARCH_AI_OVERVIEW_DATA: 'google_search'
 };
 

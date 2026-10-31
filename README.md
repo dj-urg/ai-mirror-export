@@ -63,6 +63,7 @@ The temporary install is wiped when you close Firefox — use the Add-ons store 
 | **Grok** | `grok.com` | Metadata, messages, sources, canonical messages |
 | **DeepSeek** | `chat.deepseek.com` | Metadata, messages, sources, canonical messages |
 | **Mistral** | `chat.mistral.ai` | Metadata, messages, sources, canonical messages |
+| **Google Gemini** | `gemini.google.com` | Metadata, messages, cited sources with text spans, canonical messages |
 | **Google AI Overview / AI Mode** | `google.com` and nine country domains (`.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au`) | AI Overview text or AI Mode turns, source URLs, canonical messages |
 
 Full column schemas live in [`METHODS.md`](METHODS.md) and [`STUDENT_GUIDE.md`](STUDENT_GUIDE.md).
@@ -102,7 +103,7 @@ The extension hooks the chat site's own `fetch` calls (a WebSocket on Microsoft 
 | `scripting` | Re-inject the Perplexity scripts at navigation time as a fallback when the manifest entry does not take effect (Perplexity only; every other site uses ordinary manifest content scripts). |
 | `downloads` | Save the ZIP to your Downloads folder. |
 | `storage` | Remember your privacy settings and the local `donor_id` across exports. |
-| `host_permissions` | Limited to the ten supported chat site hosts plus the ten Google search domains listed in `manifest.json`. |
+| `host_permissions` | Limited to the supported chat site hosts plus the ten Google search domains listed in `manifest.json`. |
 
 ## What's inside the ZIP
 

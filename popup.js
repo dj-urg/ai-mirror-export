@@ -99,6 +99,25 @@ const PLATFORMS = {
     }
   },
 
+  gemini: {
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2l2.2 6.3L20.5 10l-6.3 2.2L12 18.5l-2.2-6.3L3.5 10l6.3-1.7L12 2z" fill="currentColor"/><path d="M18.5 14l1.1 3.1 3.1 1.1-3.1 1.1-1.1 3.1-1.1-3.1-3.1-1.1 3.1-1.1 1.1-3.1z" fill="currentColor"/></svg>',
+    requiresConversationId: true,
+    // Gemini conversation pages are `/app/<id>`, optionally behind an
+    // account prefix (`/u/0/app/<id>`). The page uses a bare id while the
+    // history RPC and the content script normalize it to `c_<id>`, so the
+    // popup must return the same normalized form to find captured data.
+    extractConversationId: (url) => {
+      try {
+        const match = new URL(url).pathname.match(/^(?:\/u\/\d+)?\/app\/([^/?]+)/);
+        if (!match) return null;
+        let rawId;
+        try { rawId = decodeURIComponent(match[1]); } catch { rawId = match[1]; }
+        if (!rawId) return null;
+        return rawId.startsWith('c_') ? rawId : `c_${rawId}`;
+      } catch { return null; }
+    }
+  },
+
   google_search: {
     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L13.09 8.26L19 9L13.09 9.74L12 16L10.91 9.74L5 9L10.91 8.26L12 2Z" fill="currentColor"/><circle cx="12" cy="18" r="2" fill="currentColor"/></svg>',
     requiresConversationId: false,
@@ -827,6 +846,14 @@ function zipContentsFor(platformId, { isAIMode = false, includeDonorContext = tr
         sources('mistral', 'Web results cited by Mistral — only if present'),
         canonical('mistral'),
         manifest('mistral')
+      ];
+    case 'gemini':
+      return [
+        metadata('gemini', 'Title, model, account prefix, message counts'),
+        messages('gemini', 'One row per message: prompts, answers, candidates, timestamps'),
+        sources('gemini', 'Sources Gemini cited, with the text spans they support — only if present'),
+        canonical('gemini'),
+        manifest('gemini')
       ];
     case 'google_search':
       return isAIMode

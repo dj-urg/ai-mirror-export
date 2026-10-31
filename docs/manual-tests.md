@@ -160,6 +160,7 @@ Minimum, after any `platforms/**` change:
 | Grok                  | Same (new in 3.0.0)                                                    |
 | DeepSeek              | Start a **brand-new chat**, send one message, wait for the reply, open the popup → Ready; Export → the ZIP contains both messages. Also an agent other than `chat` if available |
 | Mistral               | **Compare the ZIP with what is on screen:** every message present in order; `text` of an assistant turn equals the rendered answer (not a draft with `search-result://` placeholders, not the reasoning); reasoning only in `reasoning_text` |
+| Google Gemini         | Open an existing conversation, regenerate one answer, and ask a question that cites a source → Export. `gemini_messages` has one row per turn in order; the selected answer carries `candidate_id`/`parent_candidate_id`; `gemini_sources` has one row per citation span with `start_index`/`end_index`; the ZIP holds four `gemini_*` files |
 | M365 Copilot          | Same — uses WebSocket interception, not fetch hooks; no synthetic fixture and no raw-capture validation yet (HARs do not include WebSocket frames; use a proxy to capture) |
 | Google Search AI      | Run a query that triggers an AI Overview; open popup; Export. In the Network tab, the search URL is requested **at most once** by the extension, and not again while the popup stays open |
 | Google AI Mode        | `?udm=50` tab; ask a question; wait for the reply; Export. ZIP and file names carry the query, not `unknown`; no re-request of the search URL in the Network tab |

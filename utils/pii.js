@@ -108,7 +108,8 @@ export const STRUCTURAL_COLUMNS = Object.freeze(new Set([
   // identifiers
   'conversation_id', 'message_id', 'node_id', 'parent_id', 'parent_message_id', 'request_id', 'fragment_id',
   'source_id', 'tool_use_id', 'entry_uuid', 'current_leaf_message_uuid', 'file_uuid', 'part_ids', 'image_ids',
-  'xpost_ids', 'agent_id', 'organization_id', 'project_id', 'response_identifier',
+  'xpost_ids', 'agent_id', 'organization_id', 'project_id', 'response_identifier', 'candidate_id',
+  'parent_candidate_id', 'account_prefix', 'source_path',
   // positions and counters
   'turn_index', 'turn_number', 'turn_count', 'block_index', 'message_index', 'source_index', 'cite_index',
   'start_index', 'end_index', 'ref_index', 'ref_turn_index', 'page_count', 'version', 'version_count',
@@ -136,7 +137,7 @@ export const STRUCTURAL_COLUMNS = Object.freeze(new Set([
 const STRUCTURAL_PREFIX_RE = /^(num_|has_|is_)/;
 
 export const URL_COLUMNS = Object.freeze(new Set([
-  'url', 'url_clean', 'source_page_url', 'source_urls', 'image_link'
+  'url', 'url_clean', 'source_page_url', 'source_urls', 'image_link', 'conversation_url'
 ]));
 
 export const TEXT_COLUMNS = Object.freeze(new Set([

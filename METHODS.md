@@ -4,7 +4,7 @@ This document records the capture, extraction and normalisation choices made by 
 
 ## Overview
 
-The exporter captures conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral and Google Search (classic AI Overview and AI Mode) and writes them to CSV files on the donor's machine. All processing runs locally in the browser; no data is transmitted to any third party. Every export is a ZIP containing a platform-specific messages CSV, a cross-platform canonical messages CSV and a manifest; most platforms add a metadata CSV and, when present, a sources CSV (ChatGPT also emits message URLs and donor context; Claude emits attachments). The grain of analysis is one row per message or turn in the messages files (one row per content block in Claude's platform-specific file), one row per source, URL or attachment in the auxiliary files, and one row per conversation in the metadata files.
+The exporter captures conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, Google Gemini and Google Search (classic AI Overview and AI Mode) and writes them to CSV files on the donor's machine. All processing runs locally in the browser; no data is transmitted to any third party. Every export is a ZIP containing a platform-specific messages CSV, a cross-platform canonical messages CSV and a manifest; most platforms add a metadata CSV and, when present, a sources CSV (ChatGPT also emits message URLs and donor context; Claude emits attachments). The grain of analysis is one row per message or turn in the messages files (one row per content block in Claude's platform-specific file), one row per source, URL or attachment in the auxiliary files, and one row per conversation in the metadata files.
 
 ## How the data gets in
 
@@ -14,6 +14,7 @@ Each platform's content script runs only on that platform's own origin (see `man
 |---|---|---|
 | ChatGPT, Copilot | A `window.fetch` hook in the page context observes the site's own conversation API response. | none |
 | Claude, Grok, Mistral | `window.fetch` and `XMLHttpRequest` hooks, plus a same-origin re-fetch of the open conversation through the site's own API when the hook has not seen it (page load, in-app navigation, popup open, export). | the site's own conversation endpoint |
+| Google Gemini | A same-origin re-fetch of the open conversation through the site's private `hNvQHb` history RPC, page by page, using the site's own cookies. | `/u/<n>/_/BardChatUi/data/batchexecute` |
 | DeepSeek | As above. DeepSeek's history endpoint rejects cookie-only requests, so the content script reads the site's own bearer token from the page's `localStorage` (`userToken`) and attaches it to that same-origin request. The token is never stored, logged or exported. Because DeepSeek streams new replies without re-requesting its history, the conversation is refreshed when the popup opens (at most once every 30 seconds while the popup stays open and polls) and always once more at export. | `/api/v0/chat/history_messages` |
 | Perplexity | `window.fetch` and `XMLHttpRequest` hooks on `/rest/thread/<uuid>`; paginated thread pages are merged by thread id. Read/write tokens are stripped from the payload in the page context before it is forwarded. | none |
 | Microsoft 365 Copilot | A `WebSocket` proxy observes the Chathub frames; messages are assembled per conversation and exported once the reply is complete. | none |
@@ -57,6 +58,10 @@ Each message carries a `fragments[]` list. User text is the `REQUEST` fragment; 
 
 The API returns messages newest-first; they are reversed to conversation order. Display text prefers the message's top-level `content` (the rendered answer) and otherwise joins the text chunks that are not reasoning chunks; chunks whose `_context.type` is `reasoning` are joined into `reasoning_text`. Tool calls, files and the full chunk list are kept in `tool_names`, `files_json`, `content_chunks_json` and `raw_message_json`. Sources come from `citedSources[]` and from search-tool results inside `tool_call` chunks (`source_list` says which). `version` / `version_count` record message revisions.
 
+### Google Gemini
+
+Gemini's web app loads conversation history through a private `batchexecute` RPC (`hNvQHb`) rather than a plain JSON endpoint. The content script reads the page's `SNlM0e` request token, `cfb2h` build label and `FdrFJe` session id, then re-fetches the open conversation page by page with the donor's cookies until the cursor stops (capped at 200 pages). Each turn yields a user row (`turn[2]`) and an assistant row from the first candidate with text (`turn[3][0]`); response ids, parent ids and candidate ids are exported as `message_id`, `parent_message_id`, `candidate_id` and `parent_candidate_id`. Citation references (`candidate[2]`) become one sources row per text span: `start_index` / `end_index` locate the supported text, `snippet` holds the quoted passage, `source_id` the Gemini citation id, and `raw_json` the original reference. The message `text` stays the raw answer; citation markers are never inlined. Turns arrive newest-first and are reversed to conversation order.
+
 ### Google Search extraction
 
 Classic AI Overview is read from the live DOM first; only when the overview is not in the DOM does the content script request the current search URL once (with the donor's cookies) and parse the server HTML, anchoring on Google's own semantic markers rather than CSS classes. AI Mode is parsed from the live DOM only because its content is injected client-side and is not present in the server HTML response. The overview container selector fallback chain, tried in order, is:
@@ -79,6 +84,7 @@ Several platforms keep every branch of a conversation (edited prompts, regenerat
 | ChatGPT | yes (mapping tree; `parent_id` per node) | `on_visible_path` in `chatgpt_messages` and in the canonical `platform_specific_json`: the chain from `current_node` to the root. Always true in the flat messages-array format. |
 | Claude | yes (`parent_message_uuid` per message) | `on_visible_path` in `claude_messages` and in the canonical `platform_specific_json`: the chain from `current_leaf_message_uuid` to the root. True for every message when no leaf is present. |
 | Mistral | yes (`version` / `version_count`; previous and next version pointers are in `raw_message_json`) | none derived; filter on `version_count`/`version` or the raw pointers. |
+| Google Gemini | regenerated answers are returned as multiple candidates; only the selected candidate is exported | none derived; the selected and parent candidate ids are in `candidate_id` / `parent_candidate_id` and in the canonical `platform_specific_json`. |
 | Grok, DeepSeek | parent ids are exported; whether hidden branches appear in the payload is not verified on real data | none |
 | Copilot, Microsoft 365 Copilot, Perplexity, Google | no branch structure observed | not applicable |
 
@@ -95,7 +101,7 @@ The exporter exports whatever reasoning text the platform's web interface sends 
 | DeepSeek | `THINK` fragments, exported as received. Whether they are the complete reasoning is not verified on real data yet. | `thinking_text` / `thinking_text_cleaned`; `thinking_text` in the canonical `platform_specific_json`. |
 | Perplexity | reasoning / plan blocks, exported as received; not verified on real data yet. | `reasoning_text`; also in the canonical `platform_specific_json`. |
 | Mistral | chunks with `_context.type = reasoning`, exported as received; not verified on real data yet. | `reasoning_text` / `reasoning_text_cleaned`; `has_reasoning`. |
-| Grok, Copilot, Microsoft 365 Copilot, Google | no reasoning field observed in the captured payloads. | none |
+| Gemini, Grok, Copilot, Microsoft 365 Copilot, Google | no reasoning field observed in the captured payloads. | none |
 
 ## Fields deliberately not exported as named columns
 

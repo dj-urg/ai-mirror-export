@@ -62,6 +62,10 @@
       tab: FIXTURES.tabs.mistral,
       conversationsResponse: FIXTURES.conversations.mistral
     },
+    supported_ready_gemini: {
+      tab: FIXTURES.tabs.gemini,
+      conversationsResponse: FIXTURES.conversations.gemini
+    },
     supported_ready_m365_copilot: {
       tab: FIXTURES.tabs.m365_copilot,
       conversationsResponse: FIXTURES.conversations.m365_copilot_ready
@@ -89,6 +93,10 @@
     },
     supported_idle_mistral: {
       tab: FIXTURES.tabs.mistral,
+      conversationsResponse: FIXTURES.conversations.empty
+    },
+    supported_idle_gemini: {
+      tab: FIXTURES.tabs.gemini,
       conversationsResponse: FIXTURES.conversations.empty
     },
     supported_idle_m365_copilot: {

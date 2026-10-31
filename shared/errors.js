@@ -14,7 +14,7 @@ export const ERROR_TYPES = {
   UNSUPPORTED_PLATFORM: {
     message: "The extension doesn't support this page.",
     detail: 'Open one of the supported sites below and come back.',
-    troubleshooting: 'Supported sites: ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, and Google AI Overview.'
+    troubleshooting: 'Supported sites: ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, Google Gemini, and Google AI Overview.'
   },
   NO_CONVERSATION_ID: {
     message: "This page doesn't look like a conversation yet.",
@@ -114,6 +114,12 @@ export const PLATFORM_TROUBLESHOOTING = {
     noConversationId: 'Make sure you are on a conversation page (URL should contain /chat/ or /work/).',
     noData: 'Reload the page so Mistral re-fetches the conversation, then try exporting again.',
     exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.'
+  },
+  gemini: {
+    noConversationId: 'Open an existing conversation (the address should contain /app/) or send a first message in a new one.',
+    noData: 'Reload the page so Gemini re-fetches the conversation, then try exporting again.',
+    exportFailed: 'Reload the page and wait for the conversation to fully render before exporting.',
+    authFailed: 'Sign in on your gemini.google.com tab, then reopen this popup.'
   },
   perplexity: {
     noConversationId: 'Open a thread (the address should contain /search/), or ask a question to start one.',

@@ -4,7 +4,8 @@ title: "AI Chat Exporter"
 abstract: >-
   A Firefox extension that exports conversations from ChatGPT, Claude,
   Copilot, Perplexity, Grok, DeepSeek, Mistral, Microsoft 365 Copilot,
-  and Google Search's AI Overview / AI Mode as CSV files. All processing
+  Google Gemini, and Google Search's AI Overview / AI Mode as CSV files.
+  All processing
   happens locally in the donor's browser; nothing is sent to a remote
   server. Designed for data-donation studies in digital methods and
   computational social science.

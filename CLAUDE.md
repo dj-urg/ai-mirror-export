@@ -6,8 +6,8 @@ it short; details that change often belong in `docs/` or the code itself.
 ## What this is
 
 Firefox extension that exports conversations from ChatGPT, Claude, Copilot,
-Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, and Google Search
-AI Overview to CSV, entirely locally. Published on AMO as a Development
+Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, Google Gemini, and
+Google Search AI Overview to CSV, entirely locally. Published on AMO as a Development
 Preview under `local-ai-chat-exporter`. Users include non-technical research
 participants, so trust messaging and plain language matter.
 
@@ -96,7 +96,7 @@ python3 -m http.server 8766       # from repo root
 # open http://localhost:8766/dev/harness.html
 ```
 
-Dropdown picks one of 36 harness states (ready and idle per platform,
+Dropdown picks one of 38 harness states (ready and idle per platform,
 loading, errors, sign-out, consent gate, and the export outcomes, which
 click Export for you); theme radio flips the palette; viewport radio
 shows 320/380/600 widths. Behind the scenes, a mock `browser.*` sits in

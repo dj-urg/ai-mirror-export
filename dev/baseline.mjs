@@ -39,6 +39,8 @@ const STATES = [
   'supported_ready_grok',
   'supported_ready_deepseek',
   'supported_ready_mistral',
+  'supported_ready_gemini',
+  'supported_idle_gemini',
   'supported_ready_google_overview',
   'supported_ready_google_ai_mode',
   'supported_idle_chatgpt',

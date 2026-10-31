@@ -1,0 +1,67 @@
+{
+  "manifest_schema_version": "1.2.0",
+  "extractor_version": "3.0.0",
+  "platform": "gemini",
+  "conversation_id": "c_gemini-golden-0001",
+  "api_format": null,
+  "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
+  "donor_id_type": "persistent",
+  "download_time": "2026-04-13T12:00:00.000Z",
+  "files": [
+    {
+      "filename": "gemini_metadata_c_gemini-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "gemini_metadata",
+      "schema_version": "1.0.0",
+      "rows": 1,
+      "bytes": 553,
+      "sha256": "c23088a6a1daa7a7efe02fd52282872ae018e0d657dd1c3dfeb92094be8fc559"
+    },
+    {
+      "filename": "gemini_messages_c_gemini-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "gemini_messages",
+      "schema_version": "1.0.0",
+      "rows": 4,
+      "bytes": 4385,
+      "sha256": "b3be8898a6348a3b73860eb414790fef2701094a2f7064a014e519d4dee49dc4"
+    },
+    {
+      "filename": "gemini_sources_c_gemini-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "gemini_sources",
+      "schema_version": "1.0.0",
+      "rows": 4,
+      "bytes": 2803,
+      "sha256": "2fc5396b60c8f416aa5cd3fbb1b424d4335957b6afcb9117291b653c8150a55e"
+    },
+    {
+      "filename": "gemini_messages_canonical_c_gemini-golden-0001_2026-04-13T12-00-00Z.csv",
+      "schema": "gemini_messages_canonical",
+      "schema_version": "1.0.0",
+      "rows": 4,
+      "bytes": 2500,
+      "sha256": "e3873f5d0440dde1b298cc9542140a86ecd15d67fb86f3904c390d2969f83140"
+    }
+  ],
+  "telemetry": {
+    "pii_scrub_enabled": true,
+    "pii_scrub_options": {
+      "URL": false
+    },
+    "pii_ruleset_version": "1.0.0",
+    "pii_redactions_total": 0,
+    "pii_redactions_by_type": {},
+    "include_donor_context": true,
+    "consent_version": "1",
+    "consent_given_at": "2026-01-01T00:00:00.000Z",
+    "orphaned_nodes": 0,
+    "validation": {
+      "gemini_messages": {
+        "valid": true,
+        "total_rows": 4,
+        "error_rows": 0,
+        "warning_rows": 0,
+        "errors_sample": [],
+        "warnings_sample": []
+      }
+    }
+  }
+}

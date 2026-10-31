@@ -61,6 +61,12 @@ const FIXTURES = {
       status: 'complete',
       title: 'Synthetic Mistral conversation'
     },
+    gemini: {
+      id: 110,
+      url: 'https://gemini.google.com/app/0000000000e5',
+      status: 'complete',
+      title: 'Synthetic Gemini conversation'
+    },
     m365_copilot: {
       id: 111,
       url: 'https://m365.cloud.microsoft/chat/',
@@ -164,6 +170,12 @@ const FIXTURES = {
       success: true,
       conversations: [
         { id: '00000000-0000-4000-8000-0000000000e4', title: 'Which RFC defines CSV?' }
+      ]
+    },
+    gemini: {
+      success: true,
+      conversations: [
+        { id: 'c_0000000000e5', title: 'Which RFC defines CSV?' }
       ]
     },
     m365_copilot_ready: {

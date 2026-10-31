@@ -53,8 +53,8 @@ permissions are needed.
 
 ## What this release adds
 
-- **Six new supported platforms:** Perplexity, Grok, Microsoft 365 Copilot,
-  DeepSeek, Mistral, and **Google Search AI Overview / AI Mode**.
+- **Seven new supported platforms:** Perplexity, Grok, Microsoft 365 Copilot,
+  DeepSeek, Mistral, **Google Gemini**, and **Google Search AI Overview / AI Mode**.
 - **New permissions** (`tabs` is *not* requested: the popup uses
   `activeTab`, and the toolbar icon state relies on the host permissions,
   since Firefox only exposes a tab's URL for permitted hosts):
@@ -63,9 +63,9 @@ permissions are needed.
     at `tabs.onUpdated(loading)` is the belt-and-suspenders fallback. It
     only ever injects the same shipped files already declared in the
     manifest; it doesn't fetch anything from the network.
-  - **Host permissions for the five new chat sites** (`www.perplexity.ai`,
+  - **Host permissions for the six new chat sites** (`www.perplexity.ai`,
     `grok.com`, `chat.deepseek.com`, `chat.mistral.ai`,
-    `m365.cloud.microsoft`) and **10 Google locale hosts** (`.com, .be, .nl,
+    `gemini.google.com`, `m365.cloud.microsoft`) and **10 Google locale hosts** (`.com, .be, .nl,
     .fr, .de, .co.uk, .es, .it, .ca, .com.au`). See §Google below for the
     Google justification.
 - **ZIP export format:** every export is now a ZIP of CSVs plus a
@@ -109,11 +109,12 @@ The popup and background make **no network calls at all**: the Content
 Security Policy for extension pages is `connect-src 'none'`, which blocks
 `fetch` and `XMLHttpRequest` there. Content scripts talk only to the
 site they run on, over the user's existing session: on claude.ai,
-chat.deepseek.com, grok.com and chat.mistral.ai the content script
-re-fetches the conversation the user has open from the site's own
-conversation API when the passive hook has not seen it yet (page load,
-in-app navigation, popup open, export); on Google it re-requests the
-current search page as described above. Nothing is ever sent to any
+chat.deepseek.com, grok.com, chat.mistral.ai and gemini.google.com the
+content script re-fetches the conversation the user has open from the
+site's own conversation API when the passive hook has not seen it yet
+(page load, in-app navigation, popup open, export; Gemini has no passive
+hook and always uses its own `hNvQHb` history RPC); on Google it
+re-requests the current search page as described above. Nothing is ever sent to any
 third party. Processing is entirely local, and the ZIP is written to
 the user's own Downloads folder via `browser.downloads.download` with a
 local blob URL.
@@ -133,12 +134,13 @@ DeepSeek streams new replies without re-requesting its history.
 
 ## `window.fetch` and WebSocket hooks — what they do
 
-Every supported platform hooks the host site's own transport so the
+Most supported platforms hook the host site's own transport so the
 extension sees the conversation data the user is already loading. The
 hooks themselves are read-only observers; they do not modify requests,
 do not retry, do not fetch anything new. (The same-origin re-fetches
 listed under "Network behaviour" are made by the content scripts, not
-by the hooks.)
+by the hooks. Gemini and Google Search have no hook: Gemini re-fetches
+through the site's own RPC, and Google Search reads the rendered page.)
 
 - `platforms/{chatgpt, claude, copilot, perplexity, grok, deepseek,
   mistral}/inject.js` — hook `window.fetch` (and, for claude, perplexity,
@@ -164,6 +166,11 @@ by the hooks.)
   the DOM via a chain of CSS selectors + ARIA labels (fallbacks for
   layout drift). Opportunistically re-fetches the user's own
   `/search?q=…&…` URL when the overview renders late (same-origin).
+- `platforms/gemini/content.js` — no inject hook; Gemini's history is
+  behind a private `batchexecute` RPC. The content script reads the
+  page's own request token and re-fetches the open conversation page by
+  page through that RPC, same-origin and with the user's existing
+  cookies. Nothing is stored beyond the open tab's in-memory copy.
 
 ## Where the source lives
 

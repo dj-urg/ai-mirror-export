@@ -28,6 +28,7 @@ The **AI Chat Exporter** is a browser extension (Firefox) that lets a user expor
 - **Grok** — `grok.com`
 - **DeepSeek** — `chat.deepseek.com`
 - **Mistral** — `chat.mistral.ai`
+- **Google Gemini** — `gemini.google.com/app/*`
 - **Google Search AI** — the AI Overview box and AI Mode conversations on `google.com` and nine other Google locales
 
 Everything runs **locally in the browser**. No data leaves the user's machine during extraction. The extension reads what the chat platform already sent to the user's browser, formats it as CSV, and triggers a download.
@@ -87,7 +88,7 @@ The other platforms follow the same `{stem}_{conversation_id_short}_{timestamp}`
 - **ChatGPT:** `chatgpt_metadata`, `chatgpt_messages`, `chatgpt_sources`, `chatgpt_message_urls`, `chatgpt_donor_context`, `chatgpt_messages_canonical`, `chatgpt_manifest`
 - **Copilot:** `copilot_conversation`, `copilot_messages_canonical`, `copilot_manifest`
 - **Microsoft 365 Copilot:** `m365_copilot_conversation`, `m365_copilot_sources`, `m365_copilot_messages_canonical`, `m365_copilot_manifest`
-- **Perplexity, Grok, DeepSeek, Mistral:** `<platform>_metadata`, `<platform>_messages`, `<platform>_sources`, `<platform>_messages_canonical`, `<platform>_manifest`
+- **Perplexity, Grok, DeepSeek, Mistral, Google Gemini:** `<platform>_metadata`, `<platform>_messages`, `<platform>_sources`, `<platform>_messages_canonical`, `<platform>_manifest`
 - **Google Search:** `google_ai_overview` or `google_ai_mode`, plus `google_sources`, the matching `_canonical`, and `google_search_manifest`
 
 **File characteristics worth knowing:**
@@ -274,7 +275,7 @@ Generated only when at least one content block has a non-empty `citations[]` arr
 
 #### 5.3.5 `claude_messages_canonical.csv` — one row per message
 
-See §5.11 for the shared canonical schema. Claude-specific fields in `platform_specific_json` include:
+See §5.12 for the shared canonical schema. Claude-specific fields in `platform_specific_json` include:
 
 - `sender` — the raw `human`/`assistant` value before role normalization.
 - `content_types` — array of block types in document order (e.g. `["thinking", "tool_use", "text"]`).
@@ -459,14 +460,39 @@ Mirrors the other sources files (`url`, `url_clean`, `title`, `snippet`, …). (
 
 `platform`, `conversation_id`, `message_id`, `source_list` (`cited` or `tool_call`), `source_index`, `source_id`, `type`, `url`, `url_clean`, `title`, `snippet`, `site_name`, `published_at`, `tool_name`, `raw_json`. (Medium.)
 
-### 5.11 Canonical schema (all platforms)
+### 5.11 Google Gemini CSVs
+
+Gemini's history endpoint returns turns newest-first; the content script reverses them so the export reads oldest-first. Each turn normally produces a user row and an assistant row.
+
+#### 5.11.1 `gemini_metadata.csv` — one row per conversation
+
+`conversation_id` (normalized to `c_<id>`), `title`, `model`, `conversation_url`, `account_prefix` (the `/u/<n>` multi-account prefix, empty for the default account), `source_path`, `created_at`, `updated_at`, `num_messages`, `num_user_messages`, `num_assistant_messages`, `num_messages_with_citations`, `num_cited_sources` (counting every citation span). (High.)
+
+#### 5.11.2 `gemini_messages.csv` — one row per message
+
+| Column | Type | Meaning | Confidence |
+|---|---|---|---|
+| `conversation_id`, `message_id`, `parent_message_id` | string | Identifiers. The assistant `message_id` is Gemini's response id; the user id is `user-<response id>`. | High |
+| `candidate_id`, `parent_candidate_id` | string | The selected assistant candidate and its parent candidate (regenerated answers produce several candidates; only the selected one is exported). | Medium |
+| `turn_index` | int | Turn position, oldest first. Both rows of a turn share the index. | High |
+| `role` | string | `user` or `assistant`. | High |
+| `text`, `text_cleaned` | string | The prompt or the raw answer text. Citation markers are **not** inlined; they are in `gemini_sources`. | High |
+| `model_identifier`, `created_at` | string | Model reported for the answer and the turn timestamp. | Medium |
+| `cited_source_count`, `has_citations` | int / boolean | Number of citation spans on the answer. | High |
+| `raw_message_json` | JSON string | The full message object, including its citation list. | High |
+
+#### 5.11.3 `gemini_sources.csv` — one row per cited source and text span
+
+`platform`, `conversation_id`, `message_id`, `source_list` (always `citation`), `source_index` (row order), `ref_index` (which citation reference this span belongs to), `source_id` (Gemini's citation id), `type`, `url`, `url_clean`, `title`, `snippet` (the quoted passage), `start_index`, `end_index` (offsets of the supported text in the answer; empty when the reference carries no span), `raw_json`. (Medium.)
+
+### 5.12 Canonical schema (all platforms)
 
 Every `*_messages_canonical.csv` has these 14 columns, in this order:
 
 | Column | Meaning |
 |---|---|
 | `donor_id` | HMAC(donor UUID, study salt) if a salt is configured; raw UUID otherwise. |
-| `platform` | `chatgpt`, `claude`, `copilot`, `m365_copilot`, `perplexity`, `grok`, `deepseek`, `mistral`, `google_ai_overview`, or `google_ai_mode`. |
+| `platform` | `chatgpt`, `claude`, `copilot`, `m365_copilot`, `perplexity`, `grok`, `deepseek`, `mistral`, `gemini`, `google_ai_overview`, or `google_ai_mode`. |
 | `conversation_id` | Platform's native conversation ID. |
 | `message_id` | Platform's native message ID. |
 | `parent_message_id` | Parent in the conversation tree, if applicable. |
@@ -479,7 +505,7 @@ Every `*_messages_canonical.csv` has these 14 columns, in this order:
 | `schema_version`, `extractor_version` | Provenance. |
 | `platform_specific_json` | JSON with everything that doesn't fit the canonical columns — content types, tool-use flags, has_attachments, status fields, etc. |
 
-### 5.12 `{platform}_manifest_{slug}.json`
+### 5.13 `{platform}_manifest_{slug}.json`
 
 Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_2026-10-13T11-58-12Z.json`). Open it in any text editor — it is the first thing to read when you receive a new export, because it tells you what settings produced the file and which CSVs are supposed to be in the archive.
 

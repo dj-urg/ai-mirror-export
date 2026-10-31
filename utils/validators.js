@@ -127,7 +127,8 @@ const VERSION_COLUMNS = {
  * Keys match the filename prefixes used in background.js (chatgpt_metadata,
  * chatgpt_messages, chatgpt_sources, chatgpt_message_urls,
  * chatgpt_donor_context, claude_conversation, copilot_conversation,
- * google_ai_mode, google_ai_overview).
+ * gemini_metadata, gemini_messages, gemini_sources, google_ai_mode,
+ * google_ai_overview).
  */
 export const SCHEMAS = {
     // --- ChatGPT ---------------------------------------------------------
@@ -670,6 +671,74 @@ export const SCHEMAS = {
             site_name: { type: 'string', optional: true },
             published_at: { type: 'iso_timestamp', optional: true },
             tool_name: { type: 'string', optional: true },
+            raw_json: { type: 'string', optional: true },
+            ...VERSION_COLUMNS,
+        },
+    },
+
+    // --- Google Gemini ---------------------------------------------------
+
+    gemini_metadata: {
+        required: ['donor_id', 'conversation_id'],
+        columns: {
+            ...DONOR_COLUMNS,
+            conversation_id: { type: 'string' },
+            title: { type: 'string', optional: true },
+            model: { type: 'string', optional: true },
+            conversation_url: { type: 'string', optional: true },
+            account_prefix: { type: 'string', optional: true },
+            source_path: { type: 'string', optional: true },
+            created_at: { type: 'iso_timestamp', optional: true },
+            updated_at: { type: 'iso_timestamp', optional: true },
+            num_messages: { type: 'number', optional: true },
+            num_user_messages: { type: 'number', optional: true },
+            num_assistant_messages: { type: 'number', optional: true },
+            num_messages_with_citations: { type: 'number', optional: true },
+            num_cited_sources: { type: 'number', optional: true },
+            ...VERSION_COLUMNS,
+        },
+    },
+
+    gemini_messages: {
+        required: ['donor_id', 'conversation_id', 'message_id'],
+        columns: {
+            ...DONOR_COLUMNS,
+            conversation_id: { type: 'string' },
+            message_id: { type: 'string' },
+            parent_message_id: { type: 'string', optional: true },
+            candidate_id: { type: 'string', optional: true },
+            parent_candidate_id: { type: 'string', optional: true },
+            turn_index: { type: 'any', optional: true },
+            role: { type: 'string', optional: true },
+            text: { type: 'string', optional: true },
+            text_cleaned: { type: 'string', optional: true },
+            model_identifier: { type: 'string', optional: true },
+            created_at: { type: 'iso_timestamp', optional: true },
+            cited_source_count: { type: 'number', optional: true },
+            has_citations: { type: 'boolean', optional: true },
+            raw_message_json: { type: 'string', optional: true },
+            ...VERSION_COLUMNS,
+        },
+    },
+
+    gemini_sources: {
+        required: ['donor_id', 'conversation_id'],
+        columns: {
+            ...DONOR_COLUMNS,
+            platform: { type: 'string', optional: true },
+            conversation_id: { type: 'string' },
+            message_id: { type: 'string', optional: true },
+            source_list: { type: 'string', optional: true },
+            source_index: { type: 'any', optional: true },
+            ref_index: { type: 'any', optional: true },
+            source_id: { type: 'string', optional: true },
+            type: { type: 'string', optional: true },
+            url: { type: 'string', optional: true },
+            url_clean: { type: 'string', optional: true },
+            title: { type: 'string', optional: true },
+            snippet: { type: 'string', optional: true },
+            start_index: { type: 'any', optional: true },
+            end_index: { type: 'any', optional: true },
             raw_json: { type: 'string', optional: true },
             ...VERSION_COLUMNS,
         },
