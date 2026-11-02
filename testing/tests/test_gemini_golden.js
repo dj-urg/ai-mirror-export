@@ -3,9 +3,9 @@
  *
  * The fixture mirrors what content.js assembles from the `hNvQHb` history
  * RPC: messages oldest-first, one row per turn part, with the assistant's
- * selected candidate and its citation spans. The extractor must keep that
- * order, carry the candidate ids through, and flatten each citation span into
- * its own sources row.
+ * selected candidate and its citations (one per reference, located in the
+ * answer by content.js). The extractor must keep that order, carry the
+ * candidate ids through, and write one sources row per citation.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -36,7 +36,7 @@ assert('metadata.num_messages = 4', result.metadata.num_messages === 4);
 assert('metadata.num_user_messages = 2', result.metadata.num_user_messages === 2);
 assert('metadata.num_assistant_messages = 2', result.metadata.num_assistant_messages === 2);
 assert('metadata.num_messages_with_citations = 2', result.metadata.num_messages_with_citations === 2);
-assert('metadata.num_cited_sources counts every span', result.metadata.num_cited_sources === 4,
+assert('metadata.num_cited_sources counts every citation', result.metadata.num_cited_sources === 3,
   String(result.metadata.num_cited_sources));
 assert('metadata.model comes from the conversation', result.metadata.model === 'gemini-2.5-pro');
 assert('metadata.source_path is preserved', result.metadata.source_path === '/app/gemini-golden-0001');
@@ -57,17 +57,20 @@ assert('assistant parent_candidate_id is preserved',
 assert('second user message points at the first answer',
   result.messages[2].parent_message_id === 'r_synthetic0001');
 
-// Sources — one row per citation span; the no-span ref gets empty offsets.
-assert('sources length = 4 (spans flattened)', result.sources.length === 4,
+// Sources — one row per citation; an unlocated passage gets empty offsets.
+assert('sources length = 3 (one per citation)', result.sources.length === 3,
   String(result.sources.length));
 assert('all sources are citation rows', result.sources.every(s => s.source_list === 'citation'));
-assert('span offsets preserved',
-  `${result.sources[1].start_index}-${result.sources[1].end_index}` === '0-20'
-  && `${result.sources[2].start_index}-${result.sources[2].end_index}` === '21-52');
-assert('ref without spans keeps empty offsets',
-  result.sources[3].start_index === '' && result.sources[3].end_index === '');
+const answer2 = result.messages[3].text;
+assert('offsets locate the cited passage in the answer',
+  answer2.slice(result.sources[1].start_index, result.sources[1].end_index) === result.sources[1].snippet,
+  `${result.sources[1].start_index}-${result.sources[1].end_index}`);
+assert("Gemini's raw span pairs kept in raw_json",
+  JSON.parse(result.sources[1].raw_json).raw_spans.length === 2);
+assert('unlocated passage keeps empty offsets',
+  result.sources[2].start_index === '' && result.sources[2].end_index === '');
 assert('url_clean strips utm parameters',
-  result.sources[3].url_clean === 'https://example.org/csv-guide', result.sources[3].url_clean);
+  result.sources[2].url_clean === 'https://example.org/csv-guide', result.sources[2].url_clean);
 assert('snippet is carried', result.sources[0].snippet.length > 0);
 
 // Canonical CSV

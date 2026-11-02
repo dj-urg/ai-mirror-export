@@ -96,12 +96,17 @@ const roles = (p) => p.messages.map((m) => `${m.role}:${m.text}`).join('|');
 
 // --- 1. Decoding, pagination, ordering --------------------------------------
 {
+  // Raw answer has leading whitespace and an en dash before the cited
+  // passage. Gemini lists the passage's position twice, as observed on real
+  // data: UTF-8 byte offsets [12, 33] first, then character offsets [10, 31],
+  // both relative to the untrimmed text.
+  const answer = '\n Intro \u2013 RFC 4180 defines CSV. More text.';
   const refs = [
-    [['RFC 4180 defines CSV.', null, null, [[0, 8], [9, 20]]], [1], [['https://www.rfc-editor.org/rfc/rfc4180#:~:text=CSV', 'RFC 4180']], 'spp_1'],
-    [['No span here.', null, null, []], [1], [['https://example.org/guide', 'Guide']], 'spp_2'],
+    [['RFC 4180 defines CSV.', null, null, [[12, 33], [10, 31]]], [1], [['https://www.rfc-editor.org/rfc/rfc4180#:~:text=CSV', 'RFC 4180']], 'spp_1'],
+    [['Not in the answer.', null, null, []], [1], [['https://example.org/guide', 'Guide']], 'spp_2'],
     [['No URL.', null, null, [[0, 3]]], [1], [], 'spp_3']
   ];
-  const t1 = turn(1, { user: 'Q1', answer: 'A1', refs });
+  const t1 = turn(1, { user: 'Q1', answer, refs });
   const t2 = turn(2, { user: 'Q2', answer: 'A2', parentId: 'r_1' });
   const t3 = turn(3, { user: 'Q3', answer: 'A3', parentId: 'r_2' });
   // Newest-first, two pages that overlap on t2.
@@ -110,7 +115,7 @@ const roles = (p) => p.messages.map((m) => `${m.role}:${m.text}`).join('|');
   const { payload } = await sim.exportPayload();
 
   assert('payload exported', !!payload);
-  assert('turns oldest-first, overlap deduped', roles(payload) === 'user:Q1|assistant:A1|user:Q2|assistant:A2|user:Q3|assistant:A3', roles(payload));
+  assert('turns oldest-first, overlap deduped', roles(payload) === 'user:Q1|assistant:Intro \u2013 RFC 4180 defines CSV. More text.|user:Q2|assistant:A2|user:Q3|assistant:A3', roles(payload));
   assert('conversation id normalized to c_<id>', payload._captured_conversation_id === 'c_abc');
   assert('title strips the "- Gemini" suffix', payload.conversation.title === 'CSV questions', payload.conversation.title);
   assert('model taken from the answer', payload.conversation.model === 'gemini-2.5-pro');
@@ -119,10 +124,14 @@ const roles = (p) => p.messages.map((m) => `${m.role}:${m.text}`).join('|');
   assert('assistant parent is its user prompt', a1.parent_message_id === 'user-r_1');
   assert('candidate id carried', a1.candidate_id === 'rc_1');
   assert('second prompt points at the first answer', payload.messages[2].parent_message_id === 'r_1');
-  assert('one citation row per span, url-less ref skipped', a1.citations.length === 3, String(a1.citations.length));
+  assert('one row per reference, url-less ref skipped', a1.citations.length === 2, String(a1.citations.length));
   assert('text-fragment suffix stripped from url', a1.citations[0].url === 'https://www.rfc-editor.org/rfc/rfc4180');
-  assert('span offsets kept', a1.citations[1].start_index === 9 && a1.citations[1].end_index === 20);
-  assert('ref without spans has empty offsets', a1.citations[2].start_index === '' && a1.citations[2].ref_index === 1);
+  const c0 = a1.citations[0];
+  assert('byte and character pairs collapse to one character span',
+    c0.start_index === 8 && c0.end_index === 29 && a1.text.slice(c0.start_index, c0.end_index) === 'RFC 4180 defines CSV.',
+    `${c0.start_index}-${c0.end_index}`);
+  assert("Gemini's own pairs kept in raw_spans", JSON.stringify(c0.raw_spans) === '[[12,33],[10,31]]', JSON.stringify(c0.raw_spans));
+  assert('passage not in the answer has empty offsets', a1.citations[1].start_index === '' && a1.citations[1].ref_index === 1);
 }
 
 // --- 2. Regenerated answers: first candidate with text ----------------------

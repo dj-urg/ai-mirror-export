@@ -466,7 +466,7 @@ Gemini's history endpoint returns turns newest-first; the content script reverse
 
 #### 5.11.1 `gemini_metadata.csv` — one row per conversation
 
-`conversation_id` (normalized to `c_<id>`), `title`, `model`, `conversation_url`, `account_prefix` (the `/u/<n>` multi-account prefix, empty for the default account), `source_path`, `created_at`, `updated_at`, `num_messages`, `num_user_messages`, `num_assistant_messages`, `num_messages_with_citations`, `num_cited_sources` (counting every citation span). (High.)
+`conversation_id` (normalized to `c_<id>`), `title`, `model`, `conversation_url`, `account_prefix` (the `/u/<n>` multi-account prefix, empty for the default account), `source_path`, `created_at`, `updated_at`, `num_messages`, `num_user_messages`, `num_assistant_messages`, `num_messages_with_citations`, `num_cited_sources` (counting every citation). (High.)
 
 #### 5.11.2 `gemini_messages.csv` — one row per message
 
@@ -478,12 +478,12 @@ Gemini's history endpoint returns turns newest-first; the content script reverse
 | `role` | string | `user` or `assistant`. | High |
 | `text`, `text_cleaned` | string | The prompt or the raw answer text. Citation markers are **not** inlined; they are in `gemini_sources`. | High |
 | `model_identifier`, `created_at` | string | Model reported for the answer and the turn timestamp. | Medium |
-| `cited_source_count`, `has_citations` | int / boolean | Number of citation spans on the answer. | High |
+| `cited_source_count`, `has_citations` | int / boolean | Number of citations on the answer. | High |
 | `raw_message_json` | JSON string | The full message object, including its citation list. | High |
 
-#### 5.11.3 `gemini_sources.csv` — one row per cited source and text span
+#### 5.11.3 `gemini_sources.csv` — one row per citation
 
-`platform`, `conversation_id`, `message_id`, `source_list` (always `citation`), `source_index` (row order), `ref_index` (which citation reference this span belongs to), `source_id` (Gemini's citation id), `type`, `url`, `url_clean`, `title`, `snippet` (the quoted passage), `start_index`, `end_index` (offsets of the supported text in the answer; empty when the reference carries no span), `raw_json`. (Medium.)
+`platform`, `conversation_id`, `message_id`, `source_list` (always `citation`), `source_index` (row order), `ref_index` (the citation's position in Gemini's reference list), `source_id` (Gemini's citation id), `type`, `url`, `url_clean`, `title`, `snippet` (the passage of the answer this source supports, not text from the source page), `start_index`, `end_index` (character offsets of that passage in the answer's `text`; empty when the passage cannot be found there), `raw_json` (includes Gemini's own position pairs as `raw_spans`). (Medium.)
 
 ### 5.12 Canonical schema (all platforms)
 

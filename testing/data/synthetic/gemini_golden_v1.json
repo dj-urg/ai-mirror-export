@@ -42,7 +42,17 @@
           "title": "RFC 4180: Common Format and MIME Type for CSV Files",
           "snippet": "RFC 4180 defines the common CSV format.",
           "start_index": 0,
-          "end_index": 34
+          "end_index": 39,
+          "raw_spans": [
+            [
+              0,
+              39
+            ],
+            [
+              0,
+              39
+            ]
+          ]
         }
       ]
     },
@@ -75,29 +85,30 @@
           "source_id": "spp_synthetic02",
           "url": "https://www.rfc-editor.org/rfc/rfc4180#section-2",
           "title": "RFC 4180 Section 2",
-          "snippet": "Each record is located on a separate line, delimited by a line break (CRLF).",
-          "start_index": 0,
-          "end_index": 20
+          "snippet": "RFC 4180 requires CRLF between records, though many parsers accept a bare LF.",
+          "start_index": 5,
+          "end_index": 82,
+          "raw_spans": [
+            [
+              5,
+              82
+            ],
+            [
+              5,
+              82
+            ]
+          ]
         },
         {
           "source_index": 1,
-          "ref_index": 0,
-          "source_id": "spp_synthetic02",
-          "url": "https://www.rfc-editor.org/rfc/rfc4180#section-2",
-          "title": "RFC 4180 Section 2",
-          "snippet": "Each record is located on a separate line, delimited by a line break (CRLF).",
-          "start_index": 21,
-          "end_index": 52
-        },
-        {
-          "source_index": 2,
           "ref_index": 1,
           "source_id": "spp_synthetic03",
           "url": "https://example.org/csv-guide?utm_source=gemini&utm_medium=chat",
           "title": "A practical CSV guide",
           "snippet": "Spreadsheet tools generally accept both CRLF and LF.",
           "start_index": "",
-          "end_index": ""
+          "end_index": "",
+          "raw_spans": []
         }
       ]
     }

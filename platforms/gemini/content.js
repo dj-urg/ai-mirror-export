@@ -414,12 +414,37 @@
   }
 
   /**
-   * Flatten the citation list attached to an assistant candidate. Each ref is
-   *   [ ["quoted text", null, null, [[start, end], ...]], [1], [[url, title]], "spp_id" ]
-   * Spans are offsets into the answer text; they are exported as columns
-   * rather than injected into `text`, which stays the raw model output.
+   * Find the cited passage in the answer. Gemini lists the passage's position
+   * more than once (observed: UTF-8 byte offsets, then character offsets;
+   * the two diverge after the first non-ASCII character), so the pairs are
+   * alternative encodings of one span, not separate spans. Returns the first
+   * pair that lands on the passage, else the passage's first occurrence,
+   * else null. `shift` is the whitespace trimmed off the front of the answer.
    */
-  function extractCitations(refsData) {
+  function locatePassage(text, passage, pairs, shift) {
+    const needle = passage.trim();
+    if (!needle) return null;
+    for (const pair of pairs) {
+      const start = Number(pair[0]) - shift;
+      const end = Number(pair[1]) - shift;
+      if (start >= 0 && end <= text.length && text.slice(start, end).trim() === needle) {
+        return [start, end];
+      }
+    }
+    const at = text.indexOf(needle);
+    return at >= 0 ? [at, at + needle.length] : null;
+  }
+
+  /**
+   * Flatten the citation list attached to an assistant candidate, one row per
+   * reference. Each ref is
+   *   [ ["cited passage", null, null, [[start, end], ...]], [1], [[url, title]], "spp_id" ]
+   * where the passage is the part of the answer the source supports. Offsets
+   * are exported as columns (JavaScript string offsets into the exported
+   * `text`) rather than injected into `text`, which stays the raw model
+   * output; Gemini's own pairs are kept in `raw_spans`.
+   */
+  function extractCitations(refsData, text, shift) {
     const rows = [];
     const refList = refsData && Array.isArray(refsData[1]) ? refsData[1] : [];
     for (let refIndex = 0; refIndex < refList.length; refIndex++) {
@@ -440,33 +465,19 @@
         (span) => Array.isArray(span) && span.length === 2
           && Number.isFinite(Number(span[0])) && Number.isFinite(Number(span[1]))
       );
+      const located = locatePassage(text, snippet, usableSpans, shift);
 
-      if (usableSpans.length === 0) {
-        rows.push({
-          source_index: rows.length,
-          ref_index: refIndex,
-          source_id: sourceId,
-          url,
-          title,
-          snippet,
-          start_index: '',
-          end_index: ''
-        });
-        continue;
-      }
-
-      for (const span of usableSpans) {
-        rows.push({
-          source_index: rows.length,
-          ref_index: refIndex,
-          source_id: sourceId,
-          url,
-          title,
-          snippet,
-          start_index: Number(span[0]),
-          end_index: Number(span[1])
-        });
-      }
+      rows.push({
+        source_index: rows.length,
+        ref_index: refIndex,
+        source_id: sourceId,
+        url,
+        title,
+        snippet,
+        start_index: located ? located[0] : '',
+        end_index: located ? located[1] : '',
+        raw_spans: usableSpans.map((span) => [Number(span[0]), Number(span[1])])
+      });
     }
     return rows;
   }
@@ -488,7 +499,8 @@
     const candidateId = selected && typeof selected.candidate[0] === 'string'
       ? selected.candidate[0]
       : (turn[3] && typeof turn[3][3] === 'string' ? turn[3][3] : '');
-    const citations = selected ? extractCitations(selected.candidate[2]) : [];
+    const leadingTrim = selected ? selected.text.length - selected.text.trimStart().length : 0;
+    const citations = selected ? extractCitations(selected.candidate[2], assistantText, leadingTrim) : [];
     const model = turn[3] && typeof turn[3][21] === 'string' ? turn[3][21].trim() : '';
 
     const userMessageId = responseId ? `user-${responseId}` : `user-turn-${turnIndex}`;

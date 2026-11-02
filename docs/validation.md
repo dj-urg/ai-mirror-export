@@ -19,27 +19,27 @@ tracked; real-origin captures are gitignored and no test reads them.
 | File | What it proves | Last result |
 |---|---|---|
 | `test_background_golden.js` | Drives the real `background.js` end to end (mocked `browser.*`, frozen clock, fixed donor id) for every platform fixture, scrubbing off and on, plus a salted donor-id run, and compares every ZIP entry (CSVs and manifest) byte for byte with `testing/data/synthetic/golden/`. Also checks BOM, manifest/file consistency, SHA-256 per file, frozen timestamps, the consent record in the manifest telemetry, and that no export is named `unknown`. Goldens change only via `UPDATE_GOLDEN=1` in an intentional-change commit. | 1063 passed |
-| `test_pii_sweep.js` | Plants an email, phone number, IPv4 and API-key-like token in every prose field of every fixture, exports with scrubbing on, and asserts none of them appears in any CSV column (raw-JSON and canonical columns included), the manifest or any file name; every `*_json` cell still parses; `pii_redactions_total` equals the sum of `by_type`; the Claude fixture with an attachment, citations, a tool call and thinking is scrubbed in each of those files. | 1381 passed |
+| `test_pii_sweep.js` | Plants an email, phone number, IPv4 and API-key-like token in every prose field of every fixture, exports with scrubbing on, and asserts none of them appears in any CSV column (raw-JSON and canonical columns included), the manifest or any file name; every `*_json` cell still parses; `pii_redactions_total` equals the sum of `by_type`; the Claude fixture with an attachment, citations, a tool call and thinking is scrubbed in each of those files. | 1380 passed |
 | `test_pii.js` | Unit tests of every scrub rule, the column classification (every column in the golden exports is classified structural / url / json / text), JSON-aware scrubbing (ids, timestamps and URLs preserved, output still valid JSON) and row scrubbing. | 89 passed |
 | `test_background_outcomes.js` | Empty and invalid payloads on several platforms broadcast `empty_export` / `invalid_data` with a validation code and download nothing; the Grok URL-id fallback; a platform/origin mismatch is dropped. | 38 passed |
-| `test_chatgpt_golden.js`, `test_claude_golden.js`, `test_perplexity_golden.js`, `test_grok_golden.js`, `test_deepseek_golden.js`, `test_mistral_golden.js`, `test_gemini_golden.js` | Per-extractor invariants on the synthetic fixtures: row counts, roles, canonical header, provenance columns, and the 3.0.0 behaviours (visible path, thinking summaries, DeepSeek `model`/`cite_index`, Mistral display text, Gemini candidate ids and citation spans). | 29 / 29 / 12 / 14 / 26 / 23 / 33 passed |
+| `test_chatgpt_golden.js`, `test_claude_golden.js`, `test_perplexity_golden.js`, `test_grok_golden.js`, `test_deepseek_golden.js`, `test_mistral_golden.js`, `test_gemini_golden.js` | Per-extractor invariants on the synthetic fixtures: row counts, roles, canonical header, provenance columns, and the 3.0.0 behaviours (visible path, thinking summaries, DeepSeek `model`/`cite_index`, Mistral display text, Gemini candidate ids and citation offsets). | 29 / 29 / 12 / 14 / 26 / 23 / 34 passed |
 | `test_perplexity_extractor.js` | Perplexity block parsing variants. | 32 passed |
 | `test_validators.js` | Row validators and every CSV schema. | 130 passed |
 | `test_manifest.js` | SHA-256, HMAC donor id, row counting, manifest building (schema 1.2.0), timestamp normalisation, canonical headers. | 38 passed |
 | `test_text_cleaner.js` | `text_cleaned` rules. | 10 passed |
 | `test_version_consistency.js` | `EXTRACTOR_VERSION` = `manifest.json` version = `package.json` = `config/settings.js` = `CITATION.cff`. | 5 passed |
 | `test_settings_domains.js` | Configured platform domains match the manifest's content-script and host-permission hosts both ways; Gmail/Docs and the Perplexity apex are not platforms. | 89 passed |
-| `test_gemini_content.js` | Runs the Gemini content script against a fake `hNvQHb` endpoint: raw-turn decoding, pagination with overlapping pages, citation spans, candidate choice, a fresh fetch at export (turns sent after page load, an answer still streaming at page load), fallback to the cached copy when that fetch fails, and foreign senders ignored. | 23 passed |
+| `test_gemini_content.js` | Runs the Gemini content script against a fake `hNvQHb` endpoint: raw-turn decoding, pagination with overlapping pages, one citation row per reference located in the answer (byte and character offset pairs, leading whitespace), candidate choice, a fresh fetch at export (turns sent after page load, an answer still streaming at page load), fallback to the cached copy when that fetch fails, and foreign senders ignored. | 24 passed |
 | `test_message_security.js` | Signed page→content messages: sign/verify, tamper, wrong secret, stale timestamp, replayed nonce rejected. | 9 passed |
 | `test_extract_helpers.js` | The shared `stripUtmParams` / `toJsonCell` / `normalizeRole`. | 12 passed |
 
-Last full run (2026-11-02, Gemini export refresh): **20 files, 3 085 assertions, 0 failures**; ESLint 0 errors / 0 warnings; `web-ext lint` 0 / 0 / 0; `web-ext build` 51 files, nothing from `dev/`, `docs/`, `testing/` or the configs.
+Last full run (2026-11-02, Gemini export refresh and citation rows): **20 files, 3 086 assertions, 0 failures**; ESLint 0 errors / 0 warnings; `web-ext lint` 0 / 0 / 0; `web-ext build` 51 files, nothing from `dev/`, `docs/`, `testing/` or the configs.
 
 Fixtures (`testing/data/synthetic/`) are hand-written: ChatGPT (mapping,
 metadata-context and branched variants), Claude (plain, rich: thinking +
 tool use + citation + attachment, branched), Copilot, Microsoft 365
 Copilot, Perplexity, Grok, DeepSeek (plain and search/thinking), Mistral
-(plain and reasoning), Google Gemini (two turns with citation spans), Google
+(plain and reasoning), Google Gemini (two turns with citations), Google
 AI Overview and AI Mode. They contain planted
 synthetic emails, phone numbers, IPs and UTM-tagged URLs so the scrub paths
 fire.
@@ -109,13 +109,17 @@ Method, per platform:
 | pending | Grok | final 3.0.0 build | scripted chat | | | | | | | |
 | pending | DeepSeek | final 3.0.0 build | scripted chat incl. a brand-new chat | | | | | | | |
 | pending | Mistral | final 3.0.0 build | scripted chat | | | | | | | |
-| pending | Google Gemini | Gemini-support build | scripted chat with a regenerated answer and a cited source | | | expect candidate ids and one sources row per citation span | | expect PASS | | expect four `gemini_*` files |
+| pending | Google Gemini | Gemini-support build | scripted chat with a regenerated answer and a cited source | | | expect candidate ids and one sources row per citation | | expect PASS | | expect four `gemini_*` files |
 | pending | Google AI Overview / AI Mode | final 3.0.0 build | expectations + on-screen comparison only (see §6) | | | | | | | |
 
 Other observations from real exports made on the pre-fix build
 (2026-10-13, outside the toolkit runs): a Grok export was named
 `grok_unknown_<timestamp>.zip`; a Mistral export made with the then-
-uncommitted wiring produced a real ZIP.
+uncommitted wiring produced a real ZIP. A Gemini export made on
+`fix/gemini-followups` (2026-11-02, a new chat with 3 turns, 2 of them
+cited, scrubbing off) had every turn in order with consistent parent and
+candidate ids, but 38 sources rows for 19 citations, 8 of them with
+offsets that missed the passage.
 
 ## 5. Findings and decisions from validation
 
@@ -127,6 +131,7 @@ uncommitted wiring produced a real ZIP.
 | Six raw key paths reached no named column: `content[].thinking`, top-level `text`, `sync_sources[]`, `display_content.link.resource_type` / `.subtitles`, `files[].thumbnail_asset.image_height`. | `thinking` is the thinking row's `text` (empty when hidden); top-level `text` is legacy and only read when a message has no blocks; `sync_sources[]` already feeds `claude_attachments`; the display and thumbnail metadata stay inside the raw-JSON columns. Documented in `METHODS.md` ("Fields deliberately not exported as named columns"). | `7239a96` |
 | A Grok export was named `grok_unknown_…`. | The content script sends the id from the page URL with the export message and background uses it when the payload yields none; the golden test asserts no fixture ever produces an `unknown` name or a null manifest id. | `1034e15` |
 | Mistral exported a real ZIP with the (then uncommitted) wiring. | Confirms the hand-port approach; the wiring was ported against the current PII API. A real Mistral export on the final build is on the manual checklist. | `c4d0f31`, `142278a` |
+| Gemini: every citation was exported twice. Gemini lists each passage's position as UTF-8 byte offsets and as character offsets; the content script read the two pairs as two spans. After the answer's first non-ASCII character (an en dash) the byte pair ran 2 ahead, so half the rows pointed at the wrong text, and `num_cited_sources` / `cited_source_count` were doubled. | One sources row per citation, located by the pair that lands on the passage (else the passage's first occurrence); Gemini's pairs kept as `raw_spans` in `raw_json`. Replaying the real export's references through the fixed script gives 19 rows, all 19 on their passage. Not yet released, so `gemini_sources` stays at schema 1.0.0. | `fix(gemini): one sources row per citation` |
 | Every export was stamped extractor 2.1.1. | `EXTRACTOR_VERSION` is 3.0.0 and a test keeps it equal to the add-on version. | `03f88c8` |
 
 ## 6. Known limitations of validation
