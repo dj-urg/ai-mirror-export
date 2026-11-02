@@ -182,6 +182,7 @@ testing/tests/*
 !testing/tests/test_deepseek_golden.js
 !testing/tests/test_mistral_golden.js
 !testing/tests/test_gemini_golden.js
+!testing/tests/test_gemini_content.js
 !testing/tests/test_background_golden.js
 !testing/tests/test_chatgpt_golden.js
 !testing/tests/test_version_consistency.js

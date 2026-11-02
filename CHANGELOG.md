@@ -4,7 +4,7 @@
 
 ### What's new
 
-- **Google Gemini support.** Conversations on `gemini.google.com` now export to the same ZIP-of-CSVs layout as the other sites: `gemini_metadata`, `gemini_messages`, `gemini_sources` (one row per cited source and text span) and `gemini_messages_canonical`, plus the manifest. The content script re-fetches the open conversation through Gemini's own `hNvQHb` history RPC using the site's existing cookies; nothing leaves the browser. This adds one host permission (`gemini.google.com`).
+- **Google Gemini support.** Conversations on `gemini.google.com` now export to the same ZIP-of-CSVs layout as the other sites: `gemini_metadata`, `gemini_messages`, `gemini_sources` (one row per cited source and text span) and `gemini_messages_canonical`, plus the manifest. The content script re-fetches the open conversation through Gemini's own `hNvQHb` history RPC using the site's existing cookies, and fetches it again at every export so turns sent after the page loaded are included; nothing leaves the browser. This adds one host permission (`gemini.google.com`).
 
 ## 3.0.0 — 2026-10-14
 

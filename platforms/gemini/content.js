@@ -753,12 +753,10 @@
           .catch((error) => sendResponse({ success: false, error: error.message }));
       };
 
-      const existing = conversationId ? capturedConversations.get(conversationId) : null;
-      if (isConversationComplete(existing)) {
-        forward(existing);
-        return true;
-      }
-
+      // Always refresh before exporting. Gemini streams new replies without
+      // re-requesting its history, so the copy cached at page load (or
+      // mid-answer on a brand-new chat) misses later turns. A failed refresh
+      // falls back to the cached copy inside activelyFetchAndStore.
       activelyFetchAndStore(conversationId, { force: true }).then((record) => {
         if (!isConversationComplete(record)) {
           sendResponse({

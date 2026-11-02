@@ -162,6 +162,7 @@ control rendering; Chromium runs produce different metrics.
 - M365 Copilot's WebSocket interception path (no synthetic fixture, no
   raw-capture validation yet)
 - DeepSeek's token-bearing history refresh and Google's single re-fetch
-  (content scripts have no automated coverage)
+  (content scripts have no automated coverage; Gemini's is the exception,
+  `test_gemini_content.js`, against a fake RPC, not the real site)
 
 See `docs/manual-tests.md` for the full checklist.

@@ -29,10 +29,11 @@ tracked; real-origin captures are gitignored and no test reads them.
 | `test_text_cleaner.js` | `text_cleaned` rules. | 10 passed |
 | `test_version_consistency.js` | `EXTRACTOR_VERSION` = `manifest.json` version = `package.json` = `config/settings.js` = `CITATION.cff`. | 5 passed |
 | `test_settings_domains.js` | Configured platform domains match the manifest's content-script and host-permission hosts both ways; Gmail/Docs and the Perplexity apex are not platforms. | 89 passed |
+| `test_gemini_content.js` | Runs the Gemini content script against a fake `hNvQHb` endpoint: raw-turn decoding, pagination with overlapping pages, citation spans, candidate choice, a fresh fetch at export (turns sent after page load, an answer still streaming at page load), fallback to the cached copy when that fetch fails, and foreign senders ignored. | 23 passed |
 | `test_message_security.js` | Signed page→content messages: sign/verify, tamper, wrong secret, stale timestamp, replayed nonce rejected. | 9 passed |
 | `test_extract_helpers.js` | The shared `stripUtmParams` / `toJsonCell` / `normalizeRole`. | 12 passed |
 
-Last full run (2026-10-31, with Google Gemini support): **19 files, 3 062 assertions, 0 failures**; ESLint 0 errors / 0 warnings; `web-ext lint` 0 / 0 / 0; `web-ext build` 51 files, nothing from `dev/`, `docs/`, `testing/` or the configs.
+Last full run (2026-11-02, Gemini export refresh): **20 files, 3 085 assertions, 0 failures**; ESLint 0 errors / 0 warnings; `web-ext lint` 0 / 0 / 0; `web-ext build` 51 files, nothing from `dev/`, `docs/`, `testing/` or the configs.
 
 Fixtures (`testing/data/synthetic/`) are hand-written: ChatGPT (mapping,
 metadata-context and branched variants), Claude (plain, rich: thinking +
