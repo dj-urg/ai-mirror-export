@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "chatgpt",
   "conversation_id": "00000000-0000-4000-8000-0000000000c2",
   "api_format": "mapping",
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 517,
-      "sha256": "b4d143a68dba5dd1c1257af91ee48b7e147ba83950e0ce7ebdf61e170301d4d6"
+      "sha256": "25d18a65a8b99e3d54a042c954ef4aea860cae6b71de1b18a6cda75c7d6619d3"
     },
     {
       "filename": "chatgpt_messages_00000000-0000-4000-8000-0000000000c2_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.1.0",
       "rows": 2,
       "bytes": 662,
-      "sha256": "81ca3df416f63b0875136dd716497b602c10992218e29fb9796d7622829ec9f6"
+      "sha256": "53b1b15c800f8980bc1490a44edfa27d3ba6048fe4c50b98a733684255e8d61c"
     },
     {
       "filename": "chatgpt_messages_canonical_00000000-0000-4000-8000-0000000000c2_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.1.0",
       "rows": 2,
       "bytes": 1070,
-      "sha256": "e505b39d925c8d547a6c3e4973373adb9564f3b77c5c54054898905cf8054200"
+      "sha256": "bfd6ea87837c7cb079a392758b3097ac4fd7f5ca0dfaba08594dede898430882"
     },
     {
       "filename": "chatgpt_donor_context_00000000-0000-4000-8000-0000000000c2_2026-04-13T12-00-00Z.csv",
@@ -38,7 +38,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 347,
-      "sha256": "920b84562802a840a8b169e9946a42218cbc412557ed1f937ccec63e83c80142"
+      "sha256": "c0ec1d756b16834f8541211763dbc0c99c4022bbd723681846d671e6e4ecce73"
     }
   ],
   "telemetry": {

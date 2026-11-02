@@ -1,8 +1,9 @@
 /**
  * Version consistency: every version string that ships or is cited must be
  * the same. The extractor version is stamped into every CSV and manifest, so
- * it must equal the add-on version in manifest.json; package.json,
- * config/settings.js and CITATION.cff follow.
+ * it must equal the add-on version in manifest.json; package.json (and
+ * both of its copies in package-lock.json), config/settings.js and
+ * CITATION.cff follow.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,12 +20,16 @@ const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
 const manifestVersion = JSON.parse(read('manifest.json')).version;
 const packageVersion = JSON.parse(read('package.json')).version;
+const lock = JSON.parse(read('package-lock.json'));
+const lockRootVersion = lock.packages && lock.packages[''] ? lock.packages[''].version : null;
 const citationMatch = read('CITATION.cff').match(/^version:\s*"?([^"\n]+)"?\s*$/m);
 const citationVersion = citationMatch ? citationMatch[1].trim() : null;
 
 const checks = [
   ['EXTRACTOR_VERSION equals manifest.json version', EXTRACTOR_VERSION === manifestVersion, `${EXTRACTOR_VERSION} vs ${manifestVersion}`],
   ['package.json version equals manifest.json version', packageVersion === manifestVersion, `${packageVersion} vs ${manifestVersion}`],
+  ['package-lock.json version equals manifest.json version', lock.version === manifestVersion, `${lock.version} vs ${manifestVersion}`],
+  ['package-lock.json root package version equals manifest.json version', lockRootVersion === manifestVersion, `${lockRootVersion} vs ${manifestVersion}`],
   ['config/settings.js version equals manifest.json version', EXTENSION_CONFIG.version === manifestVersion, `${EXTENSION_CONFIG.version} vs ${manifestVersion}`],
   ['CITATION.cff version equals manifest.json version', citationVersion === manifestVersion, `${citationVersion} vs ${manifestVersion}`],
   ['manifest.json version is semver', /^\d+\.\d+\.\d+$/.test(manifestVersion), manifestVersion]

@@ -10,7 +10,7 @@
 export const EXTENSION_CONFIG = {
   // Extension metadata
   name: 'AI Chat Exporter',
-  version: '3.0.0',
+  version: '3.1.0',
   description:
     'Export conversations from ChatGPT, Claude, Copilot, Microsoft 365 Copilot, Perplexity, Grok, DeepSeek, Mistral, Google Gemini and Google Search AI Overview to CSV. All processing happens locally in your browser.',
 

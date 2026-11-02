@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "perplexity",
   "conversation_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 363,
-      "sha256": "55680c8ca1877f2d131fcbfacd98bb5a1611d65357fb518ccdcc7c35bb4e2774"
+      "sha256": "2f0ec39693640012eae929656aef3c1219325d212845d404a63ed22ee8fa7cd2"
     },
     {
       "filename": "perplexity_messages_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 906,
-      "sha256": "2516f6e92ee8886add4055fb720287b63bcc3d6b775bc818f4d34ebc1bf6c26f"
+      "sha256": "44ac8faf698c85b52825f0328eb24ef959f4e5329dfce8a94dd25db8be8161eb"
     },
     {
       "filename": "perplexity_sources_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 571,
-      "sha256": "41c76aad404a17e802644ceef41a3f647d3c817886e0dd27a9477dea75430cdc"
+      "sha256": "4741d4381accfbeb2378844ae1ddb1952d8dd50963dc8b1b206bc9bd5330c17c"
     },
     {
       "filename": "perplexity_messages_canonical_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
@@ -38,7 +38,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1168,
-      "sha256": "cfbb254d846cb21700b05c619671da326d4013575f78b5a21ac0f10673d263e4"
+      "sha256": "72cf79600a21bcbac15ab7d4df13bb2cd307e81dbb0013a375de44585b1be566"
     }
   ],
   "telemetry": {

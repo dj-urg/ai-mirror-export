@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "grok",
   "conversation_id": "grok-golden-0001",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 509,
-      "sha256": "7fcb833611add03b07088d383abe04fa224eebe5219ff193ebb9d342ca80af70"
+      "sha256": "199272ad821f2a33a2687cd3a749747bcd50dc2ea2dfb8982080fb2ead2561e7"
     },
     {
       "filename": "grok_messages_grok-golden-0001_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1469,
-      "sha256": "653ed292f353d3fb20a3353a3afb543c60cdf4353c21bdc8cae210f37f44a4fe"
+      "sha256": "4a0bc86551d247b3c976e4badbad061514d9f0fb51633e5dec36db4d60248188"
     },
     {
       "filename": "grok_messages_canonical_grok-golden-0001_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1198,
-      "sha256": "ce5ac74bea367eddad867c207a804d9c4b59b8fa40eee64d2b7fe5309b72fea4"
+      "sha256": "f0b5cf86deee31f6e9dd29c1e6ed318d2c00b38815f3070de0e601ab997294f1"
     }
   ],
   "telemetry": {

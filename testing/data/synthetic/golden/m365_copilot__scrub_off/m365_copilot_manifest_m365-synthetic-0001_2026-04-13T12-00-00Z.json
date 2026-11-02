@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "m365_copilot",
   "conversation_id": "m365-synthetic-0001",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1928,
-      "sha256": "8eb5a0a657168df4608e703837c45ec44e243b6add31b135442545ad6dbf4099"
+      "sha256": "a965841aef9bae4c11c1428c99d24936b42e72ef09ab00f2a049a31c756f9085"
     },
     {
       "filename": "m365_copilot_messages_canonical_m365-synthetic-0001_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 2607,
-      "sha256": "ad5e300232c99f5f9d357fe90755f5f1b6173e6eeb64ccb1f7b0e3590981c002"
+      "sha256": "634390f34dd40552ef0dbf027319b5dd6fd8a35dc4aa91e6cbd094ad0f673dcc"
     },
     {
       "filename": "m365_copilot_sources_m365-synthetic-0001_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 949,
-      "sha256": "a9e3e0be8393b6ce9597d0c51d745d98b0a29f4d64e5ed59473cefc3026ca395"
+      "sha256": "305644746fbc6df1b3a75959f2f36981b15233f8d45b627667c6c972eb834859"
     }
   ],
   "telemetry": {

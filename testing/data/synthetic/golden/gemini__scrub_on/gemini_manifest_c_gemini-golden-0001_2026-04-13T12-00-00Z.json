@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "gemini",
   "conversation_id": "c_gemini-golden-0001",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 553,
-      "sha256": "dac0e97ddf103fcbacc1b3d9f59dfa6eb25a451b27c2c60a1f5f6b520e5df2d1"
+      "sha256": "d27d2489e07d5c7df307f7d9ce33a614008bc4f645416397942c3f58b93d9905"
     },
     {
       "filename": "gemini_messages_c_gemini-golden-0001_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 4,
       "bytes": 4169,
-      "sha256": "47a1d31d506437e60378e1e62c66bc322b46b4b0a35c5a8f072dbd9e3486c05f"
+      "sha256": "54a2d140a0a797ee7ba1b688e844273214d6edfd13e80f91a44328bc350abccd"
     },
     {
       "filename": "gemini_sources_c_gemini-golden-0001_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 3,
       "bytes": 2216,
-      "sha256": "1257d967fb69f106085db4d632fb6fb1cdd393177e2e40edf0919c1c6941d38a"
+      "sha256": "14cdc3c8989ac3059afc6f7f71578571f84ecb6017908a37b255d604e0e6cb57"
     },
     {
       "filename": "gemini_messages_canonical_c_gemini-golden-0001_2026-04-13T12-00-00Z.csv",
@@ -38,7 +38,7 @@
       "schema_version": "1.0.0",
       "rows": 4,
       "bytes": 2500,
-      "sha256": "65e48e8cb04a01bb551cae59ec2bc786dc67de8307f286eec74a9e46353c5292"
+      "sha256": "c32252b244b6138ffcb3bfe8d4fc3780bcb9158ef722a66f29bc585ea03e72ed"
     }
   ],
   "telemetry": {

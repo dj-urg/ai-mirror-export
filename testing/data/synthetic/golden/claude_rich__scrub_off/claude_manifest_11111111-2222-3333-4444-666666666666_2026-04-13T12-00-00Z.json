@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "claude",
   "conversation_id": "11111111-2222-3333-4444-666666666666",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 803,
-      "sha256": "ab5b483d23851a9a386d2a45818efb8b60d9ad2e7d0d80d39c65ca0e5ec49984"
+      "sha256": "ab7c29860978b31eba3b5c3b6aab84a6d0956c72c2ae1421c8ad2401d3a92899"
     },
     {
       "filename": "claude_messages_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.1.0",
       "rows": 5,
       "bytes": 2882,
-      "sha256": "70191f4ea6342d463b3f693fd1973689bbd7921230974edfbaf4edd529080025"
+      "sha256": "c0d9fe1127e78462e07be75c475a3cf1e3230965f9eeb21d0877a6c0acea7064"
     },
     {
       "filename": "claude_sources_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 686,
-      "sha256": "8f4bed27170c250c7f23c95c36e1f87aae95283df1409ebc6fb78e6786ee0f6f"
+      "sha256": "f4112b8cc19405be2dde9aaee0af5b88b1f81e3c5aca58b334c27696c336df45"
     },
     {
       "filename": "claude_attachments_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
@@ -38,7 +38,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 636,
-      "sha256": "7fb81111dbb9a332f7e159ee39820fed1a99a195cf78f5616a602aadcda6773a"
+      "sha256": "5217589394ab0933f5f875fda41b686ca031dbf0d3275be185507063b273b20b"
     },
     {
       "filename": "claude_messages_canonical_11111111-2222-3333-4444-666666666666_2026-04-13T12-00-00Z.csv",
@@ -46,7 +46,7 @@
       "schema_version": "1.1.0",
       "rows": 2,
       "bytes": 1753,
-      "sha256": "63c34d7f66ac534e042c778044e8964f18dbe6842d918234ca1318ad465ee116"
+      "sha256": "45e5ecbe8bf3adb6f288fa52251d321cfad59e347ad528a904970a0676e248fc"
     }
   ],
   "telemetry": {

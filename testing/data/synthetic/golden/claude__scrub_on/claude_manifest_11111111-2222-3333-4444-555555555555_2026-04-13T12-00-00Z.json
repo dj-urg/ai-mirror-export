@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "claude",
   "conversation_id": "11111111-2222-3333-4444-555555555555",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 778,
-      "sha256": "72f0f9df5d92809a5daf496c0d4a4ceb89f2f52c509494b18a83781cf667429f"
+      "sha256": "e2b3d0ee358b829702ab3879a3610360e2d2c0e194c3c191f271544ec1213617"
     },
     {
       "filename": "claude_messages_11111111-2222-3333-4444-555555555555_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.1.0",
       "rows": 2,
       "bytes": 1297,
-      "sha256": "b20d16d2a843c7173710bf087aa64b91e16d60d3c025f024107e721b161f0fed"
+      "sha256": "8344932ac97e7f0cf559c6298b5bc0bd45ea9347e84a6b979155281d0b2590b0"
     },
     {
       "filename": "claude_messages_canonical_11111111-2222-3333-4444-555555555555_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.1.0",
       "rows": 2,
       "bytes": 1608,
-      "sha256": "9dcbbd362bcafab0f5c392a70dfeb169bea70e929aa575e84abacc0903afce4b"
+      "sha256": "d0aa38bf9951069726bce7ff09e559c89dcfabe0280409f16b1e72c600a91ccf"
     }
   ],
   "telemetry": {
