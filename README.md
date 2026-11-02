@@ -14,6 +14,8 @@ Export your AI chat conversations to CSV, entirely on your own device.
 
 ### [Install from Firefox Add-ons &rarr;](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
 
+[How to cite](#citation) &nbsp;·&nbsp; [Methods](METHODS.md) &nbsp;·&nbsp; [Changelog](CHANGELOG.md)
+
 </div>
 
 > [!WARNING]
@@ -152,7 +154,39 @@ CI runs the Node test suite on every push (unit tests, byte-exact golden exports
 
 **PII scrubbing is best-effort.** The optional pass in [`utils/pii.js`](utils/pii.js) targets emails, phone numbers, IPv4 addresses, JWTs, bearer tokens, provider-prefixed keys (`sk-…`, `AKIA…`, `AIza…`, etc.), credit-card-shaped numbers (Luhn-checked), US SSNs, and long opaque tokens, in every file of the ZIP; identifiers, timestamps and URLs are preserved so files stay joinable (see "PII scrubbing coverage" in `METHODS.md`). Scrubbed values are replaced with tagged placeholders (`<REDACTED:EMAIL>`, …) and counted in the manifest. It will miss names, addresses, and anything that doesn't match these patterns. Treat it as a reduction in exposure, not a guarantee.
 
-**How to cite.** The repository ships a [`CITATION.cff`](CITATION.cff), so GitHub shows a "Cite this repository" button in the sidebar. BibTeX / APA export is generated from that file. Every release is archived on Zenodo. To cite the exact version used in a study, use that version's DOI (3.1.0: [10.5281/zenodo.23888846](https://doi.org/10.5281/zenodo.23888846)); [10.5281/zenodo.18257030](https://doi.org/10.5281/zenodo.18257030) always resolves to the latest version.
+**How to cite.** See [Citation](#citation) below.
+
+## Citation
+
+<!-- At each release, update the version, year and version DOI below.
+     Zenodo shows the new version DOI a few minutes after the GitHub release. -->
+
+If you use AI Chat Exporter in research, please cite the version you used:
+
+> Jurg, D. (2026). *AI Chat Exporter* (Version 3.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23888846
+
+[![DOI 3.1.0](https://zenodo.org/badge/DOI/10.5281/zenodo.23888846.svg)](https://doi.org/10.5281/zenodo.23888846)
+
+<details>
+<summary>BibTeX</summary>
+
+```bibtex
+@software{jurg_2026_ai_chat_exporter,
+  author    = {Jurg, Daniel},
+  title     = {AI Chat Exporter},
+  year      = {2026},
+  version   = {3.1.0},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.23888846},
+  url       = {https://doi.org/10.5281/zenodo.23888846}
+}
+```
+
+</details>
+
+- **Exact version or latest?** Each release has its own DOI, so readers can find the version that produced your data. [10.5281/zenodo.18257030](https://doi.org/10.5281/zenodo.18257030) always points to the latest version; use it only when you refer to the tool in general.
+- **Other formats.** GitHub's **Cite this repository** button (in the sidebar) exports APA and BibTeX from [`CITATION.cff`](CITATION.cff), and the [Zenodo record](https://doi.org/10.5281/zenodo.23888846) offers further styles.
+- **Methods.** Describe how the data was captured with [`METHODS.md`](METHODS.md), and report the `extractor_version` found in each export's manifest.
 
 ## Development
 
