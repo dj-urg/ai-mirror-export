@@ -6,8 +6,9 @@ abstract: >-
   Copilot, Perplexity, Grok, DeepSeek, Mistral, Microsoft 365 Copilot,
   Google Gemini, and Google Search's AI Overview / AI Mode as CSV files.
   All processing
-  happens locally in the donor's browser; nothing is sent to a remote
-  server. Designed for data-donation studies in digital methods and
+  happens locally in the donor's browser: the extension only talks to the
+  chat site being exported from, and conversations are never sent
+  anywhere else. Designed for data-donation studies in digital methods and
   computational social science.
 type: software
 authors:
@@ -17,6 +18,7 @@ authors:
     email: "daniel.jurg@vub.be"
 repository-code: "https://github.com/dj-urg/ai-mirror-export"
 url: "https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/"
+license: MIT
 version: "3.1.0"
 date-released: "2026-11-02"
 keywords:

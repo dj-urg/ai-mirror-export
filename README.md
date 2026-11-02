@@ -9,7 +9,7 @@ Export your AI chat conversations to CSV, entirely on your own device.
 [![Mozilla Add-on version](https://img.shields.io/amo/v/local-ai-chat-exporter?label=Firefox%20Add-on&color=orange)](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
 [![Mozilla Add-on users](https://img.shields.io/amo/users/local-ai-chat-exporter?label=users&color=blue)](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
 [![CI](https://github.com/dj-urg/ai-mirror-export/actions/workflows/ci.yml/badge.svg)](https://github.com/dj-urg/ai-mirror-export/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-see%20repository-lightgrey)](#license)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 ### [Install from Firefox Add-ons &rarr;](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
 
@@ -200,7 +200,7 @@ Baseline PNGs and axe reports are gitignored (`dev/baselines/`); only the script
 
 ## License
 
-No license file is checked in yet. Until one is added, treat the code as "all rights reserved" and open an [issue](https://github.com/dj-urg/ai-mirror-export/issues) if you want to reuse it. A permissive license will be added before the first stable Add-on release.
+Released under the [MIT License](LICENSE).
 
 ## Contact
 
