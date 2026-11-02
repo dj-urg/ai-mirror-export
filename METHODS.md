@@ -1,6 +1,6 @@
 # Methods
 
-This document records the capture, extraction and normalisation choices made by the AI Chat Exporter (version 3.0.0) so that downstream researchers can reproduce the unit of analysis in each CSV and cite it in a methods section. How the exporter is verified is documented separately in [`docs/validation.md`](docs/validation.md).
+This document records the capture, extraction and normalisation choices made by the AI Chat Exporter (version 3.1.0) so that downstream researchers can reproduce the unit of analysis in each CSV and cite it in a methods section. How the exporter is verified is documented separately in [`docs/validation.md`](docs/validation.md).
 
 ## Overview
 
@@ -176,7 +176,7 @@ The `telemetry` object carries PII-scrubbing provenance:
 | `pii_redactions_total` | integer | Count of `<REDACTED:…>` markers added across every scrubbed column. |
 | `pii_redactions_by_type` | `{ EMAIL: n, URL: n, … }` | Same count broken out per marker type. Keys: `EMAIL`, `URL`, `PHONE`, `IP`, `JWT`, `TOKEN`, `CC`, `SSN`. Only non-zero types appear. |
 
-Default behavior ships `URL: false` so URLs are preserved in exports; news / sources studies rely on them. There is no popup control for this option in 3.0.0; a researcher who wants URL stripping has to set `pii_scrub_options` to `{ "URL": true }` in the extension's local storage (for example via the add-on debugger) on each participant's browser before they export.
+Default behavior ships `URL: false` so URLs are preserved in exports; news / sources studies rely on them. There is no popup control for this option in 3.1.0; a researcher who wants URL stripping has to set `pii_scrub_options` to `{ "URL": true }` in the extension's local storage (for example via the add-on debugger) on each participant's browser before they export.
 
 ### PII scrubbing coverage
 

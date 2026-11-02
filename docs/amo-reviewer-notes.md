@@ -145,9 +145,12 @@ stores in the page's `localStorage` (`userToken`; `readUserToken`, line
 146) and attaches it to that one same-origin request (line 215). The
 extension repeats the site's own request with the site's own credential;
 the token is never stored, logged, exported or sent anywhere else. The
-refresh runs when the popup opens (at most once every 30 seconds while
-the popup stays open and polls) and when the user exports, because
-DeepSeek streams new replies without re-requesting its history.
+request is made when a chat page opens, when the user exports, and while
+the popup is open on a chat page, because DeepSeek streams new replies
+without re-requesting its history. The open popup checks the page every
+2 seconds: once the conversation has been read, the request is repeated
+at most once every 30 seconds; until then (a new chat with no saved
+messages yet, or after a failed request) every check repeats it.
 
 `data_collection_permissions` is set to `"none"`.
 
@@ -171,9 +174,11 @@ through the site's own RPC, and Google Search reads the rendered page.)
   (replays are rejected; `shared/message-security.js` line 187 and the
   per-platform content scripts) before accepting. The shared
   `window.MessageSecurity` API is defined once, read-only and
-  non-enumerable. This stops other page scripts (ad trackers, unrelated
-  extensions, userscripts) from forging fake conversation data into
-  exports.
+  non-enumerable. The content script also accepts a message only from the
+  same window and origin, which keeps out messages from other frames and
+  other origins. This does not protect against JavaScript running on the
+  chat page itself: the site's own scripts, or anything else injected
+  into that page, can produce messages the content script accepts.
 - `platforms/m365_copilot/inject.js` — hooks the `WebSocket`
   constructor's `send` and `message` events because M365 Copilot
   streams responses over WebSocket rather than HTTP. Same signed-
