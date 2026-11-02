@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "mistral",
   "conversation_id": "mistral-golden-0002",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 695,
-      "sha256": "739f9b01b8ebafd2cc740ebd82004428cf941829d282e1d2b0be13667cf79da9"
+      "sha256": "7ea2b44f2e642f248347eeb62fba7e73747cd2c7b43097e5b52f8715a1d179ab"
     },
     {
       "filename": "mistral_messages_mistral-golden-0002_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 2334,
-      "sha256": "5b53bd18b450f2a9afa26143f412abe626a31d8913477fb7a763ecaf7f457794"
+      "sha256": "939d1c7b64b6d5f4ed38d6e5b46a2e03256506c2767430e8df58996c283d505d"
     },
     {
       "filename": "mistral_messages_canonical_mistral-golden-0002_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1487,
-      "sha256": "0f0a7537a0ec2f950d979597c39b973cb72eaf54bbd7316085bd7e63d9e89c97"
+      "sha256": "22d2916f25951bc1e258a69fc2de6e4c876be74e3a003a59dacec15891f1b63d"
     }
   ],
   "telemetry": {

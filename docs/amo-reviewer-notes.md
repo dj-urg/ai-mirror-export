@@ -1,8 +1,64 @@
-# AMO reviewer notes — AI Chat Exporter 3.0.0
+# AMO reviewer notes — AI Chat Exporter 3.1.0
 
-### Why the `scripting` permission is needed
+Paste everything below the line into the "Notes for reviewer" field when
+submitting the 3.1.0 build on AMO. The first two sections are what changed
+since 3.0.0; the rest is unchanged from the 3.0.0 notes and kept for
+reference.
 
-Used in `background.js` (the `ensurePerplexityContentScripts` block, line 1461, and the `tabs.onUpdated` injector inside it, line 1506) for Perplexity only. Two call sites:
+---
+
+## What changed since 3.0.0
+
+3.1.0 adds one supported site, Google Gemini, and nothing else that needs
+a new permission.
+
+- **One new host permission:** `https://gemini.google.com/*`. The other
+  permissions (`activeTab`, `downloads`, `storage`, `scripting`) and the
+  other host permissions are the same as in 3.0.0. `tabs` is still not
+  requested.
+- **One new content script:** `platforms/gemini/content.js`, matched on
+  `https://gemini.google.com/*` at `document_start`. It runs in the
+  isolated world only. There is no MAIN-world inject script and no
+  `window.fetch`, `XMLHttpRequest` or WebSocket hook for Gemini.
+- **No new network destination.** The Gemini content script talks only
+  to `gemini.google.com`, same-origin (details below).
+  `data_collection_permissions` is still `"none"`.
+- **Fixes in local code:** the popup's Export button works again after
+  an export, and the optional PII scrubber now also covers the query
+  string of URLs in the export. Both run entirely in the browser.
+
+## Google Gemini — how the content script reads a conversation
+
+Gemini keeps conversation history behind its private `batchexecute` RPC
+(`hNvQHb`), not a REST endpoint, and renders replies without
+re-requesting the history. `platforms/gemini/content.js` therefore
+requests the open conversation through that RPC itself, page by page
+(at most 200 pages, each request aborted after 20 seconds). The request
+goes to the same origin (`/_/BardChatUi/data/batchexecute`) with
+`credentials: 'same-origin'`, so it carries only the cookies the user's
+Gemini session already has. Nothing is sent to any other host.
+
+When it runs: when a conversation page opens (including in-app
+navigation between conversations), and again at **every** export, so
+turns sent after the page loaded are included. Once a conversation has
+been read, the popup's status check sends no further request for it.
+
+**Gemini token handling.** The RPC rejects requests without the page's
+XSRF token, so `readPageConfig` (`platforms/gemini/content.js`, line
+173) reads the token Gemini itself embeds in the page HTML (`SNlM0e`),
+together with the build label (`cfb2h`) and session id (`FdrFJe`). If
+the build label or session id are not in the HTML yet, it reads them
+from the URL of a `batchexecute` request Gemini has already made, via
+`performance.getEntriesByType('resource')` (line 190). The token is
+posted back to the same origin as the `at` form field of that one
+request (line 313), the same way Gemini's own page sends it. It is read
+fresh for each request and is never stored, logged, exported or sent
+anywhere else. This mirrors the DeepSeek bearer-token handling described
+below.
+
+## Why the `scripting` permission is needed (unchanged since 3.0.0)
+
+Used in `background.js` (the `ensurePerplexityContentScripts` block, line 1514, and the `tabs.onUpdated` injector inside it, line 1559) for Perplexity only. Two call sites:
 
 1. `scripting.registerContentScripts` at background startup — re-registers
    the Perplexity content scripts via the scripting API as a fallback
@@ -18,10 +74,10 @@ No file is fetched from the network; no code is generated at runtime.
 
 Because the same files can therefore reach a page up to three times
 (manifest, registered script, executeScript), both Perplexity files are
-idempotent: `platforms/perplexity/inject.js` (line 25) returns early
+idempotent: `platforms/perplexity/inject.js` (line 24) returns early
 when a non-enumerable `__aiChatExporterPerplexityInjectInstalled` flag
 is already set on `window`, and `platforms/perplexity/content.js` (line
-21) does the same in its isolated-world global. A second evaluation
+20) does the same in its isolated-world global. A second evaluation
 therefore wraps nothing and registers no second listener.
 
 **Root cause status: not fully identified.** The code comment above
@@ -45,44 +101,7 @@ other platform. Which Firefox version(s) show it has not been isolated.
 The `scripting` permission can be dropped from a future release once the
 root cause is identified and the manifest entry fixed.
 
-
-
-Paste the `scripting` section above and the sections below into the "Notes for
-reviewer" field when submitting the 3.0.0 build on AMO. They explain what's new and why the elevated
-permissions are needed.
-
-## What this release adds
-
-- **Seven new supported platforms:** Perplexity, Grok, Microsoft 365 Copilot,
-  DeepSeek, Mistral, **Google Gemini**, and **Google Search AI Overview / AI Mode**.
-- **New permissions** (`tabs` is *not* requested: the popup uses
-  `activeTab`, and the toolbar icon state relies on the host permissions,
-  since Firefox only exposes a tab's URL for permitted hosts):
-  - `scripting` — some Perplexity rollouts don't honour the manifest
-    `content_scripts` entry at tab-navigation time; `scripting.executeScript`
-    at `tabs.onUpdated(loading)` is the belt-and-suspenders fallback. It
-    only ever injects the same shipped files already declared in the
-    manifest; it doesn't fetch anything from the network.
-  - **Host permissions for the six new chat sites** (`www.perplexity.ai`,
-    `grok.com`, `chat.deepseek.com`, `chat.mistral.ai`,
-    `gemini.google.com`, `m365.cloud.microsoft`) and **10 Google locale hosts** (`.com, .be, .nl,
-    .fr, .de, .co.uk, .es, .it, .ca, .com.au`). See §Google below for the
-    Google justification.
-- **ZIP export format:** every export is now a ZIP of CSVs plus a
-  `<platform>_manifest_…json` sidecar (checksums, schema versions, HMAC
-  donor-ID pseudonymisation when a study salt is set). Replaces the previous
-  single-CSV download.
-- **UX overhaul:** dark theme (`prefers-color-scheme: dark`), WCAG 2.2 AA
-  keyboard + focus pass, a "Review your export" step after the download
-  (with a "Show in Downloads" button that calls `downloads.show`),
-  Development Preview banner + tag, trust footer, "What's in the file?"
-  section describing the ZIP contents.
-- **Error handling:** downloads/ZIP failures, empty exports, Claude 401
-  (auth) failures, and timeouts now surface specific messages instead of
-  hung spinners. Toolbar `!` badge when the most recent export on a tab
-  failed.
-
-## Google Search access — why ten locale hosts
+## Google Search access — why ten locale hosts (unchanged since 3.0.0)
 
 Google serves AI Overview and AI Mode responses from locale-specific
 domains (`www.google.de`, `www.google.fr`, etc.); the content differs by
@@ -103,21 +122,21 @@ re-requests the same search URL the user is viewing (a same-origin
 `fetchAttempted`, line 519) and never from the popup's status poll; AI
 Mode is never re-requested. There is no `window.fetch` hook on Google.
 
-## Network behaviour — nothing leaves the browser
+## Network behaviour — only the site being exported, never a third party
 
 The popup and background make **no network calls at all**: the Content
 Security Policy for extension pages is `connect-src 'none'`, which blocks
 `fetch` and `XMLHttpRequest` there. Content scripts talk only to the
 site they run on, over the user's existing session: on claude.ai,
-chat.deepseek.com, grok.com, chat.mistral.ai and gemini.google.com the
-content script re-fetches the conversation the user has open from the
-site's own conversation API when the passive hook has not seen it yet
-(page load, in-app navigation, popup open, export; Gemini has no passive
-hook and always uses its own `hNvQHb` history RPC); on Google it
-re-requests the current search page as described above. Nothing is ever sent to any
-third party. Processing is entirely local, and the ZIP is written to
-the user's own Downloads folder via `browser.downloads.download` with a
-local blob URL.
+chat.deepseek.com, grok.com and chat.mistral.ai the content script
+re-fetches the conversation the user has open from the site's own
+conversation API when the passive hook has not seen it yet (page load,
+in-app navigation, popup open, export); on gemini.google.com it uses the
+site's own `hNvQHb` history RPC as described above; on Google it
+re-requests the current search page as described above. Nothing is ever
+sent to any third party. Processing is entirely local, and the ZIP is
+written to the user's own Downloads folder via
+`browser.downloads.download` with a local blob URL.
 
 **DeepSeek token handling.** DeepSeek's `/api/v0/chat/history_messages`
 endpoint rejects cookie-only requests, so
@@ -126,9 +145,12 @@ stores in the page's `localStorage` (`userToken`; `readUserToken`, line
 146) and attaches it to that one same-origin request (line 215). The
 extension repeats the site's own request with the site's own credential;
 the token is never stored, logged, exported or sent anywhere else. The
-refresh runs when the popup opens (at most once every 30 seconds while
-the popup stays open and polls) and when the user exports, because
-DeepSeek streams new replies without re-requesting its history.
+request is made when a chat page opens, when the user exports, and while
+the popup is open on a chat page, because DeepSeek streams new replies
+without re-requesting its history. The open popup checks the page every
+2 seconds: once the conversation has been read, the request is repeated
+at most once every 30 seconds; until then (a new chat with no saved
+messages yet, or after a failed request) every check repeats it.
 
 `data_collection_permissions` is set to `"none"`.
 
@@ -152,9 +174,11 @@ through the site's own RPC, and Google Search reads the rendered page.)
   (replays are rejected; `shared/message-security.js` line 187 and the
   per-platform content scripts) before accepting. The shared
   `window.MessageSecurity` API is defined once, read-only and
-  non-enumerable. This stops other page scripts (ad trackers, unrelated
-  extensions, userscripts) from forging fake conversation data into
-  exports.
+  non-enumerable. The content script also accepts a message only from the
+  same window and origin, which keeps out messages from other frames and
+  other origins. This does not protect against JavaScript running on the
+  chat page itself: the site's own scripts, or anything else injected
+  into that page, can produce messages the content script accepts.
 - `platforms/m365_copilot/inject.js` — hooks the `WebSocket`
   constructor's `send` and `message` events because M365 Copilot
   streams responses over WebSocket rather than HTTP. Same signed-
@@ -166,18 +190,15 @@ through the site's own RPC, and Google Search reads the rendered page.)
   the DOM via a chain of CSS selectors + ARIA labels (fallbacks for
   layout drift). Opportunistically re-fetches the user's own
   `/search?q=…&…` URL when the overview renders late (same-origin).
-- `platforms/gemini/content.js` — no inject hook; Gemini's history is
-  behind a private `batchexecute` RPC. The content script reads the
-  page's own request token and re-fetches the open conversation page by
-  page through that RPC, same-origin and with the user's existing
-  cookies. Nothing is stored beyond the open tab's in-memory copy.
+- `platforms/gemini/content.js` — no inject hook; see "Google Gemini"
+  above.
 
 ## Where the source lives
 
 - Mozilla AMO version is cryptographically signed by Mozilla, so what
   users install matches what you review.
 - Development history: <https://github.com/dj-urg/ai-mirror-export>
-  (tag `v3.0.0` on `main` for this release; the extractor version in
+  (tag `v3.1.0` on `main` for this release; the extractor version in
   every export equals the add-on version).
 - The source submitted matches the GitHub tree 1:1 — no bundler, no
   minifier, no build-time code generation. The `web-ext build` output

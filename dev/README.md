@@ -66,7 +66,13 @@ every state × light/dark, one PNG and one axe report per combination, plus
 the status-card text, review-card copy and focused element in each
 `.axe.json`. Run `npm run baseline -- --label <name>` and
 `npm run baseline:compare -- <before> <after>`; the run exits non-zero if
-any capture produced no axe result.
+any capture produced no axe result. The compare prints the axe delta and
+every status field that differs.
+
+The export-outcome presets are captured 3 s after the click, so the
+outcome has been on screen past a 2 s poll tick. After the screenshot the
+baseline clicks Export again and records whether a new export started
+(`status.secondExport`).
 
 Rough recipe:
 

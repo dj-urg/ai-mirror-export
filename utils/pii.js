@@ -269,17 +269,96 @@ export function scrubRows(rows, columns, options) {
   return rows.map(r => scrubRow(r, columns, options));
 }
 
+// The query string and fragment of a URL: from the first '?' or '#' to the
+// next whitespace. A URL cell can hold a ", "-separated list of URLs, so a
+// trailing comma is the list separator, not part of the URL.
+const URL_TAIL_RE = /[?#]\S*/g;
+const PERCENT_RUN_RE = /(?:%[0-9A-Fa-f]{2})+/g;
+const MARKER_SPLIT_RE = /(<REDACTED:[A-Z]+>)/;
+
 /**
- * URL-valued cell. With `stripUrls` the whole value is replaced; otherwise
- * only credentials embedded in a URL (user:pass@host) are removed.
+ * Percent-decode, leaving any malformed sequence as it is.
+ * @param {string} s
+ * @returns {string}
+ */
+function decodeLenient(s) {
+  return s.replace(PERCENT_RUN_RE, (run) => {
+    try { return decodeURIComponent(run); } catch { return run; }
+  });
+}
+
+/**
+ * Scrub one query or fragment parameter value. The value is decoded ('+'
+ * as space) and run through `scrubText`. An unchanged value keeps its
+ * original bytes; a changed one is re-encoded in the same style ('+' or
+ * '%20' for spaces), with the `<REDACTED:*>` placeholders left literal so
+ * they stay readable and are counted like those in any other cell.
+ * @param {string} raw
+ * @param {{stripUrls?: boolean, names?: string[]}} [options]
+ * @returns {string}
+ */
+function scrubParamValue(raw, options) {
+  if (raw.length === 0) return raw;
+  const plusForSpace = raw.includes('+');
+  const decoded = decodeLenient(raw.replace(/\+/g, ' '));
+  const scrubbed = scrubText(decoded, options);
+  if (scrubbed === decoded) return raw;
+  return scrubbed.split(MARKER_SPLIT_RE).map((part, i) => {
+    if (i % 2 === 1) return part;
+    const enc = encodeURIComponent(part);
+    return plusForSpace ? enc.replace(/%20/g, '+') : enc;
+  }).join('');
+}
+
+/**
+ * Scrub the values of an '&'-separated parameter list (`a=1&b=2`). Names
+ * are kept; a segment without '=' is scrubbed as a value.
+ * @param {string} params
+ * @param {{stripUrls?: boolean, names?: string[]}} [options]
+ * @returns {string}
+ */
+function scrubParams(params, options) {
+  return params.split('&').map((seg) => {
+    const eq = seg.indexOf('=');
+    if (eq === -1) return scrubParamValue(seg, options);
+    return seg.slice(0, eq + 1) + scrubParamValue(seg.slice(eq + 1), options);
+  }).join('&');
+}
+
+/**
+ * Scrub a URL's query string and, when it carries parameters (contains
+ * '='), its fragment. Scheme, host and path are not touched.
+ * @param {string} tail - Starts with '?' or '#'.
+ * @param {{stripUrls?: boolean, names?: string[]}} [options]
+ * @returns {string}
+ */
+function scrubUrlTail(tail, options) {
+  const comma = /,+$/.exec(tail);
+  const body = comma ? tail.slice(0, comma.index) : tail;
+  const hashAt = body.indexOf('#');
+  const query = body[0] === '?' ? body.slice(1, hashAt === -1 ? undefined : hashAt) : null;
+  const fragment = hashAt === -1 ? null : body.slice(hashAt + 1);
+  let out = '';
+  if (query !== null) out += '?' + scrubParams(query, options);
+  if (fragment !== null) out += '#' + (fragment.includes('=') ? scrubParams(fragment, options) : fragment);
+  return out + (comma ? comma[0] : '');
+}
+
+/**
+ * URL-valued cell. With `stripUrls` the whole value is replaced. Otherwise
+ * credentials embedded in a URL (user:pass@host) are removed and the
+ * decoded query-string values (and fragment parameters) go through
+ * `scrubText`, since a search URL carries the query itself (`?q=…`).
  * @param {string} value
- * @param {{stripUrls?: boolean}} [options]
+ * @param {{stripUrls?: boolean, names?: string[]}} [options]
  * @returns {string}
  */
 export function scrubUrlValue(value, options) {
   if (typeof value !== 'string' || value.length === 0) return value;
   if (options && options.stripUrls) return '<REDACTED:URL>';
-  return value.replace(URL_USERINFO_RE, '<REDACTED:URL>');
+  return value
+    .replace(URL_USERINFO_RE, '<REDACTED:URL>')
+    .replace(URL_TAIL_RE, (tail) => scrubUrlTail(tail, options));
 }
 
 // Inside JSON columns: keys and values that denote identifiers, timestamps

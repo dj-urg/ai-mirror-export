@@ -17,7 +17,8 @@ authors:
     email: "daniel.jurg@vub.be"
 repository-code: "https://github.com/dj-urg/ai-mirror-export"
 url: "https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/"
-version: "3.0.0"
+version: "3.1.0"
+date-released: "2026-11-02"
 keywords:
   - data donation
   - digital methods

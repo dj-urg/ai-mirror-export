@@ -170,7 +170,7 @@ In every case, open the resulting ZIP and sanity-check: the metadata CSV
 has one row; the messages CSV row count matches what you can count in
 the UI (per content block for Claude; every branch for ChatGPT and
 Claude, with `on_visible_path` marking the visible thread); every CSV
-ends with CRLF; the manifest's `extractor_version` is `3.0.0` and each
+ends with CRLF; the manifest's `extractor_version` is `3.1.0` and each
 `files[]` entry has a `schema_version`.
 
 ## 9. PII scrubbing end to end

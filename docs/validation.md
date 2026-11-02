@@ -5,7 +5,7 @@ automated suite, the popup accessibility baseline, and the validation of real
 exports against raw captures. It is deliberately content-free: no
 conversation text, no identifiers from real chats.
 
-Status: **3.0.0 release candidate, 2026-10-14** (`release/3.0.0-final`).
+Status: **3.1.0 release candidate, 2026-11-02** (`release/3.1.0`).
 
 ## 1. Automated tests
 
@@ -19,21 +19,21 @@ tracked; real-origin captures are gitignored and no test reads them.
 | File | What it proves | Last result |
 |---|---|---|
 | `test_background_golden.js` | Drives the real `background.js` end to end (mocked `browser.*`, frozen clock, fixed donor id) for every platform fixture, scrubbing off and on, plus a salted donor-id run, and compares every ZIP entry (CSVs and manifest) byte for byte with `testing/data/synthetic/golden/`. Also checks BOM, manifest/file consistency, SHA-256 per file, frozen timestamps, the consent record in the manifest telemetry, and that no export is named `unknown`. Goldens change only via `UPDATE_GOLDEN=1` in an intentional-change commit. | 1063 passed |
-| `test_pii_sweep.js` | Plants an email, phone number, IPv4 and API-key-like token in every prose field of every fixture, exports with scrubbing on, and asserts none of them appears in any CSV column (raw-JSON and canonical columns included), the manifest or any file name; every `*_json` cell still parses; `pii_redactions_total` equals the sum of `by_type`; the Claude fixture with an attachment, citations, a tool call and thinking is scrubbed in each of those files. | 1380 passed |
-| `test_pii.js` | Unit tests of every scrub rule, the column classification (every column in the golden exports is classified structural / url / json / text), JSON-aware scrubbing (ids, timestamps and URLs preserved, output still valid JSON) and row scrubbing. | 89 passed |
+| `test_pii_sweep.js` | Plants an email, phone number, IPv4 and API-key-like token in every prose field of every fixture, and percent-encoded in the query string and fragment of every URL-valued field, exports with scrubbing on, and asserts none of them appears, as typed or percent-encoded, in any CSV column (raw-JSON and canonical columns included), the manifest or any file name; every `*_json` cell still parses; `pii_redactions_total` equals the sum of `by_type`; the Claude fixture with an attachment, citations, a tool call and thinking is scrubbed in each of those files. | 1380 passed |
+| `test_pii.js` | Unit tests of every scrub rule, the column classification (every column in the golden exports is classified structural / url / json / text), JSON-aware scrubbing (ids, timestamps and URLs preserved, output still valid JSON), URL query-string and fragment scrubbing, and row scrubbing. | 99 passed |
 | `test_background_outcomes.js` | Empty and invalid payloads on several platforms broadcast `empty_export` / `invalid_data` with a validation code and download nothing; the Grok URL-id fallback; a platform/origin mismatch is dropped. | 38 passed |
-| `test_chatgpt_golden.js`, `test_claude_golden.js`, `test_perplexity_golden.js`, `test_grok_golden.js`, `test_deepseek_golden.js`, `test_mistral_golden.js`, `test_gemini_golden.js` | Per-extractor invariants on the synthetic fixtures: row counts, roles, canonical header, provenance columns, and the 3.0.0 behaviours (visible path, thinking summaries, DeepSeek `model`/`cite_index`, Mistral display text, Gemini candidate ids and citation offsets). | 29 / 29 / 12 / 14 / 26 / 23 / 34 passed |
+| `test_chatgpt_golden.js`, `test_claude_golden.js`, `test_perplexity_golden.js`, `test_grok_golden.js`, `test_deepseek_golden.js`, `test_mistral_golden.js`, `test_gemini_golden.js` | Per-extractor invariants on the synthetic fixtures: row counts, roles, canonical header, provenance columns, and the 3.0.0 and 3.1.0 behaviours (visible path, thinking summaries, DeepSeek `model`/`cite_index`, Mistral display text, Gemini candidate ids and citation offsets). | 29 / 29 / 12 / 14 / 26 / 23 / 34 passed |
 | `test_perplexity_extractor.js` | Perplexity block parsing variants. | 32 passed |
 | `test_validators.js` | Row validators and every CSV schema. | 130 passed |
 | `test_manifest.js` | SHA-256, HMAC donor id, row counting, manifest building (schema 1.2.0), timestamp normalisation, canonical headers. | 38 passed |
 | `test_text_cleaner.js` | `text_cleaned` rules. | 10 passed |
-| `test_version_consistency.js` | `EXTRACTOR_VERSION` = `manifest.json` version = `package.json` = `config/settings.js` = `CITATION.cff`. | 5 passed |
+| `test_version_consistency.js` | `EXTRACTOR_VERSION` = `manifest.json` version = `package.json` = both `package-lock.json` fields = `config/settings.js` = `CITATION.cff`. | 7 passed |
 | `test_settings_domains.js` | Configured platform domains match the manifest's content-script and host-permission hosts both ways; Gmail/Docs and the Perplexity apex are not platforms. | 89 passed |
 | `test_gemini_content.js` | Runs the Gemini content script against a fake `hNvQHb` endpoint: raw-turn decoding, pagination with overlapping pages, one citation row per reference located in the answer (byte and character offset pairs, leading whitespace), candidate choice, a fresh fetch at export (turns sent after page load, an answer still streaming at page load), fallback to the cached copy when that fetch fails, and foreign senders ignored. | 24 passed |
 | `test_message_security.js` | Signed page→content messages: sign/verify, tamper, wrong secret, stale timestamp, replayed nonce rejected. | 9 passed |
 | `test_extract_helpers.js` | The shared `stripUtmParams` / `toJsonCell` / `normalizeRole`. | 12 passed |
 
-Last full run (2026-11-02, Gemini export refresh and citation rows): **20 files, 3 086 assertions, 0 failures**; ESLint 0 errors / 0 warnings; `web-ext lint` 0 / 0 / 0; `web-ext build` 51 files, nothing from `dev/`, `docs/`, `testing/` or the configs.
+Last full run (2026-11-02, `release/3.1.0` at the version bump): **20 files, 3 098 assertions, 0 failures**; ESLint 0 errors / 0 warnings; `web-ext lint` 0 / 0 / 0; `web-ext build` 51 files, nothing from `dev/`, `docs/`, `testing/` or the configs.
 
 Fixtures (`testing/data/synthetic/`) are hand-written: ChatGPT (mapping,
 metadata-context and branched variants), Claude (plain, rich: thinking +
@@ -53,16 +53,38 @@ drives it with Playwright/Firefox, runs axe-core (WCAG 2.x A/AA + best
 practice) on every state in light and dark theme, and records the status
 card text, the review-card copy and the focused element for each capture.
 
-Last run (label `p7-c1`, 2026-10-14): **36 states × 2 themes = 72
-captures, 0 axe violations**, every ready state focuses the export button,
-the consent state focuses the checkbox, the review step shows both copy
-variants. A baseline was run after every popup-affecting commit of the
-release branch (labels `p1-…` to `p7-…`), all at 0 violations.
+Last run (label `pre-upload-3.1.0`, 2026-11-02): **38 states × 2 themes
+= 76 captures, 0 axe violations**, every ready state focuses the export
+button, the consent state focuses the checkbox, the review step shows both
+copy variants. The export-outcome states are captured 3 s after the click
+(past a 2 s poll tick), and a second click on Export starts a new export
+in every one of them. For 3.0.0 a baseline was run after every
+popup-affecting commit of the release branch (labels `p1-…` to `p7-…`),
+all at 0 violations.
 
 What the harness cannot show (real Firefox only): toolbar icon state
 transitions, `downloads.show`, the first-run consent flow on a fresh
-profile, the 2.1.1 → 3.0.0 update prompt. These are in
+profile, the permission prompt on update. These are in
 `docs/manual-tests.md`.
+
+Manual Firefox pass for 3.1.0 (2026-11-02, `release/3.1.0` at `7ee9fb3`):
+
+- Temporary add-on in an everyday profile. Popup: the result card stays
+  up after 5 s, and a second and third export (mouse, then Enter) each
+  download a ZIP. Gemini: an export, then one more turn and a second
+  export without reloading, which contains the new turn. Google: with
+  scrubbing on, a query holding an email and a phone number leaves
+  neither value in any of the three CSVs; with scrubbing off they are
+  present.
+- Upgrade over 3.0.0 in Firefox Developer Edition: 3.0.0 installed from
+  AMO and consent accepted, then the unsigned 3.1.0 build installed from
+  file (signature check off). A file install shows the full install
+  prompt (21 domains, the 3.0.0 set plus `gemini.google.com`), not the
+  update prompt AMO users get. Cancel left 3.0.0 installed. After
+  accepting: version 3.1.0, `gemini.google.com` granted, consent not
+  asked again, the new footer shown, and a Gemini export worked.
+- Still to check after AMO signs 3.1.0: the update prompt itself
+  (3.0.0 from AMO's version list, then "Check for Updates").
 
 ## 3. Real-data validation method
 

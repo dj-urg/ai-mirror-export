@@ -41,7 +41,21 @@ const TEXT_KEYS = new Set([
   'searchQuery', 'thinking', 'reasoning', 'code', 'extracted_text', 'extracted_content', 'file_name', 'cited_text'
 ]);
 // Keys that look like text but are structural; never plant there.
-const SKIP_KEYS = new Set(['url', 'seeMoreUrl', 'source_page_url', 'domain', 'imageLink']);
+const SKIP_KEYS = new Set(['domain']);
+// URL-valued keys: the planted values go into the query string and the
+// fragment, percent-encoded the way a browser puts them there. A Google
+// search URL carries the query itself (`?q=…`).
+const URL_KEYS = new Set(['url', 'seeMoreUrl', 'source_page_url', 'imageLink']);
+
+function plantInUrl(url) {
+  const hashAt = url.indexOf('#');
+  const base = hashAt === -1 ? url : url.slice(0, hashAt);
+  const fragment = hashAt === -1 ? '' : url.slice(hashAt + 1);
+  const words = PLANT_SUFFIX.trim();
+  const query = encodeURIComponent(words).replace(/%20/g, '+');
+  return `${base}${base.includes('?') ? '&' : '?'}pii=${query}`
+    + `#${fragment ? fragment + '&' : ''}pii_frag=${encodeURIComponent(words)}`;
+}
 
 export function plantPii(value, key = '') {
   if (Array.isArray(value)) return value.map(v => plantPii(v, key));
@@ -52,6 +66,7 @@ export function plantPii(value, key = '') {
   }
   if (typeof value === 'string') {
     if (SKIP_KEYS.has(key)) return value;
+    if (URL_KEYS.has(key)) return value ? plantInUrl(value) : value;
     if (/\s/.test(value) || TEXT_KEYS.has(key)) return value + PLANT_SUFFIX;
   }
   return value;
@@ -64,8 +79,12 @@ function assert(name, cond, detail = '') {
   if (cond) { passed++; } else { failed++; console.error(`${label}:`, name, detail); }
 }
 
+// A planted value can survive percent-encoded (an email in a URL keeps its
+// '@' as %40).
 function findPlanted(text) {
-  return Object.entries(PLANTED).filter(([, v]) => text.includes(v)).map(([k]) => k);
+  return Object.entries(PLANTED)
+    .filter(([, v]) => text.includes(v) || text.includes(encodeURIComponent(v)))
+    .map(([k]) => k);
 }
 
 for (const s of PLATFORM_SCENARIOS) {

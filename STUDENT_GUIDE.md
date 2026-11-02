@@ -31,7 +31,7 @@ The **AI Chat Exporter** is a browser extension (Firefox) that lets a user expor
 - **Google Gemini** — `gemini.google.com/app/*`
 - **Google Search AI** — the AI Overview box and AI Mode conversations on `google.com` and nine other Google locales
 
-Everything runs **locally in the browser**. No data leaves the user's machine during extraction. The extension reads what the chat platform already sent to the user's browser, formats it as CSV, and triggers a download.
+Everything runs **locally in the browser**. The extension reads the conversation from the chat platform itself: what the platform already sent to the user's browser or, on some platforms (always on Google Gemini), by asking the platform for the open conversation again with the user's own login. It then formats it as CSV and triggers a download. It talks only to that platform, and the conversation is never sent anywhere else.
 
 This matters for research: donors stay in control of what they share, and you (the researcher) receive a clean, documented file rather than a scraped HTML blob.
 

@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "google_search",
   "conversation_id": "explain plate tectonics",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.1.0",
       "rows": 2,
       "bytes": 911,
-      "sha256": "71d3f710d4ba1d331db27ed0ac8dca0e69dad4d7df5c80edc0541e600af4a2b6"
+      "sha256": "a5194ded6d12397644a3fe2b52e8f6e4dd82ac7d061f0b729b7c04e82c5a5d54"
     },
     {
       "filename": "google_ai_mode_canonical_explainplatetectonics_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1341,
-      "sha256": "8e79adf252cb84dd7c3aeab837ee4682e605cd1a980d3365f625579d0778aece"
+      "sha256": "0cbe971049a5cacdd2aa2883974154d7df1819e69b2a00b83131590d6a1a3e42"
     },
     {
       "filename": "google_sources_explainplatetectonics_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 440,
-      "sha256": "c3dc5aea2be07f9b8d6f0206b5fd6a2ddd4ad72044aebca94cd6c4b0f28775c4"
+      "sha256": "9a9091a2eb7e660ba1c94186fa85a4ed796bacc27097538ee3290e611285652b"
     }
   ],
   "telemetry": {

@@ -241,6 +241,34 @@ async function captureOne(page, state, theme, outDir) {
     console.log(`  [warn] screenshot failed: ${e.message}`);
   }
 
+  // Export again on the auto-export presets. The outcome has been on screen
+  // past a poll tick and more than 2 s have passed since the first click
+  // (the popup's rate limit), so a click must start a new export. The
+  // popup paints "Exporting…" synchronously inside the click handler, so
+  // the status is read straight after the click.
+  if (status) {
+    try {
+      const second = await withTimeout(page.evaluate(() => {
+        const iframe = document.getElementById('popupFrame');
+        const w = iframe && iframe.contentWindow;
+        const d = iframe && iframe.contentDocument;
+        const map = w && w.__HARNESS_STATE_MAP__;
+        const preset = map && map[w.__HARNESS_STATE__];
+        if (!preset || !preset.autoExport) return null;
+        const btn = d.getElementById('exportBtn');
+        if (!btn || btn.disabled) return { clicked: false, message: null };
+        btn.click();
+        return {
+          clicked: true,
+          message: (d.getElementById('statusMessage')?.textContent || '').trim()
+        };
+      }), 5000, 'second export');
+      if (second) status.secondExport = second;
+    } catch (e) {
+      console.log(`  [warn] second export probe failed: ${e.message}`);
+    }
+  }
+
   const slim = {
     state,
     theme,
@@ -367,6 +395,21 @@ async function compare(before, after) {
   }
   console.log('-'.repeat(header.length));
   console.log(`${'totals'.padEnd(w)}  ${String(bTotal).padStart(6)}  ${String(aTotal).padStart(6)}  ${String(aTotal - bTotal).padStart(5)}`);
+
+  // What the popup showed, not just what axe found: a state that renders
+  // the wrong card can have zero violations.
+  const statusDiffs = [];
+  for (const k of [...keys].sort()) {
+    const bs = b.get(k)?.status || {};
+    const as = a.get(k)?.status || {};
+    for (const field of new Set([...Object.keys(bs), ...Object.keys(as)])) {
+      const bv = JSON.stringify(bs[field] ?? null);
+      const av = JSON.stringify(as[field] ?? null);
+      if (bv !== av) statusDiffs.push(`${k}  ${field}: ${bv} → ${av}`);
+    }
+  }
+  console.log(`\nStatus differences: ${statusDiffs.length}`);
+  for (const line of statusDiffs) console.log(`  ${line}`);
 }
 
 function printHelp() {

@@ -1,6 +1,6 @@
 {
   "manifest_schema_version": "1.2.0",
-  "extractor_version": "3.0.0",
+  "extractor_version": "3.1.0",
   "platform": "deepseek",
   "conversation_id": "deepseek-golden-0001",
   "api_format": null,
@@ -14,7 +14,7 @@
       "schema_version": "1.0.0",
       "rows": 1,
       "bytes": 476,
-      "sha256": "80545c9d73eaa3e55a5f6ffd84cf91cb34d2808c88b38ed9c5ad0a811d1efd08"
+      "sha256": "31bdbd81545f8430f4c03c02541f7111fcccaa7c908b5088d81d49d2be5e9904"
     },
     {
       "filename": "deepseek_messages_deepseek-golden-0001_2026-04-13T12-00-00Z.csv",
@@ -22,7 +22,7 @@
       "schema_version": "1.1.0",
       "rows": 2,
       "bytes": 1722,
-      "sha256": "e53126700dd13436c243a0d2a90f8dd83d460bb06c59898baa9f3b1492bae475"
+      "sha256": "cde92b949eaed7a871b9eccdbc35237d75887e1ce990c0042b845e77b7df33d5"
     },
     {
       "filename": "deepseek_messages_canonical_deepseek-golden-0001_2026-04-13T12-00-00Z.csv",
@@ -30,7 +30,7 @@
       "schema_version": "1.0.0",
       "rows": 2,
       "bytes": 1406,
-      "sha256": "e1372a06064936da60d0db9770148dafdd108c979d6075abdbce3ee9b80f966d"
+      "sha256": "a114949945dea98a4adf93d71c94836e33021c22ec7b3b1060c6a41183385646"
     }
   ],
   "telemetry": {
