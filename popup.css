@@ -269,6 +269,9 @@ html[data-force-color-scheme="dark"] {
   --badge-mistral-strong: #ffa366;
   --badge-mistral-bg: #3d2010;
   --badge-mistral-text: #ffc69e;
+  --badge-gemini-strong: #a8b3ff;
+  --badge-gemini-bg: #222a52;
+  --badge-gemini-text: #c8d0ff;
   --badge-m365_copilot-strong: #b396ff;
   --badge-m365_copilot-bg: #261a3d;
   --badge-m365_copilot-text: #d0c2ff;
