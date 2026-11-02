@@ -67,6 +67,25 @@ transitions, `downloads.show`, the first-run consent flow on a fresh
 profile, the permission prompt on update. These are in
 `docs/manual-tests.md`.
 
+Manual Firefox pass for 3.1.0 (2026-11-02, `release/3.1.0` at `7ee9fb3`):
+
+- Temporary add-on in an everyday profile. Popup: the result card stays
+  up after 5 s, and a second and third export (mouse, then Enter) each
+  download a ZIP. Gemini: an export, then one more turn and a second
+  export without reloading, which contains the new turn. Google: with
+  scrubbing on, a query holding an email and a phone number leaves
+  neither value in any of the three CSVs; with scrubbing off they are
+  present.
+- Upgrade over 3.0.0 in Firefox Developer Edition: 3.0.0 installed from
+  AMO and consent accepted, then the unsigned 3.1.0 build installed from
+  file (signature check off). A file install shows the full install
+  prompt (21 domains, the 3.0.0 set plus `gemini.google.com`), not the
+  update prompt AMO users get. Cancel left 3.0.0 installed. After
+  accepting: version 3.1.0, `gemini.google.com` granted, consent not
+  asked again, the new footer shown, and a Gemini export worked.
+- Still to check after AMO signs 3.1.0: the update prompt itself
+  (3.0.0 from AMO's version list, then "Check for Updates").
+
 ## 3. Real-data validation method
 
 Synthetic fixtures prove the pipeline is deterministic and complete for
