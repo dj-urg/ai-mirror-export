@@ -1,14 +1,25 @@
 # Changelog
 
-## Unreleased
+## 3.1.0 — 2026-11-02
 
 ### What's new
 
-- **Google Gemini support.** Conversations on `gemini.google.com` now export to the same ZIP-of-CSVs layout as the other sites: `gemini_metadata`, `gemini_messages`, `gemini_sources` (one row per citation, with the position of the answer passage it supports) and `gemini_messages_canonical`, plus the manifest. The content script re-fetches the open conversation through Gemini's own `hNvQHb` history RPC using the site's existing cookies, and fetches it again at every export so turns sent after the page loaded are included; nothing leaves the browser. This adds one host permission (`gemini.google.com`).
+- **Google Gemini support.** You can now export your conversations from Google Gemini (`gemini.google.com`), in the same ZIP of spreadsheet (CSV) files as the other sites. When you click Export, the extension reads the whole conversation again from Gemini, so messages you sent after opening the page are included. As with every site, everything happens in your browser and nothing is sent anywhere.
 
 ### Fixed
 
-- **PII scrubbing now covers the query part of links.** With scrubbing on, the values after `?` (and `#name=value` parameters) in URL columns and URL-valued JSON keys go through the same rules as text. Before, a Google search query survived in `source_page_url` (`…/search?q=…`) in all three Google files and the canonical `platform_specific_json`, as did `?email=` / `&token=` parameters in source links and Microsoft 365 Copilot's `seeMoreUrl`, although the manifest said scrubbing was on. Affects scrub-on exports only; see "PII scrubbing coverage" in [`METHODS.md`](METHODS.md).
+- **The Export button works again after an export.** After one export the button stopped responding until you closed and reopened the extension, so "try again" after a failed download did nothing. The extension also replaced "Exporting…" and the result of the export with "Ready to export" after about two seconds. The result now stays on screen until you export again or the page changes.
+- **"Remove sensitive data" now also cleans web addresses.** When this option is on, emails, phone numbers and similar details are now also removed from inside links in the exported files, for example the Google search you typed. Before, they could stay in a link even though the rest of the file was cleaned.
+
+### Why Firefox is asking for permission again
+
+When this update installs, Firefox may ask you to approve one new permission: access to `gemini.google.com`. The extension needs it so it can read your Gemini conversations when you choose to export them. This is the only new permission. The extension does not ask for access to anything else, and it still sends nothing to any server: your conversations stay in your browser until you decide to share the downloaded file.
+
+### For researchers
+
+- **Four new schemas, all at `1.0.0`:** `gemini_metadata`, `gemini_messages`, `gemini_sources` (one row per citation, with the position of the answer passage it supports) and `gemini_messages_canonical`. The content script reads the open conversation through Gemini's own `hNvQHb` history RPC, same-origin with the site's existing cookies, and reads it again at every export. Column definitions are in [`METHODS.md`](METHODS.md).
+- **`extractor_version` is `3.1.0`** in every CSV and manifest. No existing schema changed; with scrubbing off, exports from the other nine sites differ from 3.0.0 only in this value.
+- **PII scrubbing now covers URL query strings.** With `pii_scrub_enabled`, the decoded value of every query-string parameter (and every fragment parameter, e.g. `#:~:text=…`) in URL columns (`url`, `url_clean`, `source_page_url`, `source_urls`, `image_link`, `conversation_url`) and in URL-valued keys inside `*_json` columns gets the text rules. Scheme, host, path and unchanged parameters keep their exact bytes; a changed value keeps its encoding style, with the placeholder written literally (`…/search?q=mail+<REDACTED:EMAIL>`). In 3.0.0 a Google search query survived in `source_page_url` (`…/search?q=…`) in all three Google files and the canonical `platform_specific_json`, as did `?email=` / `&token=` parameters in source links and Microsoft 365 Copilot's `seeMoreUrl`. Scrub-on exports only; scrub-off output is unchanged. `pii_ruleset_version` stays `1.0.0` (the patterns did not change, only where they apply). See "PII scrubbing coverage" in [`METHODS.md`](METHODS.md).
 
 ## 3.0.0 — 2026-10-14
 
