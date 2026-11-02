@@ -10,6 +10,7 @@ Export your AI chat conversations to CSV, entirely on your own device.
 [![Mozilla Add-on users](https://img.shields.io/amo/users/local-ai-chat-exporter?label=users&color=blue)](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
 [![CI](https://github.com/dj-urg/ai-mirror-export/actions/workflows/ci.yml/badge.svg)](https://github.com/dj-urg/ai-mirror-export/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18257030.svg)](https://doi.org/10.5281/zenodo.18257030)
 
 ### [Install from Firefox Add-ons &rarr;](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/)
 
@@ -151,7 +152,7 @@ CI runs the Node test suite on every push (unit tests, byte-exact golden exports
 
 **PII scrubbing is best-effort.** The optional pass in [`utils/pii.js`](utils/pii.js) targets emails, phone numbers, IPv4 addresses, JWTs, bearer tokens, provider-prefixed keys (`sk-…`, `AKIA…`, `AIza…`, etc.), credit-card-shaped numbers (Luhn-checked), US SSNs, and long opaque tokens, in every file of the ZIP; identifiers, timestamps and URLs are preserved so files stay joinable (see "PII scrubbing coverage" in `METHODS.md`). Scrubbed values are replaced with tagged placeholders (`<REDACTED:EMAIL>`, …) and counted in the manifest. It will miss names, addresses, and anything that doesn't match these patterns. Treat it as a reduction in exposure, not a guarantee.
 
-**How to cite.** The repository ships a [`CITATION.cff`](CITATION.cff), so GitHub shows a "Cite this repository" button in the sidebar. BibTeX / APA export is generated from that file.
+**How to cite.** The repository ships a [`CITATION.cff`](CITATION.cff), so GitHub shows a "Cite this repository" button in the sidebar. BibTeX / APA export is generated from that file. Every release is archived on Zenodo. To cite the exact version used in a study, use that version's DOI (3.1.0: [10.5281/zenodo.23888846](https://doi.org/10.5281/zenodo.23888846)); [10.5281/zenodo.18257030](https://doi.org/10.5281/zenodo.18257030) always resolves to the latest version.
 
 ## Development
 

@@ -16,6 +16,7 @@ authors:
     given-names: "Daniel"
     affiliation: "Vrije Universiteit Brussel"
     email: "daniel.jurg@vub.be"
+doi: "10.5281/zenodo.18257030"
 repository-code: "https://github.com/dj-urg/ai-mirror-export"
 url: "https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/"
 license: MIT
