@@ -13,7 +13,7 @@
 
 ### Why Firefox is asking for permission again
 
-When this update installs, Firefox may ask you to approve one new permission: access to `gemini.google.com`. The extension needs it so it can read your Gemini conversations when you choose to export them. This is the only new permission. The extension does not ask for access to anything else, and it still sends nothing to any server: your conversations stay in your browser until you decide to share the downloaded file.
+When this update installs, Firefox may ask you to approve one new permission: access to `gemini.google.com`. The extension needs it so it can read your Gemini conversations when you choose to export them. This is the only new permission. The extension does not ask for access to anything else. It only talks to the chat site you are exporting from, and your conversations are never sent anywhere else: they stay in your browser until you decide to share the downloaded file.
 
 ### For researchers
 
