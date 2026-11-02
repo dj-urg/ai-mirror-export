@@ -122,7 +122,7 @@ re-requests the same search URL the user is viewing (a same-origin
 `fetchAttempted`, line 519) and never from the popup's status poll; AI
 Mode is never re-requested. There is no `window.fetch` hook on Google.
 
-## Network behaviour — nothing leaves the browser
+## Network behaviour — only the site being exported, never a third party
 
 The popup and background make **no network calls at all**: the Content
 Security Policy for extension pages is `connect-src 'none'`, which blocks

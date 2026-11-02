@@ -4,7 +4,7 @@
 
 ### What's new
 
-- **Google Gemini support.** You can now export your conversations from Google Gemini (`gemini.google.com`), in the same ZIP of spreadsheet (CSV) files as the other sites. When you click Export, the extension reads the whole conversation again from Gemini, so messages you sent after opening the page are included. As with every site, everything happens in your browser and nothing is sent anywhere.
+- **Google Gemini support.** You can now export your conversations from Google Gemini (`gemini.google.com`), in the same ZIP of spreadsheet (CSV) files as the other sites. When you click Export, the extension reads the whole conversation again from Gemini, so messages you sent after opening the page are included. As with every site, the extension only talks to the chat site you are exporting from, and your conversations are never sent anywhere else.
 
 ### Fixed
 

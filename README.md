@@ -77,7 +77,7 @@ flowchart LR
     B -->|runtime message| C[Background script]
     C -->|CSV + ZIP, browser.downloads| D[("ZIP in your<br/>Downloads folder")]
 
-    subgraph Device["Your device — nothing leaves it"]
+    subgraph Device["Your device — talks only to the chat site, the export stays here"]
         A
         B
         P
@@ -86,7 +86,7 @@ flowchart LR
     end
 ```
 
-The extension hooks the chat site's own `fetch` calls (a WebSocket on Microsoft 365 Copilot, the rendered page on Google), reads the conversation payload the site has already loaded for you, and, when you click Export, hands it to the background script, which formats it as CSV, bundles the CSVs plus a manifest with SHA-256 checksums into a ZIP, and triggers a browser download. There is no server component.
+The extension hooks the chat site's own `fetch` calls (a WebSocket on Microsoft 365 Copilot, the rendered page on Google) and reads the conversation payload the site loads for you. Where the hook has not seen the conversation, and always on Google Gemini, which has no hook, it asks the same site for the open conversation again, with your existing login. When you click Export, it hands the conversation to the background script, which formats it as CSV, bundles the CSVs plus a manifest with SHA-256 checksums into a ZIP, and triggers a browser download. There is no server component.
 
 **What the extension does *not* do:**
 
@@ -136,7 +136,7 @@ The real risk is that your past chats may contain sensitive content you've forgo
 - **Updates ship through Mozilla.** No `update_url` in `manifest.json`, so updates flow through [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/) and are signed by Mozilla. Integrity depends on the publisher's AMO account (2FA enabled).
 - **PII scrubbing is pattern-based** ([`utils/pii.js`](utils/pii.js)) — matches emails, phones, IP addresses, API keys, credit cards, SSNs, long tokens, in every file of the ZIP when it is on (canonical CSV and raw-JSON columns included). Misses free-text names, addresses, employer names, medical narrative. A reduction in exposure, not a guarantee. On/off is a per-study decision that must match the consent text.
 
-**Why ten Google locale permissions?** The Google Search content script only runs on `/search*` paths (and does nothing on the rest of Google) to read AI Overview text that is already visible in the page you're viewing; no search queries are sent anywhere by the extension. The locale set — `.com`, `.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au` — covers the European and English-speaking populations this release targets. If you already use the extension, Firefox may ask you to approve one new permission when it updates to 3.1.0: access to `gemini.google.com`, so the extension can read your Gemini conversations when you export them. Nothing else is new. The extension only talks to the chat site you are exporting from, and your conversations are never sent anywhere else.
+**Why ten Google locale permissions?** The Google Search content script only runs on `/search*` paths (and does nothing on the rest of Google) to read AI Overview text that is already visible in the page you're viewing. The extension never runs a new search: at most it asks Google once more for the search page you are already viewing, to read the overview text. The locale set — `.com`, `.be`, `.nl`, `.fr`, `.de`, `.co.uk`, `.es`, `.it`, `.ca`, `.com.au` — covers the European and English-speaking populations this release targets. If you already use the extension, Firefox may ask you to approve one new permission when it updates to 3.1.0: access to `gemini.google.com`, so the extension can read your Gemini conversations when you export them. Nothing else is new. The extension only talks to the chat site you are exporting from, and your conversations are never sent anywhere else.
 
 ## How this tool is verified
 
