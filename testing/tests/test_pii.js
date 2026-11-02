@@ -230,6 +230,33 @@ assertEq(scrubCell('url', 'https://example.org/a', { stripUrls: true }).value, '
 assertEq(scrubCell('url', 'https://example.org/' + 'a'.repeat(40)).value, 'https://example.org/' + 'a'.repeat(40),
   'url column: long path segment is not a token');
 
+// URL columns: decoded query values and fragment parameters are scrubbed;
+// scheme, host and path, and unchanged parameters, keep their bytes.
+assertEq(
+  scrubCell('source_page_url', 'https://www.google.com/search?q=mail+jane.doe%40example.org+or+555-123-9876&udm=50', {}, 'google_search').value,
+  'https://www.google.com/search?q=mail+<REDACTED:EMAIL>+or+<REDACTED:PHONE>&udm=50',
+  'url column: search query scrubbed, + style kept');
+assertEq(
+  scrubCell('source_page_url', 'https://www.google.com/search?q=mail+jane.doe%40example.org', {}, 'google_search').counts,
+  { total: 1, byType: { EMAIL: 1 } }, 'url column: query redactions counted');
+assertEq(scrubCell('url', 'https://www.google.com/search?q=how+do+tides+work&hl=en#frag').value,
+  'https://www.google.com/search?q=how+do+tides+work&hl=en#frag', 'url column: clean query unchanged');
+assertEq(scrubCell('url', 'https://ex.org/a?email=a%40b.co&token=sk-' + 'Q'.repeat(20) + '&utm_source=x').value,
+  'https://ex.org/a?email=<REDACTED:EMAIL>&token=<REDACTED:TOKEN>&utm_source=x', 'url column: ?email= and &token=');
+assertEq(scrubCell('url', 'https://ex.org/p#:~:text=call%20555-123-9876').value,
+  'https://ex.org/p#:~:text=call%20<REDACTED:PHONE>', 'url column: fragment parameters scrubbed, %20 style kept');
+assertEq(scrubCell('url', 'https://ex.org/p#2026-01-15').value,
+  'https://ex.org/p#2026-01-15', 'url column: plain fragment left alone');
+assertEq(scrubCell('source_urls', 'https://a.org/?x=1, https://b.org/?e=a%40b.co, https://c.org/').value,
+  'https://a.org/?x=1, https://b.org/?e=<REDACTED:EMAIL>, https://c.org/', 'url column: list keeps its separators');
+assertEq(scrubCell('url', 'https://ex.org/p?bad=%E0%A4&e=a%40b.co').value,
+  'https://ex.org/p?bad=%E0%A4&e=<REDACTED:EMAIL>', 'url column: malformed encoding left as is');
+{
+  const r = scrubJsonText(JSON.stringify({ seeMoreUrl: 'https://www.bing.com/search?q=a%40b.co' }));
+  assertEq(JSON.parse(r.value).seeMoreUrl, 'https://www.bing.com/search?q=<REDACTED:EMAIL>', 'JSON url key: query scrubbed');
+  assertEq(r.counts, { total: 1, byType: { EMAIL: 1 } }, 'JSON url key: query redaction counted');
+}
+
 // JSON columns: valid after scrubbing; ids, timestamps and URLs preserved
 {
   const raw = JSON.stringify({

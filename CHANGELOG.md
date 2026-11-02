@@ -6,6 +6,10 @@
 
 - **Google Gemini support.** Conversations on `gemini.google.com` now export to the same ZIP-of-CSVs layout as the other sites: `gemini_metadata`, `gemini_messages`, `gemini_sources` (one row per citation, with the position of the answer passage it supports) and `gemini_messages_canonical`, plus the manifest. The content script re-fetches the open conversation through Gemini's own `hNvQHb` history RPC using the site's existing cookies, and fetches it again at every export so turns sent after the page loaded are included; nothing leaves the browser. This adds one host permission (`gemini.google.com`).
 
+### Fixed
+
+- **PII scrubbing now covers the query part of links.** With scrubbing on, the values after `?` (and `#name=value` parameters) in URL columns and URL-valued JSON keys go through the same rules as text. Before, a Google search query survived in `source_page_url` (`…/search?q=…`) in all three Google files and the canonical `platform_specific_json`, as did `?email=` / `&token=` parameters in source links and Microsoft 365 Copilot's `seeMoreUrl`, although the manifest said scrubbing was on. Affects scrub-on exports only; see "PII scrubbing coverage" in [`METHODS.md`](METHODS.md).
+
 ## 3.0.0 — 2026-10-14
 
 ### What's new
