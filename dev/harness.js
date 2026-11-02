@@ -53,6 +53,13 @@
   // callers always get a Promise for the *current* reload.
   window.__harnessReady = Promise.resolve();
 
+  // How long after the (last) Export click an auto-export preset resolves.
+  // The mock's outcome lands about 400 ms after the click, so this leaves
+  // the outcome on screen for 2.6 s: past at least one 2 s poll tick and
+  // its 300 ms debounce. Captures at ~900 ms hid the poll overwriting the
+  // outcome with "Ready" (release audit 3.1.0, P0-2).
+  const SETTLE_AFTER_CLICK_MS = 3000;
+
   // Presets whose point is an export outcome click Export for you once the
   // popup has rendered. The table lives in mock-browser.js (STATE_MAP[x]
   // .autoExport); the iframe exposes it as window.__HARNESS_STATE_MAP__.
@@ -89,11 +96,12 @@
                 const again = clickExportInPopup();
                 logEvent(again ? 'auto-export: second click' : 'auto-export: second click skipped (button disabled)');
               }, 900);
-              setTimeout(resolve, 1600);
+              setTimeout(resolve, 900 + SETTLE_AFTER_CLICK_MS);
               return;
             }
-            // Let the mock's response / EXPORT_RESULT broadcast land.
-            setTimeout(resolve, 900);
+            // Let the mock's response / EXPORT_RESULT broadcast land, then
+            // let the poll run over it.
+            setTimeout(resolve, SETTLE_AFTER_CLICK_MS);
           }, 400);
         }
       };

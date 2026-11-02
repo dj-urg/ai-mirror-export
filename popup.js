@@ -176,9 +176,18 @@ const state = {
 
   // Export state
   export: {
+    // True from the click until the content script answers or background's
+    // EXPORT_RESULT arrives, whichever is first.
     isExporting: false,
     canExport: false,
-    lastError: null
+    lastError: null,
+    // Page (pageKey) whose export state the status card and button show:
+    // set at the click, kept while the outcome is on screen, released when
+    // that tab navigates or reloads. The 2 s poll leaves both alone while set.
+    heldFor: null,
+    // Whether background's EXPORT_RESULT has arrived for the current export.
+    resultArrived: false,
+    resultWaitTimer: null
   },
 
   // Current tab information
@@ -212,6 +221,13 @@ const state = {
 // How long to show "loading" before switching to the "not captured" warning.
 const CAPTURE_LOADING_TIMEOUT_MS = 15000;
 
+// After the content script hands the data to background, how long to wait
+// for background's EXPORT_RESULT before giving the Export button back.
+const EXPORT_RESULT_WAIT_MS = 15000;
+
+// EXPORT_RESULT outcomes that end an export started from this popup.
+const EXPORT_OUTCOMES = new Set(['success', 'download_failed', 'processing_failed', 'empty_export', 'invalid_data']);
+
 // Version of the consent text in popup.html (#consentPanel). Stored next to
 // consent_given so a study can tell which wording a participant agreed to.
 // Bump it whenever that text changes. 1 = the 3.0.0 wording.
@@ -235,6 +251,41 @@ function elapsedWaitingFor(key) {
 function clearWaiting() {
   state.capture.waitingSince = null;
   state.capture.waitingForId = null;
+}
+
+/**
+ * Identifies the page an export belongs to. A reload keeps the URL, so the
+ * tabs.onUpdated listener releases the hold on 'loading' as well.
+ * @param {Object|null} tab
+ * @returns {string|null}
+ */
+function pageKey(tab) {
+  return tab ? `${tab.id}|${tab.url || ''}` : null;
+}
+
+/**
+ * Whether an export owns the status card and the button for this tab: one
+ * is in flight, or its outcome (success with the review card, or a failure)
+ * is still showing for the same page. The 2 s poll must not repaint either
+ * then. A hold for a page the tab has left is released here.
+ * @param {Object|null} tab - The active tab, or null when there is none.
+ * @returns {boolean}
+ */
+function exportOwnsStatus(tab) {
+  if (state.export.isExporting) return true;
+  if (state.export.heldFor === null) return false;
+  if (tab && tab.status !== 'loading' && pageKey(tab) === state.export.heldFor) return true;
+  releaseExportStatus();
+  return false;
+}
+
+/**
+ * Hand the status card and button back to the poll and drop the review
+ * card, which belongs to the export outcome.
+ */
+function releaseExportStatus() {
+  state.export.heldFor = null;
+  hideReviewCard();
 }
 
 /**
@@ -1038,6 +1089,8 @@ function setupEventDrivenUpdates() {
         state.capture.waitingSince = null;
         state.capture.waitingForId = null;
         state.capture.lastTurnCount = 0;
+        // The page an export outcome was about is gone.
+        if (!state.export.isExporting && state.export.heldFor !== null) releaseExportStatus();
       }
       if (changeInfo.status === 'complete' || changeInfo.url) {
         debouncedCheckAndUpdateUI();
@@ -1054,14 +1107,23 @@ function setupEventDrivenUpdates() {
  * resolves (success) or rejects (download_failed / processing_failed).
  *
  * When popup is still open, we repaint the status card so the user sees
- * the real outcome. When popup has closed (common on the 3-second auto-
- * close), the toolbar '!' badge set by background.js's catch is the
- * fallback signal. See docs/ux-audit.md §3.1 B1.
+ * the real outcome. When popup has been closed, the toolbar '!' badge set
+ * by background.js's catch is the fallback signal. See docs/ux-audit.md
+ * §3.1 B1.
+ *
+ * An export outcome ends the export (the button works again) and holds the
+ * card for this page so the 2 s poll does not repaint it as "Ready".
  *
  * @param {{outcome: string, platform?: string, reason?: string, filename?: string}} detail
  */
 function handleExportResultMessage(detail) {
   if (!detail || typeof detail.outcome !== 'string') return;
+  state.export.isExporting = false;
+  if (EXPORT_OUTCOMES.has(detail.outcome)) {
+    state.export.resultArrived = true;
+    clearTimeout(state.export.resultWaitTimer);
+    if (state.export.heldFor === null) state.export.heldFor = pageKey(state.currentTab);
+  }
   switch (detail.outcome) {
     case 'success':
       // Background confirmed the download. The sync-path "Export complete."
@@ -1122,6 +1184,7 @@ function handleExportResultMessage(detail) {
     case 'auth_recovered':
       // User signed back in. Re-check UI state so the sign-in card is
       // replaced by the real export state (ready / loading / etc).
+      if (state.export.heldFor !== null) releaseExportStatus();
       debouncedCheckAndUpdateUI();
       break;
     default:
@@ -1342,6 +1405,9 @@ async function checkAndUpdateUI() {
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
 
+    // An export in flight, or its outcome, owns the status card and button.
+    if (exportOwnsStatus(tabs[0] || null)) return;
+
     if (tabs.length === 0) {
       setGoogleTip(false);
       displayError('NO_ACTIVE_TAB');
@@ -1404,6 +1470,8 @@ async function checkAndUpdateUI() {
     // 401 that fired while the popup was closed still shows the sign-in
     // card next time the popup opens. See docs/ux-audit.md §3.1 B3.
     const authState = await fetchAuthStateForTab(tab.id);
+    // An export may have started while this check was waiting.
+    if (exportOwnsStatus(tab)) return;
     if (authState && authState.authFailed) {
       renderAuthFailure(authState.platform || platform.id, platform.name);
       return;
@@ -1428,6 +1496,7 @@ async function checkAndUpdateUI() {
     if (platform.requiresConversationId && conversationId) {
       try {
         const { hasData, title } = await checkConversationData(tab, platform, conversationId);
+        if (exportOwnsStatus(tab)) return;
 
         if (hasData) {
           // Data is ready for export — clear the loading timer
@@ -1478,6 +1547,7 @@ async function checkAndUpdateUI() {
           hideFilePreview();
         }
       } catch (error) {
+        if (exportOwnsStatus(tab)) return;
         // Content script might not be loaded yet
         popupLogError('checkConversationData', error, { platformId: platform.id, conversationId });
         displayError('CONTENT_SCRIPT_NOT_LOADED', {
@@ -1497,6 +1567,7 @@ async function checkAndUpdateUI() {
       // can't ship a half-written reply.
       try {
         const response = await browser.tabs.sendMessage(tab.id, { type: 'GET_CAPTURED_CONVERSATIONS' });
+        if (exportOwnsStatus(tab)) return;
         const conversations = (response && Array.isArray(response.conversations))
           ? response.conversations
           : [];
@@ -1533,6 +1604,7 @@ async function checkAndUpdateUI() {
           }
         }
       } catch (error) {
+        if (exportOwnsStatus(tab)) return;
         popupLogError('m365_copilot GET_CAPTURED_CONVERSATIONS', error, { platformId: platform.id });
         displayError('CONTENT_SCRIPT_NOT_LOADED', {
           platformId: platform.id,
@@ -1564,6 +1636,7 @@ async function checkAndUpdateUI() {
         const { hasData, title, noOverviewForThisPage } = await checkConversationData(
           tab, platform, state.platform.conversationId
         );
+        if (exportOwnsStatus(tab)) return;
 
         if (hasData) {
           const isAIMode = (() => {
@@ -1618,6 +1691,7 @@ async function checkAndUpdateUI() {
           hideFilePreview();
         }
       } catch (error) {
+        if (exportOwnsStatus(tab)) return;
         // Content script hasn't responded (e.g., page is reloading and the
         // script is still re-injecting). Same honest instruction: the popup
         // won't recover on its own while it stays open.
@@ -1648,6 +1722,7 @@ async function checkAndUpdateUI() {
       updateFilePreview('conversation');
     }
   } catch (error) {
+    if (exportOwnsStatus(state.currentTab)) return;
     setGoogleTip(false);
     popupLogError('checkAndUpdateUI', error);
     displayError('UNKNOWN_ERROR', {
@@ -1717,6 +1792,9 @@ async function handleExportClick() {
 
   state.export.isExporting = true;
   state.export.lastError = null; // Clear previous error
+  state.export.resultArrived = false;
+  clearTimeout(state.export.resultWaitTimer);
+  state.export.heldFor = pageKey(state.currentTab);
   hideReviewCard();
 
   // Show loading state with spinner in button
@@ -1793,14 +1871,25 @@ async function handleExportClick() {
       // The content script handed the data to background; background's
       // EXPORT_RESULT follows with the real outcome, the file name and the
       // review step. The popup stays open so the user can read it.
-      updateStatus(
-        'success',
-        'Export complete.',
-        'Check your Downloads folder.'
-      );
+      state.export.isExporting = false;
 
-      // Reset button to normal state (no spinner)
-      updateExportButton(false, 'Export ZIP', false);
+      // Background answers a validation failure before the content script's
+      // reply gets here; don't paint over that outcome.
+      if (!state.export.resultArrived) {
+        updateStatus(
+          'success',
+          'Export complete.',
+          'Check your Downloads folder.'
+        );
+
+        // Reset button to normal state (no spinner). It stays disabled until
+        // EXPORT_RESULT arrives, or until the wait runs out, so a missing
+        // result can't leave the user without a way to try again.
+        updateExportButton(false, 'Export ZIP', false);
+        state.export.resultWaitTimer = setTimeout(() => {
+          if (!state.export.isExporting && !state.export.resultArrived) updateExportButton(true);
+        }, EXPORT_RESULT_WAIT_MS);
+      }
     } else {
       // Export failed with error from content script
       const errorMessage = response?.error || 'Unknown error occurred';
