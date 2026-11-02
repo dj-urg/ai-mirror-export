@@ -119,7 +119,16 @@ uncommitted wiring produced a real ZIP. A Gemini export made on
 `fix/gemini-followups` (2026-11-02, a new chat with 3 turns, 2 of them
 cited, scrubbing off) had every turn in order with consistent parent and
 candidate ids, but 38 sources rows for 19 citations, 8 of them with
-offsets that missed the passage.
+offsets that missed the passage. A scripted Gemini chat on the fixed
+build (2026-11-02; non-ASCII characters before every citation, a second
+prompt with planted PII, a redone answer, three exports) passed: the
+second turn was exported without a page reload; 5 citations gave 5 rows,
+all on their passage, although every one's byte and character pairs
+differed; with scrubbing on, 30 values were redacted (EMAIL 20, PHONE 10)
+and neither planted value appeared in any file; the export after a page
+reload matched the one before it. The redone answer got a new response
+id and the earlier version was no longer in the history; both versions
+had the same text, so the draft-choice question is still open.
 
 ## 5. Findings and decisions from validation
 
