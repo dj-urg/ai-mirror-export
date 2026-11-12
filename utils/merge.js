@@ -286,8 +286,12 @@ function csvLine(fields) {
   return fields.map(escapeCSVField).join(',');
 }
 
-/** The newest export of each conversation wins; older copies are superseded. */
-function pickLatest(bundles) {
+/**
+ * The newest export of each conversation wins; older copies are superseded.
+ * @param {object[]} bundles  Checked bundles.
+ * @returns {Set<object>} The superseded bundles.
+ */
+export function pickLatest(bundles) {
   const latest = new Map();
   const superseded = new Set();
   for (const b of bundles) {
