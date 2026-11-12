@@ -149,6 +149,7 @@ control rendering; Chromium runs produce different metrics.
 | Design tokens | `popup.css` under `:root` |
 | Platform configs + domain lists | `config/settings.js` |
 | Toolbar icon state logic | `background.js` under "Toolbar icon state" |
+| Merge page (combine exports) | `merge.html` / `merge.js`, logic in `utils/merge.js` |
 
 ## Not covered by automated checks (so test manually)
 

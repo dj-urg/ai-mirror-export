@@ -209,3 +209,14 @@ ends with CRLF; the manifest's `extractor_version` is `3.1.0` and each
 - Accept → the extension updates and works; decline → note what Firefox
   does (expected: the update is blocked and 2.1.1 stays installed) and
   record it in `docs/validation.md`
+
+## 12. Merge page
+
+- Popup → **Merge exported files…** opens `merge.html` in a new tab and closes the popup
+- Drop three fresh export ZIPs from different platforms → all **✓ Verified**; merge → `ai-chat-merge_<time>.zip` in Downloads with `all_messages_canonical.csv`, per-schema CSVs, `merge_manifest.json`, `MERGE_REPORT.txt`
+- Unzip one export, open a CSV in Excel, save, re-add the folder → **! Changed**; merge excludes it; tick "include anyway" → included and listed in the report
+- **Choose a folder…** and dragging a folder both work; dropping a file outside the drop zone does not navigate away
+- DevTools (about:debugging → Inspect) → Network tab stays empty through a whole merge
+- Keyboard only: Tab reaches every control with a visible focus ring; after merging, focus moves to the result
+- Dark theme: page follows the OS setting
+
