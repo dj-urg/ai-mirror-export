@@ -12,15 +12,29 @@ Each platform's content script runs only on that platform's own origin (see `man
 
 | Platform | Capture | Active same-origin request |
 |---|---|---|
-| ChatGPT, Copilot | A `window.fetch` hook in the page context observes the site's own conversation API response. | none |
-| Claude, Grok, Mistral | `window.fetch` and `XMLHttpRequest` hooks, plus a same-origin re-fetch of the open conversation through the site's own API when the hook has not seen it (page load, in-app navigation, popup open, export). | the site's own conversation endpoint |
+| ChatGPT, Copilot | A `window.fetch` hook in the page context observes the site's own conversation API response (same-origin GET on the exact conversation path only). Copilot history pages are merged by message id. | none |
+| Claude, Grok, Mistral | `window.fetch` and `XMLHttpRequest` hooks, plus a same-origin re-fetch of the open conversation through the site's own API when the hook has not seen it (page load, in-app navigation, popup open). At export the conversation is always fetched once more (15 s limit); if that fails, the cached copy is exported and flagged (see "Capture provenance"). Mistral follows `nextCursor` on `message.all` for at most 50 pages. | the site's own conversation endpoint |
 | Google Gemini | A same-origin re-fetch of the open conversation through the site's private `hNvQHb` history RPC, page by page, using the site's own cookies, at page load and in-app navigation. Because Gemini streams new replies without re-requesting its history, the conversation is always fetched once more at export; if that fetch fails, the copy from page load is exported. | `/u/<n>/_/BardChatUi/data/batchexecute` |
 | DeepSeek | As above. DeepSeek's history endpoint rejects cookie-only requests, so the content script reads the site's own bearer token from the page's `localStorage` (`userToken`) and attaches it to that same-origin request. The token is never stored, logged or exported. Because DeepSeek streams new replies without re-requesting its history, the conversation is refreshed when the popup opens (at most once every 30 seconds while the popup stays open and polls) and always once more at export. | `/api/v0/chat/history_messages` |
 | Perplexity | `window.fetch` and `XMLHttpRequest` hooks on `/rest/thread/<uuid>`; paginated thread pages are merged by thread id. Read/write tokens are stripped from the payload in the page context before it is forwarded. | none |
 | Microsoft 365 Copilot | A `WebSocket` proxy observes the Chathub frames; messages are assembled per conversation and exported once the reply is complete. | none |
-| Google AI Overview / AI Mode | Read from the rendered page (DOM); see "Google Search extraction". For a classic AI Overview that is not yet in the DOM, the content script requests the same search URL once per page and query (never on the popup's status poll) and parses the server HTML. AI Mode is never re-requested. | the user's own search URL, at most once |
+| Google AI Overview / AI Mode | Read from the rendered page (DOM) and read again at export; see "Google Search extraction". Only when the page has nothing at export does the content script request the same search URL once and parse the server HTML (`source: refetch`). Nothing is requested on page load, by the observer or by the popup's poll. AI Mode is never re-requested. | the user's own search URL, at most once, at export |
 
 Page-context hooks forward data to the content script over HMAC-SHA256-signed `postMessage`; the content script verifies signature, source, a 30-second timestamp window and a once-only nonce. Captured conversations live in memory only (at most 50 per tab, discarded after one hour). The background script validates the payload (it must be an object, at most 50 MB when serialised as JSON, with the platform's required array present and non-empty) and then runs the extractor.
+
+### Capture provenance
+
+Each export records how its conversation was obtained, in the manifest's `telemetry.capture` (manifest schema 1.3.0; `null` when the content script sent none):
+
+| Field | Values | Meaning |
+|---|---|---|
+| `captured_at` | ISO 8601 | When the exported copy was read. |
+| `source` | `passive`, `active`, `export_refresh`, `dom`, `refetch`, `websocket` | Observed from the site's own traffic, fetched by the extension, fetched at export, read from the page, Google server-HTML re-fetch, or Microsoft 365 socket frames. |
+| `refresh` | `ok`, `failed`, `not_attempted`, `not_supported` | Whether the conversation was read again at export. `not_supported` (ChatGPT, Copilot, Perplexity, Microsoft 365) means the export is the copy the page loaded; newer messages need a page reload first. |
+| `complete` | `true`, `false`, `null` | `false` when the extension knows the copy is partial (more pages, idle-timeout completion, truncation, undecodable turns); `null` when it cannot tell. |
+| `flags` | snake_case strings | Caveats, e.g. `refresh_failed`, `paged`, `cursor_present`, `pagination_incomplete`, `idle_timeout`, `truncated`, `in_flight`, `undecoded_turns`, `heuristic_root`, `hidden_text_skipped`, `refetched_variant`. |
+
+The popup warns the donor when `refresh` is `failed` or `complete` is `false`, and for `not_supported` platforms says when the copy was captured. An export is reported as finished only after Firefox reports the download complete.
 
 ## Per-platform extraction rules
 
@@ -137,7 +151,7 @@ To protect anyone who opens a file in a spreadsheet, `escapeCSVField` prefixes a
 
 ## Timestamps
 
-ChatGPT timestamps arrive as Unix seconds and are converted to ISO 8601 UTC; falsy input becomes an empty string. Other platforms' timestamps are normalised with `toIsoUtc` (ISO strings, Unix seconds or milliseconds) and passed through unchanged when they cannot be parsed. Google captures a `captured_at` ISO timestamp at the moment of extraction; AI Mode records the same capture time on every turn because Google's AI Mode DOM does not expose per-turn timestamps.
+ChatGPT timestamps arrive as Unix seconds and are converted to ISO 8601 UTC; falsy or unparseable input becomes an empty string. Other platforms' timestamps are normalised with `toIsoUtc` (ISO strings, Unix seconds or milliseconds, including digit strings; a value above 10^12 is read as milliseconds; a date-time without a zone is read as UTC) and passed through unchanged when they cannot be parsed. Gemini writes an empty string instead of 1970 when a timestamp is missing. Copilot and Mistral rows are ordered by `createdAt` when every message has one, otherwise in arrival order. Google captures a `captured_at` ISO timestamp at the moment of extraction; AI Mode records the same capture time on every turn because Google's AI Mode DOM does not expose per-turn timestamps.
 
 ## Source extraction
 
@@ -157,7 +171,7 @@ The first-run consent gate stores `consent_given: true`, `consent_version` (the 
 
 ## Provenance manifest (`_manifest.json`)
 
-Every ZIP includes a sidecar `{platform}_manifest_{slug}.json` describing the files inside, so researchers can audit what was emitted without re-running the extension. The outer schema version is `manifest_schema_version`; the current value is `1.2.0` (additive changes from `1.0.0`: `1.1.0` added the PII fields below, `1.2.0` added the consent record; no field was renamed or removed, so parsers that ignore unknown keys stay compatible).
+Every ZIP includes a sidecar `{platform}_manifest_{slug}.json` describing the files inside, so researchers can audit what was emitted without re-running the extension. The outer schema version is `manifest_schema_version`; the current value is `1.3.0` (additive changes from `1.0.0`: `1.1.0` added the PII fields below, `1.2.0` added the consent record, `1.3.0` added `checksum_basis` (`utf8_without_bom`: the SHA-256 values are over each CSV's bytes without the BOM) and `telemetry.capture` (see "Capture provenance"); no field was renamed or removed, so parsers that ignore unknown keys stay compatible).
 
 The `telemetry` object carries the consent record from the first-run gate:
 
@@ -191,7 +205,7 @@ When `pii_scrub_enabled` is true, every string cell of every CSV in the ZIP is p
 
 `pii_redactions_total` and `pii_redactions_by_type` count every placeholder added in every cell of every file, so the same email in `text`, `text_cleaned` and the canonical row counts three times. Scrubbing is pattern-based and best-effort: personal names, addresses and free-form identifying statements are not detected. A link written inside message text gets the text rules on its raw characters, so a percent-encoded value in it (an email written as `name%40example.org`) is not detected; only URL-valued columns and JSON keys are decoded. With scrubbing off, no cell is modified.
 
-The query-string coverage came with `extractor_version` 3.1.0. `pii_ruleset_version` stays `1.0.0`: the patterns did not change, only the cells they are applied to.
+The query-string coverage came with `extractor_version` 3.1.0. Ruleset `1.1.0` (unreleased): the email and credential-URL patterns run in linear time with the same matches (plus `//:password@host`); ISO dates, date-times and year ranges are no longer redacted as `PHONE`; `+<country code>` numbers are redacted whole and unseparated 0-leading 10–11 digit numbers are now caught (other 0-leading 10–11 digit strings, such as an ISBN-10 starting with 0, are a known false positive); in JSON columns a value under an id key is kept only if it looks like an id and under a time key only if it looks like a timestamp, otherwise it gets the text rules.
 
 ## Schema versions
 
@@ -215,9 +229,11 @@ The merge page combines export bundles from any number of donors. It runs as an 
 
 - **Verification.** Each CSV's SHA-256 (over the bytes without the UTF-8 BOM, as in the manifest) and row count are compared with its bundle's manifest. A mismatch, a CSV missing from or not listed in the manifest, or a CSV with no manifest marks the bundle `changed`; these are merged only when the user opts in, and are listed in the report. A bundle whose `extractor_version`, `manifest_schema_version` or any file's `schema_version` differs from the current release is `outdated` and never merged; only current-version exports are supported. Unparseable CSVs (strict RFC 4180, equal field counts) and non-exports are `invalid`.
 - **Combining.** Rows are grouped by schema name, one output per schema, plus `all_messages_canonical.csv` from every `*_messages_canonical` file whose header is exactly the canonical header. Fields are parsed as raw strings and re-written with `escapeCSVField`, so each output row is byte-identical to its source row (the formula-prefix `'` stays as exported); `source_file` and `source_sha256` are appended. Within a schema, a file whose header differs from the first one seen is skipped with a warning.
-- **Re-exports.** Bundles are keyed by (`donor_id_hashed`, `platform`, `conversation_id`); only the one with the latest `download_time` is merged. CSVs without a manifest have no key and are not de-duplicated.
+- **Re-exports.** Bundles are keyed by (`donor_id_hashed`, `platform`, `conversation_id`); a verified bundle beats a changed one, then the latest `download_time` wins (deterministic tie-break). A file whose SHA-256 equals one already merged for that schema is merged once. Output of an earlier merge (headers ending in `source_file,source_sha256`) is refused.
+- **Layout.** `_canonical` files must match the canonical header exactly; other files must match the layout the verified exports agree on (majority of changed files, with a warning, when none is verified) and carry the schema's required columns; anything else is left out with a per-file `not_merged_because`.
+- **ZIP reading.** Only CSVs and manifests are unpacked; 200 MB per entry and 500 MB per ZIP; CRC-32 is checked; multi-disk and ZIP64 archives are refused.
 - **Warnings.** Mixed `pii_scrub_enabled` values and mixed `donor_id_type` values are reported. Donor IDs hashed with different study codes cannot be detected and will look like different participants.
-- **Output.** A STORE ZIP with the CSVs (UTF-8 BOM, CRLF), `merge_manifest.json` (schema `1.0.0`: inputs with status, problems and file checksums; outputs with rows and SHA-256; options; warnings) and `MERGE_REPORT.txt`.
+- **Output.** A STORE ZIP with the CSVs (UTF-8 BOM, CRLF), `merge_manifest.json` (schema `1.1.0`: `exports_merged`; `conversations` counts distinct conversations; inputs with status, problems, notes, file checksums and per-file `merged` / `not_merged_because`; outputs with rows and SHA-256; options; warnings) and `MERGE_REPORT.txt`.
 
 ## Verification
 

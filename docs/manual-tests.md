@@ -162,7 +162,7 @@ Minimum, after any `platforms/**` change:
 | Mistral               | **Compare the ZIP with what is on screen:** every message present in order; `text` of an assistant turn equals the rendered answer (not a draft with `search-result://` placeholders, not the reasoning); reasoning only in `reasoning_text` |
 | Google Gemini         | Open an existing conversation, regenerate one answer, and ask a question that cites a source → Export. `gemini_messages` has one row per turn in order; the selected answer carries `candidate_id`/`parent_candidate_id`; `gemini_sources` has one row per citation, and `start_index`/`end_index` cut exactly the `snippet` out of the answer's `text`, also when the answer contains a non-ASCII character (–, é, emoji) before the citation; the ZIP holds four `gemini_*` files. Then send one more message, wait for the reply and export again **without reloading** → the new turn is in the ZIP. Check that the exported answer for the regenerated turn is the one shown on screen |
 | M365 Copilot          | Same — uses WebSocket interception, not fetch hooks; no synthetic fixture and no raw-capture validation yet (HARs do not include WebSocket frames; use a proxy to capture) |
-| Google Search AI      | Run a query that triggers an AI Overview; open popup; Export. In the Network tab, the search URL is requested **at most once** by the extension, and not again while the popup stays open |
+| Google Search AI      | Run a query that triggers an AI Overview; open popup; Export. In the Network tab, the extension requests **nothing** on page load or while the popup is open; at most one request of the search URL, only at export when the page shows no overview. Text keeps line breaks; collapsed "Show more" text is included; no "Send feedback" chrome |
 | Google AI Mode        | `?udm=50` tab; ask a question; wait for the reply; Export. ZIP and file names carry the query, not `unknown`; no re-request of the search URL in the Network tab |
 | Grok                  | ZIP and file names carry the conversation id, not `unknown`            |
 
@@ -219,4 +219,32 @@ ends with CRLF; the manifest's `extractor_version` is `3.1.0` and each
 - DevTools (about:debugging → Inspect) → Network tab stays empty through a whole merge
 - Keyboard only: Tab reaches every control with a visible focus ring; after merging, focus moves to the result
 - Dark theme: page follows the OS setting
+- After one merge, add a second batch while the table is still checking → both batches end up in the table; Merge / Remove / Start over are greyed out meanwhile
+- Cancel the merge download in Firefox → the page shows the failure message, not "Saved"
+- A ZIP re-zipped by macOS Archive Utility and one from Windows still verify
 
+## 13. Capture freshness and provenance (3.1.x review fixes)
+
+For each platform, open a conversation, wait for it to load, then send one
+more message in the page and export **without reloading**:
+
+- Claude, Grok, Mistral, DeepSeek, Gemini → the new turn is in the ZIP;
+  manifest `telemetry.capture.source` is `export_refresh`/`active`,
+  `refresh` is `ok`
+- Go offline (DevTools → Network → Offline) and export → the ZIP still
+  downloads, the popup shows **"Export saved, but it may be missing
+  messages."**, manifest `refresh` is `failed`, `flags` has `refresh_failed`
+- ChatGPT, Copilot, Perplexity → the popup's success text names the capture
+  time; manifest `refresh` is `not_supported`. ChatGPT voice chats export
+  their transcripts; `/backend-anon/` (logged-out) chats are **not** captured
+- Microsoft 365 Copilot → long replies (>30 s before the first token) do
+  not unlock Export early; suggested replies are not rows; with two chats
+  open, the most recently updated one exports
+- Claude with several organisations → the right one is found
+- Copilot / Perplexity / Mistral long threads (scroll up to load older
+  pages) → rows in chronological order, no duplicates; `complete` is
+  `false` with `paged`/`pagination_incomplete` when pages are missing
+- Popup: "Export complete" appears only after the file is in Downloads;
+  cancel a download (set Firefox to ask where to save, then cancel) →
+  "Download failed."; two windows each with a popup open → each shows only
+  its own tab's result
