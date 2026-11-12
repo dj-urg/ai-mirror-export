@@ -191,6 +191,7 @@ testing/tests/*
 !testing/tests/test_settings_domains.js
 !testing/tests/test_background_outcomes.js
 !testing/tests/test_extract_helpers.js
+!testing/tests/test_merge.js
 !testing/tests/helpers/
 !testing/tests/helpers/**
 # Synthetic (hand-built) fixtures used by the golden tests. Real-origin
