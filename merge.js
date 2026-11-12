@@ -7,7 +7,7 @@
  * every network request from this page.
  */
 
-import { collectBundles, checkBundle, mergeBundles, STATUS } from './utils/merge.js';
+import { collectBundles, checkBundle, mergeBundles, pickLatest, STATUS } from './utils/merge.js';
 import { buildZip } from './utils/zip.js';
 import { EXTENSION_CONFIG } from './config/settings.js';
 
@@ -107,6 +107,16 @@ function el(tag, attrs = {}, ...children) {
   return node;
 }
 
+const exportTimeFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+/** Export time in the viewer's local time, with the exact UTC value for screen readers and hover. */
+function exportedCell(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return el('td', {}, 'Unknown');
+  return el('td', { class: 'file-table__time' },
+    el('time', { datetime: iso, title: iso }, exportTimeFormat.format(d)));
+}
+
 function render() {
   const has = checked.length > 0 || ignored.length > 0;
   $('checkSection').hidden = !has;
@@ -121,14 +131,21 @@ function render() {
     `${counts.outdated + counts.invalid} cannot be used. ` +
     `${donors} participant${donors === 1 ? '' : 's'}.`;
 
+  const superseded = pickLatest(checked.filter(b => b.status === STATUS.OK || b.status === STATUS.CHANGED));
   const rows = checked
     .slice()
-    .sort((a, b) => Object.values(STATUS).indexOf(b.status) - Object.values(STATUS).indexOf(a.status))
+    .sort((a, b) =>
+      Object.values(STATUS).indexOf(b.status) - Object.values(STATUS).indexOf(a.status) ||
+      (b.downloadTime || '').localeCompare(a.downloadTime || ''))
     .map(b => {
       const copy = STATUS_COPY[b.status];
       const rowCount = b.files.reduce((n, f) => n + f.rows.length, 0);
-      const details = b.problems.length
-        ? el('ul', { class: 'file-table__problems' }, ...b.problems.map(p => el('li', {}, p)))
+      const notes = [...b.problems];
+      if (superseded.has(b)) {
+        notes.push('A newer export of this conversation was added; only the newer one will be merged.');
+      }
+      const details = notes.length
+        ? el('ul', { class: 'file-table__problems' }, ...notes.map(p => el('li', {}, p)))
         : 'All files match the original export.';
       return el('tr', { class: `file-table__row file-table__row--${b.status}` },
         el('td', {},
@@ -136,6 +153,7 @@ function render() {
             el('span', { 'aria-hidden': 'true', class: 'status-pill__icon' }, copy.icon), copy.label)),
         el('td', { class: 'file-table__name' }, b.label),
         el('td', {}, platformName(b.platform)),
+        exportedCell(b.downloadTime),
         el('td', { class: 'file-table__num' }, String(rowCount)),
         el('td', {}, details));
     });

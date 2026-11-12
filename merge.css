@@ -456,6 +456,10 @@ code {
   word-break: break-all;
 }
 
+.file-table__time {
+  white-space: nowrap;
+}
+
 .file-table__num {
   font-variant-numeric: tabular-nums;
 }
@@ -599,8 +603,8 @@ code {
     padding-top: var(--space-lg);
   }
 
-  .file-table th:nth-child(4),
-  .file-table td:nth-child(4) {
+  .file-table th:nth-child(5),
+  .file-table td:nth-child(5) {
     display: none;
   }
 }
