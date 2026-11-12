@@ -114,12 +114,12 @@ export async function collectBundles(inputs) {
         entries = await readZip(input.bytes);
       } catch (err) {
         const reason = err instanceof ZipReadError ? err.message : 'Could not read this ZIP file.';
-        bundles.push({ label: input.name, manifestText: null, csvs: [], fatal: reason });
+        bundles.push({ label: input.name, sources: [input.name], manifestText: null, csvs: [], fatal: reason });
         continue;
       }
       if (entries.some(e => baseName(e.name) === MERGE_MANIFEST_NAME)) {
         bundles.push({
-          label: input.name, manifestText: null, csvs: [],
+          label: input.name, sources: [input.name], manifestText: null, csvs: [],
           fatal: 'This is already a merged file. Add the original exports instead.'
         });
         continue;
@@ -128,6 +128,7 @@ export async function collectBundles(inputs) {
       const csvs = entries.filter(e => e.name.toLowerCase().endsWith('.csv'));
       bundles.push({
         label: input.name,
+        sources: [input.name],
         manifestText: manifests.length === 1 ? decodeText(manifests[0].bytes) : null,
         manifestProblem: manifests.length > 1 ? 'The ZIP contains more than one manifest.' : null,
         csvs: csvs.map(e => ({ name: baseName(e.name), bytes: e.bytes }))
@@ -150,15 +151,20 @@ export async function collectBundles(inputs) {
       listed = (JSON.parse(text).files || []).map(f => f.filename);
     } catch (_err) { /* reported as invalid manifest below */ }
     const csvs = [];
+    const sources = [m.name];
     for (const filename of listed) {
       const hit = looseCsvs.get(filename);
-      if (hit) { csvs.push({ name: filename, bytes: hit.bytes }); looseCsvs.delete(filename); }
+      if (hit) {
+        csvs.push({ name: filename, bytes: hit.bytes });
+        sources.push(hit.name);
+        looseCsvs.delete(filename);
+      }
     }
-    bundles.push({ label: baseName(m.name), manifestText: text, csvs });
+    bundles.push({ label: baseName(m.name), sources, manifestText: text, csvs });
   }
 
   for (const [name, csv] of looseCsvs) {
-    bundles.push({ label: name, manifestText: null, csvs: [{ name, bytes: csv.bytes }] });
+    bundles.push({ label: name, sources: [csv.name], manifestText: null, csvs: [{ name, bytes: csv.bytes }] });
   }
 
   return { bundles, ignored };
@@ -177,13 +183,15 @@ function worse(a, b) {
  * Verify one bundle against its manifest and parse its CSVs.
  *
  * @param {object} bundle  From collectBundles.
- * @returns {Promise<object>} Checked bundle: label, status, problems[],
+ * @returns {Promise<object>} Checked bundle: label, sources[] (the input
+ *   names it was built from), status, problems[],
  *   platform, conversationId, donorId, donorIdType, downloadTime,
  *   piiScrubEnabled, files[{filename, schema, headers, rows, sha256}].
  */
 export async function checkBundle(bundle) {
   const result = {
     label: bundle.label,
+    sources: bundle.sources || [],
     status: STATUS.OK,
     problems: [],
     platform: null,

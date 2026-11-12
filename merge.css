@@ -453,11 +453,22 @@ code {
 }
 
 .file-table__name {
-  word-break: break-all;
+  min-width: 14em;
+  overflow-wrap: anywhere;
 }
 
 .file-table__time {
   white-space: nowrap;
+}
+
+.file-table__action {
+  text-align: right;
+}
+
+.button--small {
+  padding: 2px var(--space-sm);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
 }
 
 .file-table__num {
