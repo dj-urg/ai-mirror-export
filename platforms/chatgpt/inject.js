@@ -21,9 +21,6 @@
   const DEBUG_MODE = false;
   const MAX_RESPONSE_SIZE = 100 * 1024 * 1024; // 100MB
 
-  // Track captured IDs to avoid processing the same conversation twice
-  const capturedIds = new Set();
-
   const originalFetch = window.fetch;
   const originalPostMessage = window.postMessage.bind(window);
   const originalMessageSecurity = window.MessageSecurity;
@@ -100,13 +97,18 @@
   // DATA FORWARDING
   // ============================================================================
 
+  // A conversation payload carries its messages either as a `mapping` object
+  // (node id -> node) or as a flat `messages` array. A response with neither
+  // is not a conversation and must not replace one that was captured.
+  function hasMessages(data) {
+    const hasMapping = data.mapping !== null && typeof data.mapping === 'object' && !Array.isArray(data.mapping);
+    return hasMapping || Array.isArray(data.messages);
+  }
+
   async function sendDataToContentScript(data) {
-    if (!data || (!data.mapping && !data.conversation_id && !Array.isArray(data.messages))) return;
+    if (!data || !hasMessages(data)) return;
 
     const conversationId = data.conversation_id || data.id;
-    if (conversationId) {
-      capturedIds.add(conversationId);
-    }
 
     if (!storedSecret) {
       logWarn('Secret key not available, cannot send message');
@@ -134,29 +136,60 @@
   // PASSIVE FETCH INTERCEPTOR
   // ============================================================================
 
+  // /backend-api/conversation/{uuid} or /backend-api/conversations/{uuid},
+  // matched against the whole path: the UUID is the last segment (no
+  // sub-resources like /text-docs, /init) and nothing may precede the prefix.
+  const CONVERSATION_PATH_RE =
+    /^\/backend-api\/conversations?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
+
+  // The address a fetch() call names. Only the types fetch itself accepts are
+  // read: a look-alike object with a `url` property is ignored, because fetch
+  // would request String(object), not object.url.
+  function requestUrl(input) {
+    if (typeof input === 'string') return input;
+    if (input instanceof Request) return input.url;
+    if (input instanceof URL) return input.href;
+    return '';
+  }
+
+  function requestMethod(input, init) {
+    const method = (init && init.method) || (input instanceof Request ? input.method : 'GET');
+    return String(method).toUpperCase();
+  }
+
+  /**
+   * The conversation id if this call is ChatGPT's own GET of a conversation,
+   * else null. The page can call the hooked fetch with any address, so the
+   * check is on what was actually fetched: a same-origin https response
+   * (`response.url`, after redirects) whose path is exactly the conversation
+   * endpoint. blob:, data: and cross-origin URLs that merely contain the path
+   * do not qualify.
+   */
+  function conversationIdForRequest(input, init, response) {
+    if (requestMethod(input, init) !== 'GET') return null;
+    // 'basic' is a same-origin network response; 'default' is one a service
+    // worker built. 'cors' and the opaque types are cross-origin.
+    if (response.type !== 'basic' && response.type !== 'default') return null;
+
+    let parsed;
+    try {
+      parsed = new URL(response.url || requestUrl(input), window.location.href);
+    } catch {
+      return null;
+    }
+    if (parsed.protocol !== 'https:' || parsed.origin !== window.location.origin) return null;
+
+    const match = parsed.pathname.match(CONVERSATION_PATH_RE);
+    return match ? match[1].toLowerCase() : null;
+  }
+
   window.fetch = async function (...args) {
     const response = await originalFetch.apply(this, args);
 
     try {
-      const request = args[0];
-      let url = '';
+      const requestedId = conversationIdForRequest(args[0], args[1], response);
 
-      if (typeof request === 'string') {
-        url = request;
-      } else if (request instanceof Request) {
-        url = request.url;
-      } else if (request && typeof request === 'object' && request.url) {
-        url = request.url;
-      } else {
-        url = String(request);
-      }
-
-      // Match /backend-api/conversation/{uuid} or /backend-api/conversations/{uuid}
-      // The UUID must be the last path segment (no sub-resources like /text-docs, /init).
-      const isConversationRequest = url &&
-        /\/conversations?\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:[?#].*)?$/i.test(url);
-
-      if (isConversationRequest) {
+      if (requestedId) {
         const validation = validateResponse(response);
         if (!validation.isValid) {
           logWarn('Passive intercept validation failed', { error: validation.error });
@@ -182,9 +215,14 @@
               logWarn('Invalid data structure: not an object');
               return;
             }
-            if (data.mapping || data.conversation_id || Array.isArray(data.messages)) {
-              await sendDataToContentScript(data);
+            // The endpoint answers for the conversation in its URL; a body
+            // that names another one is not what the page asked for.
+            const bodyId = data.conversation_id || data.id;
+            if (typeof bodyId === 'string' && bodyId.toLowerCase() !== requestedId) {
+              logWarn('Conversation id in response does not match the request');
+              return;
             }
+            await sendDataToContentScript(data);
           })
           .catch(error => {
             logWarn('Failed to parse response', { error: error.message });

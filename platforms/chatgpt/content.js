@@ -23,7 +23,9 @@
   const MAX_CONVERSATION_AGE_MS = 3600000; // 1 hour
   const CLEANUP_INTERVAL_MS = 300000; // 5 minutes
 
-  // Store captured conversations in memory with timestamps
+  // Store captured conversations in memory with timestamps. The timestamp is
+  // the moment the stored copy was captured: it drives expiry and is reported
+  // with the export as `capture.captured_at`.
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
 
@@ -121,8 +123,9 @@
    * Implements LRU (Least Recently Used) eviction when limit is reached
    */
   function storeConversation(id, data) {
-    // Clean up oldest conversation if at limit
-    if (capturedConversations.size >= MAX_STORED_CONVERSATIONS) {
+    // Clean up oldest conversation if at limit. Replacing a conversation that
+    // is already stored does not grow the map, so nothing is evicted for it.
+    if (!capturedConversations.has(id) && capturedConversations.size >= MAX_STORED_CONVERSATIONS) {
       // Find oldest conversation by timestamp
       let oldestId = null;
       let oldestTime = Infinity;
@@ -169,6 +172,32 @@
   // Start periodic cleanup
   setInterval(cleanupOldConversations, CLEANUP_INTERVAL_MS);
 
+  /**
+   * A conversation payload carries its messages as a `mapping` object or a
+   * flat `messages` array. Anything else is not a conversation.
+   */
+  function hasMessages(data) {
+    const hasMapping = data.mapping !== null && typeof data.mapping === 'object' && !Array.isArray(data.mapping);
+    return hasMapping || Array.isArray(data.messages);
+  }
+
+  /**
+   * Describe the stored copy of a conversation for the export manifest.
+   * ChatGPT is captured only when the page itself loads the conversation;
+   * there is no re-fetch at export time, so the copy is as old as
+   * `captured_at` and whether it holds the latest turns is unknown.
+   */
+  function describeCapture(conversationId) {
+    const capturedAt = conversationTimestamps.get(conversationId);
+    return {
+      captured_at: capturedAt ? new Date(capturedAt).toISOString() : '',
+      source: 'passive',
+      refresh: 'not_supported',
+      complete: null,
+      flags: []
+    };
+  }
+
 
 
   /**
@@ -194,8 +223,18 @@
       return;
     }
 
+    // Verify a private copy and store from that same copy, so what is kept is
+    // exactly what was signed even if the page's object changes meanwhile.
+    let received;
+    try {
+      received = JSON.parse(JSON.stringify(event.data));
+    } catch {
+      logWarn('Message could not be copied');
+      return;
+    }
+
     const verification = await MessageSecurity.verifySignedMessage(
-      event.data,
+      received,
       MESSAGE_TYPE,
       SOURCE_ID,
       SECRET_KEY
@@ -208,10 +247,17 @@
 
     logDebug('Message signature verified');
 
-    const conversationData = event.data.payload;
+    const conversationData = received.payload;
 
-    if (!conversationData) {
+    if (!conversationData || typeof conversationData !== 'object') {
       logWarn('Received message with no payload');
+      return;
+    }
+
+    // A payload without messages would replace a full capture with an empty
+    // one under the same id.
+    if (!hasMessages(conversationData)) {
+      logWarn('Received conversation data without mapping or messages');
       return;
     }
 
@@ -289,7 +335,8 @@
       browser.runtime.sendMessage({
         type: MESSAGE_TYPE,
         payload: conversationData,
-        platform: 'chatgpt'
+        platform: 'chatgpt',
+        capture: describeCapture(conversationId)
       }).then(() => {
         sendResponse({ success: true });
       }).catch(error => {
