@@ -131,6 +131,53 @@
   }
 
   // ============================================================================
+  // URL MATCHING
+  // ============================================================================
+
+  // Only the conversation GET endpoint itself:
+  //   /api/organizations/<org>/chat_conversations/<uuid>
+  // Sub-resources (/completion, /latest, /title, ...) carry other payloads
+  // and must not replace a captured conversation.
+  const CONVERSATION_PATH_RE = /^\/api\/organizations\/[^/]+\/chat_conversations\/[0-9a-f-]{10,}$/i;
+
+  /**
+   * True when `url` is Claude's own conversation endpoint: same origin as the
+   * page and exactly the conversation path. The URL is resolved first, so a
+   * path that merely appears inside another origin's URL, a query string or a
+   * fragment does not match.
+   */
+  function isConversationUrl(url) {
+    if (typeof url !== 'string' || !url) return false;
+    let parsed;
+    try {
+      parsed = new URL(url, window.location.href);
+    } catch (_) {
+      return false;
+    }
+    if (parsed.origin !== window.location.origin) return false;
+    return CONVERSATION_PATH_RE.test(parsed.pathname);
+  }
+
+  function isGetMethod(method) {
+    return method === undefined || method === null || String(method).toUpperCase() === 'GET';
+  }
+
+  /**
+   * URL and method of a fetch() call. Only a string, a URL or a real Request
+   * is read; any other object is ignored, because the page decides what such
+   * an object claims in `.url` and what it turns into when fetched.
+   */
+  function describeFetchCall(args) {
+    const request = args[0];
+    const init = args[1];
+    const initMethod = init && typeof init === 'object' ? init.method : undefined;
+    if (typeof request === 'string') return { url: request, method: initMethod };
+    if (request instanceof URL) return { url: request.href, method: initMethod };
+    if (request instanceof Request) return { url: request.url, method: initMethod || request.method };
+    return null;
+  }
+
+  // ============================================================================
   // PASSIVE FETCH INTERCEPTOR
   // ============================================================================
 
@@ -138,20 +185,15 @@
     const response = await originalFetch.apply(this, args);
 
     try {
-      const request = args[0];
-      let url = '';
+      const call = describeFetchCall(args);
 
-      if (typeof request === 'string') {
-        url = request;
-      } else if (request instanceof Request) {
-        url = request.url;
-      } else if (request && typeof request === 'object' && request.url) {
-        url = request.url;
-      } else {
-        url = String(request);
-      }
-
-      const isConversationRequest = isConversationUrl(url);
+      // The response's own URL is what was actually fetched (after redirects);
+      // it has to be the conversation endpoint too, served same-origin.
+      const isConversationRequest = call !== null
+        && isGetMethod(call.method)
+        && isConversationUrl(call.url)
+        && response.type === 'basic'
+        && isConversationUrl(response.url);
 
       if (isConversationRequest) {
         const validation = validateResponse(response);
@@ -198,30 +240,28 @@
   // PASSIVE XHR INTERCEPTOR
   // ============================================================================
 
-  function isConversationUrl(url) {
-    if (!url) return false;
-    // Require the full prefix /api/organizations/<org>/chat_conversations/<uuid>
-    // and reject sub-resources (title, rename, composer_notices, etc.) so that
-    // only the conversation GET endpoint matches.
-    const re = /\/api\/organizations\/[^/?#]+\/chat_conversations\/[0-9a-f-]{10,}(?:[?#]|$|\/(?!composer_notices|title|rename))/i;
-    return re.test(url);
-  }
+  // Requests opened through the real XMLHttpRequest.open, keyed by instance.
+  // An object that never went through open() is not in the map, so send()
+  // called on a look-alike object is not treated as a conversation request.
+  const openedXhrs = new WeakMap();
 
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    const result = originalXhrOpen.call(this, method, url, ...rest);
     try {
-      this.__claudeExporterUrl = typeof url === 'string' ? url : String(url);
-      this.__claudeExporterMethod = method;
+      openedXhrs.set(this, { url: typeof url === 'string' ? url : String(url), method });
     } catch (_) {}
-    return originalXhrOpen.call(this, method, url, ...rest);
+    return result;
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
     try {
-      const url = this.__claudeExporterUrl || '';
-      if (isConversationUrl(url)) {
+      const opened = openedXhrs.get(this);
+      if (opened && isGetMethod(opened.method) && isConversationUrl(opened.url)) {
         this.addEventListener('load', () => {
           try {
             if (this.status < 200 || this.status >= 300) return;
+            // responseURL is the final URL after redirects.
+            if (!isConversationUrl(this.responseURL)) return;
             const text = this.responseText;
             if (!text || text.length > MAX_RESPONSE_SIZE) return;
             let data;

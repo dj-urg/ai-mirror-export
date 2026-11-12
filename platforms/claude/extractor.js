@@ -97,6 +97,15 @@ function thinkingSummary(block) {
 }
 
 /**
+ * The conversation's messages, without entries that are not objects (a null
+ * or scalar in `chat_messages` would otherwise abort the whole export).
+ */
+function chatMessages(conversationData) {
+  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  return messages.filter(m => m && typeof m === 'object');
+}
+
+/**
  * The set of message uuids on the conversation's visible path: the chain
  * from `current_leaf_message_uuid` up through `parent_message_uuid`. Claude
  * exports every branch (edited prompts and regenerated answers); this lets
@@ -104,7 +113,7 @@ function thinkingSummary(block) {
  * payload carries no leaf, in which case every message counts as visible.
  */
 function visiblePathSet(conversationData) {
-  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const messages = chatMessages(conversationData);
   const leaf = conversationData.current_leaf_message_uuid;
   const byId = new Map();
   for (const m of messages) if (m && typeof m.uuid === 'string') byId.set(m.uuid, m);
@@ -128,26 +137,14 @@ function isOnVisiblePath(pathSet, uuid) {
  */
 function flattenMessageBlocks(msg) {
   const blocks = Array.isArray(msg.content) ? msg.content : [];
-  if (blocks.length === 0) {
-    // Preserve messages that have no content blocks (edge case) as a single
-    // empty-text row so they still appear in the CSV.
-    return [{
-      block_index: 0,
-      content_type: '',
-      text: typeof msg.text === 'string' ? msg.text : '',
-      thinking_summary: '',
-      tool_name: '',
-      tool_input_json: '',
-      tool_use_id: '',
-      block_start_timestamp: '',
-      block_stop_timestamp: '',
-      raw_block_json: ''
-    }];
-  }
+  const rows = [];
 
-  return blocks.map((block, idx) => {
-    const contentType = block && typeof block.type === 'string' ? block.type : '';
-    return {
+  // A block that is not an object is skipped; the others keep their original
+  // position in `block_index`.
+  blocks.forEach((block, idx) => {
+    if (!block || typeof block !== 'object') return;
+    const contentType = typeof block.type === 'string' ? block.type : '';
+    rows.push({
       block_index: idx,
       content_type: contentType,
       text: extractBlockText(block),
@@ -160,8 +157,24 @@ function flattenMessageBlocks(msg) {
       block_start_timestamp: toIsoUtc(block.start_timestamp) || '',
       block_stop_timestamp: toIsoUtc(block.stop_timestamp) || '',
       raw_block_json: toJsonCell(block)
-    };
+    });
   });
+  if (rows.length > 0) return rows;
+
+  // Preserve messages that have no content blocks (edge case) as a single
+  // empty-text row so they still appear in the CSV.
+  return [{
+    block_index: 0,
+    content_type: '',
+    text: typeof msg.text === 'string' ? msg.text : '',
+    thinking_summary: '',
+    tool_name: '',
+    tool_input_json: '',
+    tool_use_id: '',
+    block_start_timestamp: '',
+    block_stop_timestamp: '',
+    raw_block_json: ''
+  }];
 }
 
 
@@ -170,7 +183,7 @@ function flattenMessageBlocks(msg) {
 // ============================================================================
 
 function extractConversationMetadata(conversationData) {
-  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const messages = chatMessages(conversationData);
 
   let numUser = 0;
   let numAssistant = 0;
@@ -262,7 +275,7 @@ function generateMetadataCSV(metadata) {
 function extractConversationMessages(conversationData) {
   const rows = [];
   const conversationId = conversationData.uuid || '';
-  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const messages = chatMessages(conversationData);
   const visible = visiblePathSet(conversationData);
 
   for (const msg of messages) {
@@ -347,7 +360,7 @@ function generateMessagesCSV(messages) {
 function extractSources(conversationData) {
   const rows = [];
   const conversationId = conversationData.uuid || '';
-  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const messages = chatMessages(conversationData);
 
   for (const msg of messages) {
     const blocks = Array.isArray(msg.content) ? msg.content : [];
@@ -420,7 +433,7 @@ function generateSourcesCSV(sources) {
 function extractAttachments(conversationData) {
   const rows = [];
   const conversationId = conversationData.uuid || '';
-  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const messages = chatMessages(conversationData);
 
   const sourceFields = ['attachments', 'files', 'files_v2', 'sync_sources'];
 
@@ -495,7 +508,7 @@ function generateMessagesCanonicalCSV(conversationData, { donorId, donorIdType, 
   const headers = canonicalHeaders();
   const schemaVersion = SCHEMA_VERSIONS.claude_messages_canonical;
   const conversationId = conversationData.uuid || '';
-  const messages = Array.isArray(conversationData.chat_messages) ? conversationData.chat_messages : [];
+  const messages = chatMessages(conversationData);
   const visible = visiblePathSet(conversationData);
 
   const rows = [headers.join(',')];
