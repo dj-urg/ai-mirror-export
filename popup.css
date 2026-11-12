@@ -1292,6 +1292,31 @@ strong {
   font-weight: var(--font-weight-semibold);
 }
 
+/* Link-styled button that opens merge.html in a tab. */
+.merge-link {
+  display: block;
+  margin: var(--space-md) auto 0;
+  padding: var(--space-xs) var(--space-sm);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--color-primary);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.merge-link:hover {
+  color: var(--color-primary-hover);
+}
+
+.merge-link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
 /* ============================================
    REVIEW CARD COMPONENT (BEM)
    Post-export step: shown after background.js confirms the download.
