@@ -192,6 +192,17 @@ testing/tests/*
 !testing/tests/test_background_outcomes.js
 !testing/tests/test_extract_helpers.js
 !testing/tests/test_merge.js
+!testing/tests/test_chatgpt_inject.js
+!testing/tests/test_chatgpt_robustness.js
+!testing/tests/test_claude_robustness.js
+!testing/tests/test_copilot_capture.js
+!testing/tests/test_deepseek_scripts.js
+!testing/tests/test_google_search_content.js
+!testing/tests/test_grok_scripts.js
+!testing/tests/test_m365_capture.js
+!testing/tests/test_mistral_scripts.js
+!testing/tests/test_perplexity_capture.js
+!testing/tests/test_zip_read.js
 !testing/tests/helpers/
 !testing/tests/helpers/**
 # Synthetic (hand-built) fixtures used by the golden tests. Real-origin
