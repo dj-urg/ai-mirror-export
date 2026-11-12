@@ -203,6 +203,7 @@ async function run() {
 
   const mergedZip = { name: 'merged.zip', bytes: buildZip(m4.files) };
   const { checked: c6 } = await checkAll([mergedZip]);
+  assert('zip bundle source is the zip', c6[0].sources.length === 1 && c6[0].sources[0] === 'merged.zip');
   assert('merged zip refused', c6[0].status === STATUS.INVALID && /already a merged/.test(c6[0].problems[0]));
 
   const dir = join(GOLDEN, 'mistral__scrub_off');
@@ -210,6 +211,7 @@ async function run() {
     .map(f => ({ name: `folder/${f}`, bytes: new Uint8Array(readFileSync(join(dir, f))) }));
   const { checked: c7 } = await checkAll(loose);
   assert('unzipped folder verifies', c7.length === 1 && c7[0].status === STATUS.OK, JSON.stringify(c7.map(b => b.problems)));
+  assert('loose bundle lists every source file', c7[0].sources.length === loose.length);
   const lonely = loose.filter(f => f.name.endsWith('.csv')).slice(0, 1);
   const { checked: c8 } = await checkAll(lonely);
   assert('CSV without manifest is unverified', c8[0].status === STATUS.CHANGED && c8[0].platform === 'mistral');

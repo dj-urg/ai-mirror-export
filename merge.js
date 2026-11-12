@@ -117,6 +117,27 @@ function exportedCell(iso) {
     el('time', { datetime: iso, title: iso }, exportTimeFormat.format(d)));
 }
 
+function removeButton(bundle) {
+  const button = el('button', {
+    type: 'button',
+    class: 'button button--secondary button--small',
+    'aria-label': `Remove ${bundle.label}`
+  }, 'Remove');
+  button.addEventListener('click', () => removeBundle(bundle, button));
+  return button;
+}
+
+/** Drop the files a row was built from, re-check, and keep keyboard focus nearby. */
+async function removeBundle(bundle, button) {
+  const buttons = [...document.querySelectorAll('.file-table__action button')];
+  const index = buttons.indexOf(button);
+  for (const source of bundle.sources) inputs.delete(source);
+  await recheck();
+  setProgress(`Removed ${bundle.label}. ${checked.length} export${checked.length === 1 ? '' : 's'} left.`);
+  const remaining = document.querySelectorAll('.file-table__action button');
+  (remaining[Math.min(index, remaining.length - 1)] || $('pickFiles')).focus();
+}
+
 function render() {
   const has = checked.length > 0 || ignored.length > 0;
   $('checkSection').hidden = !has;
@@ -155,7 +176,8 @@ function render() {
         el('td', {}, platformName(b.platform)),
         exportedCell(b.downloadTime),
         el('td', { class: 'file-table__num' }, String(rowCount)),
-        el('td', {}, details));
+        el('td', {}, details),
+        el('td', { class: 'file-table__action' }, removeButton(b)));
     });
   $('fileRows').replaceChildren(...rows);
 
