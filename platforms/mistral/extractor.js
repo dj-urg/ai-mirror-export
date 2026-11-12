@@ -28,9 +28,9 @@
  *     ]
  *   }
  *
- * The API returns `messages` in newest-first order; we reverse them to turn
- * order (oldest-first) so the CSV reads top-to-bottom as the conversation
- * actually unfolded.
+ * The API returns `messages` in newest-first order; we put them in turn
+ * order (oldest-first, see orderMessages) so the CSV reads top-to-bottom as
+ * the conversation actually unfolded.
  */
 
 import { escapeCSVField } from '../../utils/csv.js';
@@ -49,6 +49,31 @@ import { stripUtmParams, toJsonCell, normalizeRole } from '../../utils/extract_h
 // ============================================================================
 
 /**
+ * Put the message list in conversation order (oldest first).
+ *
+ * Mistral's API returns newest-first, so the starting point is the reversed
+ * list. When every message has a parseable `createdAt` the list is then
+ * sorted by it, which keeps the order right when the list was assembled from
+ * several pages or captures; ties fall back to `turn`, then to the reversed
+ * API order. If any timestamp is missing the reversed order is kept as is.
+ */
+function orderMessages(rawMessages) {
+  const reversed = [...rawMessages].reverse();
+  const times = reversed.map(m => (m && typeof m === 'object' ? Date.parse(m.createdAt) : NaN));
+  if (times.some(t => Number.isNaN(t))) return reversed;
+  return reversed
+    .map((m, i) => ({ m, i, t: times[i] }))
+    .sort((a, b) => {
+      if (a.t !== b.t) return a.t - b.t;
+      const ta = typeof a.m.turn === 'number' ? a.m.turn : null;
+      const tb = typeof b.m.turn === 'number' ? b.m.turn : null;
+      if (ta !== null && tb !== null && ta !== tb) return ta - tb;
+      return a.i - b.i;
+    })
+    .map(x => x.m);
+}
+
+/**
  * Pull { chat, messages, conversationId } out of the payload assembled by
  * content.js. Defensive against the chat half being missing (we still want
  * to export the messages).
@@ -59,9 +84,7 @@ function unwrap(data) {
   }
   const chat = data.chat && typeof data.chat === 'object' ? data.chat : null;
   const rawMessages = Array.isArray(data.messages) ? data.messages : [];
-  // Mistral's API returns newest-first; reverse to oldest-first for the CSV.
-  // (No secondary sort: the API order is kept as received.)
-  const messages = [...rawMessages].reverse();
+  const messages = orderMessages(rawMessages);
   const conversationId =
     (typeof data._captured_conversation_id === 'string' && data._captured_conversation_id) ||
     (chat && chat.id) ||

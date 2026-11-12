@@ -26,13 +26,21 @@
   const CLEANUP_INTERVAL_MS = 300000; // 5 minutes
 
   // `capturedConversations` is keyed by chatId and holds a merged record:
-  //   { chatId, chat, messages, mergedAt }
+  //   { chatId, chat, messages, mergedAt, messagesAt, source, complete, flags, seq }
   // where `chat` is the chat.byId payload (nullable until it arrives) and
   // `messages` is the array returned by message.all (nullable until it
   // arrives). Export is unlocked once `messages` is present, matching the
   // other platforms where messages are the minimum viable payload.
+  // `messagesAt` / `source` / `complete` / `flags` describe how and when the
+  // message list was captured; they are sent with the export as `capture`.
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
+
+  // The signing secret is 32 random bytes, hex-encoded by inject.js.
+  const SECRET_RE = /^[0-9a-f]{64}$/;
+  const EXPORT_REFRESH_TIMEOUT_MS = 15000;
+  // Upper bound on message.all pages followed in one fetch.
+  const MAX_MESSAGE_PAGES = 50;
 
   // ==========================================================================
   // SECRET BRIDGE — XRay-wrapper-safe attribute read.
@@ -111,17 +119,80 @@
     }
   }
 
-  function mergeCapture(chatId, patch) {
-    evictOldestIfFull();
-    const existing = capturedConversations.get(chatId) || { chatId, chat: null, messages: null };
-    const merged = {
-      chatId,
-      chat: patch.chat !== undefined ? patch.chat : existing.chat,
-      messages: patch.messages !== undefined ? patch.messages : existing.messages,
-      mergedAt: Date.now()
-    };
+  function itemId(m) {
+    return m && typeof m.id === 'string' && m.id ? m.id : null;
+  }
+
+  /**
+   * Decide what a passively captured message list does to the stored one.
+   * A capture must not degrade what is stored: one page of a longer list is
+   * merged by message id; without ids it only replaces the stored list when
+   * it is a whole list and not smaller.
+   * Returns { messages, flags } or null when the stored list must stay.
+   */
+  function reconcilePassiveMessages(oldList, newList, partial) {
+    if (!Array.isArray(oldList)) return { messages: newList, flags: partial ? ['partial_page'] : [] };
+    if (oldList.every(itemId) && newList.every(itemId)) {
+      const incomingIds = new Set(newList.map(itemId));
+      if (!partial && oldList.every(m => incomingIds.has(itemId(m)))) {
+        return { messages: newList, flags: [] };
+      }
+      // Keep what is stored, take the newer copy of the messages the capture
+      // has, add the ones that are new. The extractor orders by createdAt,
+      // so the position of the added ones does not matter.
+      const byId = new Map(newList.map(m => [itemId(m), m]));
+      const oldIds = new Set(oldList.map(itemId));
+      const added = newList.filter(m => !oldIds.has(itemId(m)));
+      if (added.length === 0 && newList.length === 0) return null;
+      return {
+        messages: added.concat(oldList.map(m => byId.get(itemId(m)) || m)),
+        flags: ['passive_merged']
+      };
+    }
+    if (!partial && newList.length >= oldList.length) return { messages: newList, flags: [] };
+    return null;
+  }
+
+  /**
+   * Store one half (or both) of a conversation.
+   *   patch.chat      chat.byId record; null/undefined never overwrites a stored one
+   *   patch.messages  message list; `info` says where it came from:
+   *                   { source, complete, flags, seq, partial }
+   * Active fetches replace the stored list; passive captures are reconciled.
+   * Returns the stored record, or null when nothing was stored.
+   */
+  function mergeCapture(chatId, patch, info = {}) {
+    const existing = capturedConversations.get(chatId);
+    const now = Date.now();
+    const merged = existing
+      ? { ...existing }
+      : { chatId, chat: null, messages: null, messagesAt: null, source: null, complete: null, flags: [], seq: 0 };
+
+    if (patch.chat && typeof patch.chat === 'object') merged.chat = patch.chat;
+
+    if (Array.isArray(patch.messages)) {
+      let next = { messages: patch.messages, flags: info.flags || [] };
+      if (info.source === 'passive') {
+        next = reconcilePassiveMessages(merged.messages, patch.messages, info.partial === true);
+      }
+      if (next) {
+        merged.messages = next.messages;
+        merged.messagesAt = now;
+        merged.source = info.source;
+        merged.flags = next.flags;
+        merged.complete = info.source === 'passive' ? null : info.complete;
+        if (typeof info.seq === 'number') merged.seq = info.seq;
+      } else if (!patch.chat) {
+        return null;
+      }
+    }
+
+    // Only a new id can push the cache over its limit; patching a stored
+    // record must not evict anything (least of all the record itself).
+    if (!existing) evictOldestIfFull();
+    merged.mergedAt = now;
     capturedConversations.set(chatId, merged);
-    conversationTimestamps.set(chatId, merged.mergedAt);
+    conversationTimestamps.set(chatId, now);
     return merged;
   }
 
@@ -148,7 +219,10 @@
   // message.all did not, or vice versa).
   // ==========================================================================
 
-  let activeFetchInFlight = null;
+  // One in-flight fetch per chat. `fetchSeq` orders fetches by start time so
+  // a slow, older fetch can never overwrite the result of a newer one.
+  const fetchesInFlight = new Map(); // chatId -> promise
+  let fetchSeq = 0;
 
   // Mistral exposes conversations under two URL shapes:
   //   /chat/<uuid>  — regular chat
@@ -165,10 +239,10 @@
     return !!(record && Array.isArray(record.messages) && record.messages.length > 0);
   }
 
-  async function fetchTrpc(procedure, input) {
+  async function fetchTrpc(procedure, input, signal) {
     const body = { "0": { "json": input } };
     const url = `/api/trpc/${procedure}?batch=1&input=${encodeURIComponent(JSON.stringify(body))}`;
-    const resp = await fetch(url, { credentials: 'include' });
+    const resp = await fetch(url, { credentials: 'include', signal });
     if (!resp.ok) throw new Error(`${procedure} ${resp.status}`);
     const data = await resp.json();
     const json = Array.isArray(data) && data[0] && data[0].result && data[0].result.data
@@ -177,47 +251,123 @@
     return json;
   }
 
+  /**
+   * Fetch the message list, following `nextCursor` on the same procedure
+   * until the list is exhausted. Resolves to { items, complete, paged }, or
+   * null when the first page could not be read. `complete` is false when a
+   * later page failed or the page limit was hit.
+   */
+  async function fetchAllMessages(chatId, signal) {
+    const items = [];
+    const seenIds = new Set();
+    const seenCursors = new Set();
+    let cursor;
+    let complete = true;
+    for (let page = 0; ; page++) {
+      let payload = null;
+      try {
+        payload = await fetchTrpc('message.all', cursor === undefined ? { chatId } : { chatId, cursor }, signal);
+      } catch (_) {
+        payload = null;
+      }
+      if (!payload || !Array.isArray(payload.items)) {
+        if (page === 0) return null;
+        complete = false;
+        break;
+      }
+      for (const item of payload.items) {
+        const id = itemId(item);
+        if (id && seenIds.has(id)) continue;
+        if (id) seenIds.add(id);
+        items.push(item);
+      }
+      const next = payload.nextCursor;
+      if (next === undefined || next === null || next === '') break;
+      const key = JSON.stringify(next);
+      if (page + 1 >= MAX_MESSAGE_PAGES || seenCursors.has(key)) {
+        complete = false;
+        break;
+      }
+      seenCursors.add(key);
+      cursor = next;
+    }
+    return { items, complete, paged: seenCursors.size > 0 || !complete };
+  }
+
+  /**
+   * Fetch both halves from Mistral's own endpoints and store them.
+   * Resolves to the stored record, or null when the message list could not
+   * be read.
+   */
+  async function fetchAndStore(chatId, source, signal) {
+    const seq = ++fetchSeq;
+    try {
+      // Fire both requests in parallel: chat.byId and message.all.
+      const [chat, result] = await Promise.all([
+        fetchTrpc('chat.byId', { id: chatId }, signal).catch(() => null),
+        fetchAllMessages(chatId, signal)
+      ]);
+      if (!result) return null;
+      const stored = capturedConversations.get(chatId);
+      // A newer fetch has already stored its result: keep that one.
+      if (stored && stored.seq > seq) return stored;
+      // An empty list where messages are stored is treated as a failed read,
+      // not as the new truth.
+      if (result.items.length === 0 && isConversationComplete(stored)) return null;
+
+      const flags = [];
+      if (!result.complete) flags.push('pagination_incomplete');
+      const merged = mergeCapture(chatId, { chat, messages: result.items }, {
+        source,
+        complete: result.complete,
+        flags,
+        seq
+      });
+      logDebug('Actively fetched conversation', {
+        chatId,
+        messageCount: result.items.length,
+        hasChatMeta: !!chat
+      });
+      browser.runtime.sendMessage({
+        type: 'CONVERSATION_READY',
+        platform: 'mistral',
+        conversationId: chatId
+      }).catch(() => { /* popup may not be open */ });
+      return merged;
+    } catch (e) {
+      logWarn('Active fetch failed', { error: e.message });
+      return null;
+    }
+  }
+
+  // Background fetch (page load, SPA navigation, popup open): serves the
+  // stored record when both halves are there and joins a fetch already
+  // under way.
   async function activelyFetchAndStore(chatId) {
     if (!chatId) return null;
     const existing = capturedConversations.get(chatId);
     if (isConversationComplete(existing) && existing.chat) return existing;
-    if (activeFetchInFlight) {
-      try { await activeFetchInFlight; } catch (_) {}
-      const after = capturedConversations.get(chatId);
-      if (isConversationComplete(after) && after.chat) return after;
+    let pending = fetchesInFlight.get(chatId);
+    if (!pending) {
+      pending = fetchAndStore(chatId, 'active').finally(() => {
+        if (fetchesInFlight.get(chatId) === pending) fetchesInFlight.delete(chatId);
+      });
+      fetchesInFlight.set(chatId, pending);
     }
-    activeFetchInFlight = (async () => {
-      try {
-        // Fire both requests in parallel: chat.byId and message.all.
-        const [chat, messagesPayload] = await Promise.all([
-          fetchTrpc('chat.byId', { id: chatId }).catch(() => null),
-          fetchTrpc('message.all', { chatId }).catch(() => null)
-        ]);
-        const messages = messagesPayload && Array.isArray(messagesPayload.items)
-          ? messagesPayload.items
-          : null;
-        if (!messages) return null;
-        const merged = mergeCapture(chatId, { chat, messages });
-        logDebug('Actively fetched conversation', {
-          chatId,
-          messageCount: messages.length,
-          hasChatMeta: !!chat
-        });
-        browser.runtime.sendMessage({
-          type: 'CONVERSATION_READY',
-          platform: 'mistral',
-          conversationId: chatId
-        }).catch(() => { /* popup may not be open */ });
-        return merged;
-      } catch (e) {
-        logWarn('Active fetch failed', { error: e.message });
-        return null;
-      }
-    })();
+    return pending;
+  }
+
+  // Refresh at export: always a new request, never the result of a fetch
+  // that started before the export was asked for. Resolves to null on
+  // failure or timeout; the caller then falls back to the stored record.
+  async function refreshForExport(chatId) {
+    if (!chatId) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), EXPORT_REFRESH_TIMEOUT_MS);
     try {
-      return await activeFetchInFlight;
+      return await fetchAndStore(chatId, 'export_refresh', controller.signal);
     } finally {
-      activeFetchInFlight = null;
+      clearTimeout(timer);
     }
   }
 
@@ -296,6 +446,14 @@
       return;
     }
 
+    // No secret (inject.js did not run or its attribute was tampered with):
+    // nothing can be verified, so nothing is accepted.
+    if (typeof SECRET_KEY !== 'string' || !SECRET_RE.test(SECRET_KEY)) {
+      logWarn('Signing secret missing or malformed, message ignored');
+      return;
+    }
+    if (typeof event.data.signature !== 'string') return;
+
     const { signature, ...messageData } = event.data;
     const messageString = JSON.stringify(messageData);
     const isValid = await verifySignature(messageString, signature, SECRET_KEY);
@@ -329,7 +487,11 @@
       return;
     }
 
-    const merged = mergeCapture(chatId, patch);
+    const merged = mergeCapture(chatId, patch, { source: 'passive', partial: partial.partial === true });
+    if (!merged) {
+      logDebug('Passive capture smaller than the stored copy, kept the stored copy', { chatId });
+      return;
+    }
     logDebug('Stored conversation partial', {
       chatId,
       kind: partial.kind,
@@ -411,30 +573,43 @@
     if (message.type === 'EXPORT_CONVERSATION' && message.platform === 'mistral') {
       const conversationId = message.conversationId;
 
-      const forward = (data) => {
+      const forward = (record, refresh) => {
+        const flags = Array.isArray(record.flags) ? record.flags.slice() : [];
+        if (refresh === 'failed') flags.push('refresh_failed');
+        if (!record.chat) flags.push('chat_metadata_missing');
         browser.runtime.sendMessage({
           type: MESSAGE_TYPE,
-          payload: data,
-          platform: 'mistral'
+          payload: assemblePayload(record),
+          platform: 'mistral',
+          capture: {
+            captured_at: new Date(record.messagesAt || record.mergedAt).toISOString(),
+            source: record.source || 'passive',
+            refresh,
+            complete: typeof record.complete === 'boolean' ? record.complete : null,
+            flags
+          }
         }).then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
       };
 
-      const existing = capturedConversations.get(conversationId);
-      if (!isConversationComplete(existing)) {
-        activelyFetchAndStore(conversationId).then(data => {
-          if (!isConversationComplete(data)) {
-            sendResponse({
-              success: false,
-              error: 'Conversation not found. Please reload the page and try again.'
-            });
-            return;
-          }
-          forward(assemblePayload(data));
-        });
-        return true;
-      }
-      forward(assemblePayload(existing));
+      // Always refresh before exporting so the ZIP reflects the latest state
+      // of the chat; fall back to the stored record if the refresh fails,
+      // and say so in the capture record.
+      refreshForExport(conversationId).then(fresh => {
+        if (isConversationComplete(fresh)) {
+          forward(fresh, 'ok');
+          return;
+        }
+        const cached = capturedConversations.get(conversationId);
+        if (!isConversationComplete(cached)) {
+          sendResponse({
+            success: false,
+            error: 'Conversation not found. Please reload the page and try again.'
+          });
+          return;
+        }
+        forward(cached, 'failed');
+      });
       return true;
     }
 

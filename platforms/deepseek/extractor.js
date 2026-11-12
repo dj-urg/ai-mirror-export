@@ -90,18 +90,27 @@ function stringifyId(v) {
 
 /**
  * Pull the final-answer text off a DeepSeek message. For user turns the text
- * lives in a REQUEST fragment; for assistant turns it is the concatenated
- * content of RESPONSE / TEMPLATE_RESPONSE fragments. THINK fragments are
- * returned separately (see thinkingText).
+ * lives in REQUEST fragments (joined when there are several); for assistant
+ * turns it is the concatenated content of RESPONSE / TEMPLATE_RESPONSE
+ * fragments. THINK fragments are returned separately (see thinkingText) and
+ * never stand in for the answer: an assistant turn with no response fragment
+ * (stopped while thinking or searching) has an empty `text`. A message
+ * without fragments falls back to its top-level `content` string.
  */
 function messageText(msg) {
   if (!msg || typeof msg !== 'object') return '';
   const role = normalizeRole(msg.role);
   const fragments = Array.isArray(msg.fragments) ? msg.fragments : [];
 
+  if (fragments.length === 0) {
+    return typeof msg.content === 'string' ? msg.content : '';
+  }
+
   if (role === 'user') {
-    const req = fragments.find(f => f && f.type === 'REQUEST');
-    if (req && typeof req.content === 'string') return req.content;
+    const requests = fragments
+      .filter(f => f && f.type === 'REQUEST' && typeof f.content === 'string')
+      .map(f => f.content);
+    if (requests.length) return requests.join('\n');
     // Fallback: concatenate all string `content` fields in order.
     return fragments
       .map(f => (f && typeof f.content === 'string') ? f.content : '')
@@ -109,14 +118,10 @@ function messageText(msg) {
       .join('\n');
   }
 
-  const parts = fragments
+  return fragments
     .filter(f => f && RESPONSE_TYPES.has(f.type) && typeof f.content === 'string')
-    .map(f => f.content);
-  if (parts.length) return parts.join('\n');
-
-  // No main response — fall back to any first-fragment content.
-  const first = fragments.find(f => f && typeof f.content === 'string' && f.content);
-  return first ? first.content : '';
+    .map(f => f.content)
+    .join('\n');
 }
 
 function thinkingText(msg) {
