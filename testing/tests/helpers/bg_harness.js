@@ -40,6 +40,11 @@ const DEFAULT_SETTINGS = Object.freeze({
 const listeners = [];
 let currentSettings = { ...DEFAULT_SETTINGS };
 let currentSender = null;
+// How the mocked browser reports the download: 'complete' (default),
+// 'interrupted', 'late' (complete, but only after download() has resolved)
+// or 'silent' (no onChanged event at all).
+let currentDownloadBehaviour = 'complete';
+const downloadListeners = new Set();
 let pending = null; // { resolve, reject, downloads: [], broadcasts: [] }
 let imported = false;
 let listenerCalls = 0;
@@ -100,8 +105,22 @@ function installBrowserMock() {
       download: async ({ url, filename }) => {
         const blob = resolveObjectURL(url);
         const bytes = new Uint8Array(await blob.arrayBuffer());
-        if (pending) pending.downloads.push({ filename, bytes });
+        const interrupted = currentDownloadBehaviour === 'interrupted';
+        if (pending && !interrupted) pending.downloads.push({ filename, bytes });
+        const fire = () => {
+          const delta = interrupted
+            ? { id: 1, state: { current: 'interrupted' }, error: { current: 'FILE_NO_SPACE' } }
+            : { id: 1, state: { current: 'complete' } };
+          for (const fn of [...downloadListeners]) fn(delta);
+        };
+        if (currentDownloadBehaviour === 'late') setTimeout(fire, 20);
+        else if (currentDownloadBehaviour !== 'silent') fire();
         return 1;
+      },
+      onChanged: {
+        addListener: (fn) => { downloadListeners.add(fn); },
+        removeListener: (fn) => { downloadListeners.delete(fn); },
+        hasListener: (fn) => downloadListeners.has(fn)
       },
       show: async () => {}
     },
@@ -147,15 +166,22 @@ export async function loadBackground() {
  * @param {object} opts.payload       the synthetic conversation payload
  * @param {string} opts.senderUrl     tab URL of the (mocked) content script
  * @param {object} [opts.settings]    overrides for browser.storage.local
+ * @param {object} [opts.capture]     the content script's capture note, sent next to the payload
+ * @param {object} [opts.sender]      overrides for the mocked sender (e.g. `{ frameId: 2 }`)
+ * @param {'complete'|'interrupted'|'late'|'silent'} [opts.download]  how the mocked download ends
  * @param {number} [opts.timeoutMs]
  * @returns {Promise<{filename: string|null, entries: Map<string, Uint8Array>, broadcasts: object[]}>}
  */
-export async function runExport({ messageType, payload, senderUrl, settings = {}, conversationId = undefined, timeoutMs = 8000 }) {
+export async function runExport({
+  messageType, payload, senderUrl, settings = {}, conversationId = undefined, capture = undefined,
+  sender = {}, download: downloadBehaviour = 'complete', timeoutMs = 8000
+}) {
   await loadBackground();
   if (pending) throw new Error('[bg_harness] runExport is not re-entrant');
 
   currentSettings = { ...DEFAULT_SETTINGS, ...settings };
-  currentSender = { tab: { id: 1, url: senderUrl }, frameId: 0, id: 'ai-chat-exporter@harness' };
+  currentSender = { tab: { id: 1, url: senderUrl }, frameId: 0, id: 'ai-chat-exporter@harness', ...sender };
+  currentDownloadBehaviour = downloadBehaviour;
 
   const result = { downloads: [], broadcasts: [] };
   let settled = false;
@@ -184,6 +210,7 @@ export async function runExport({ messageType, payload, senderUrl, settings = {}
       const cloned = JSON.parse(JSON.stringify(payload));
       const msg = { type: messageType, payload: cloned };
       if (conversationId !== undefined) msg.conversationId = conversationId;
+      if (capture !== undefined) msg.capture = JSON.parse(JSON.stringify(capture));
       return listeners[0](msg, currentSender, () => {});
     });
     if (ret === true) throw new Error('[bg_harness] listener unexpectedly returned true');
@@ -191,6 +218,7 @@ export async function runExport({ messageType, payload, senderUrl, settings = {}
   } finally {
     globalThis.Date = RealDate;
     pending = null;
+    currentDownloadBehaviour = 'complete';
   }
 
   const download = result.downloads[0] || null;
@@ -198,7 +226,8 @@ export async function runExport({ messageType, payload, senderUrl, settings = {}
     filename: download ? download.filename : null,
     entries: download ? readZip(download.bytes) : new Map(),
     broadcasts: result.broadcasts,
-    listenerCalls
+    listenerCalls,
+    downloadListenersLeft: downloadListeners.size
   };
 }
 

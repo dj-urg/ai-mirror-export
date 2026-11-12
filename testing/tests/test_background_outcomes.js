@@ -64,12 +64,95 @@ await expectOutcome('claude missing chat_messages',
   assert('grok hint: malformed hint is ignored', bad.filename === 'grok_unknown_2026-04-13T12-00-00Z.zip', bad.filename);
 }
 
-// Sender/type validation: nothing happens at all for a mismatched origin.
-const mismatch = await runExport({
-  messageType: 'CLAUDE_CONVERSATION_DATA', payload: { uuid: 'x', chat_messages: [{ uuid: 'm', sender: 'human', content: [{ type: 'text', text: 'hi' }] }] },
-  senderUrl: 'https://chatgpt.com/c/x', timeoutMs: 1500
-}).catch(err => ({ timedOut: true, message: err.message }));
-assert('platform/origin mismatch is dropped silently', mismatch.timedOut === true, JSON.stringify(mismatch).slice(0, 120));
+await expectOutcome('chatgpt id without a mapping',
+  { messageType: 'CHATGPT_CONVERSATION_DATA', payload: { conversation_id: 'c' }, senderUrl: 'https://chatgpt.com/c/c' },
+  'empty_export', 'EMPTY');
+await expectOutcome('chatgpt empty mapping',
+  { messageType: 'CHATGPT_CONVERSATION_DATA', payload: { conversation_id: 'c', mapping: {} }, senderUrl: 'https://chatgpt.com/c/c' },
+  'empty_export', 'EMPTY');
+await expectOutcome('chatgpt mapping with no exportable message',
+  { messageType: 'CHATGPT_CONVERSATION_DATA',
+    payload: { conversation_id: 'c', current_node: 'root', mapping: { root: { id: 'root', message: null, parent: null, children: [] } } },
+    senderUrl: 'https://chatgpt.com/c/c' },
+  'empty_export', 'EMPTY');
+await expectOutcome('message without a payload',
+  { messageType: 'CLAUDE_CONVERSATION_DATA', payload: null, senderUrl: 'https://claude.ai/chat/x' },
+  'invalid_data', 'NOT_OBJECT');
+
+// Sender/type validation: a rejected export is reported, never left hanging.
+const claudePayload = { uuid: 'x', chat_messages: [{ uuid: 'm', sender: 'human', content: [{ type: 'text', text: 'hi' }] }] };
+await expectOutcome('platform/origin mismatch',
+  { messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'https://chatgpt.com/c/x' },
+  'invalid_data', 'SENDER_REJECTED');
+await expectOutcome('subframe sender',
+  { messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'https://claude.ai/chat/x', sender: { frameId: 3 } },
+  'invalid_data', 'SENDER_REJECTED');
+await expectOutcome('non-https sender',
+  { messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'http://claude.ai/chat/x' },
+  'invalid_data', 'SENDER_REJECTED');
+await expectOutcome('look-alike host',
+  { messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'https://claude.ai.example.com/chat/x' },
+  'invalid_data', 'SENDER_REJECTED');
+
+// Every result names the tab it came from.
+{
+  const r = await runExport({ messageType: 'CLAUDE_CONVERSATION_DATA', payload: { uuid: 'x', chat_messages: [] }, senderUrl: 'https://claude.ai/chat/x' });
+  assert('results carry the sender tab id', r.broadcasts.length > 0 && r.broadcasts.every(b => b.tabId === 1), JSON.stringify(r.broadcasts));
+}
+
+// Download completion: success only once the browser reports the file written.
+{
+  const base = { messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'https://claude.ai/chat/x' };
+  const ok = await runExport(base);
+  const okDetail = ok.broadcasts.find(b => b.outcome === 'success') || {};
+  assert('complete download: success', okDetail.outcome === 'success' && okDetail.downloadConfirmed === true, JSON.stringify(ok.broadcasts));
+  assert('complete download: id and tab passed on', okDetail.downloadId === 1 && okDetail.tabId === 1);
+  assert('complete download: no listener left behind', ok.downloadListenersLeft === 0, String(ok.downloadListenersLeft));
+
+  const late = await runExport({ ...base, download: 'late' });
+  const lateDetail = late.broadcasts.find(b => b.outcome === 'success') || {};
+  assert('late completion event: success, confirmed', lateDetail.downloadConfirmed === true, JSON.stringify(late.broadcasts));
+  assert('late completion event: no listener left behind', late.downloadListenersLeft === 0);
+
+  const bad = await runExport({ ...base, download: 'interrupted' });
+  const badDetail = bad.broadcasts.find(b => b.outcome === 'download_failed') || {};
+  assert('interrupted download: reported as download_failed', badDetail.code === 'DOWNLOAD_INTERRUPTED', JSON.stringify(bad.broadcasts));
+  assert('interrupted download: no success broadcast', !bad.broadcasts.some(b => b.outcome === 'success'));
+  assert('interrupted download: reason is plain text', typeof badDetail.reason === 'string' && badDetail.reason.length > 0);
+}
+
+// Capture provenance: sanitised, written to the manifest, passed to the popup.
+{
+  const r = await runExport({
+    messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'https://claude.ai/chat/x',
+    capture: {
+      captured_at: '2026-04-13T11:59:00.000Z', source: 'export_refresh', refresh: 'failed', complete: false,
+      flags: ['refresh_failed', 'Not A Flag', 'refresh_failed', 42, 'x'.repeat(41)],
+      note: 'jane@example.com', nested: { a: 1 }
+    }
+  });
+  const expected = { captured_at: '2026-04-13T11:59:00.000Z', source: 'export_refresh', refresh: 'failed', complete: false, flags: ['refresh_failed'] };
+  const manifestName = [...r.entries.keys()].find(n => n.endsWith('.json'));
+  const manifest = JSON.parse(new TextDecoder().decode(r.entries.get(manifestName)));
+  assert('capture: written to manifest telemetry, known fields only',
+    JSON.stringify(manifest.telemetry.capture) === JSON.stringify(expected), JSON.stringify(manifest.telemetry.capture));
+  const detail = r.broadcasts.find(b => b.outcome === 'success') || {};
+  assert('capture: passed to the popup with the result', JSON.stringify(detail.capture) === JSON.stringify(expected), JSON.stringify(detail.capture));
+  assert('manifest: checksum basis stated', manifest.checksum_basis === 'utf8_without_bom');
+
+  const junk = await runExport({
+    messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'https://claude.ai/chat/x',
+    capture: { captured_at: 'yesterday-ish', source: 'telepathy', refresh: 7, complete: 'yes', flags: 'refresh_failed' }
+  });
+  const junkManifest = JSON.parse(new TextDecoder().decode(junk.entries.get([...junk.entries.keys()].find(n => n.endsWith('.json')))));
+  assert('capture: unknown values become null / empty',
+    JSON.stringify(junkManifest.telemetry.capture) === JSON.stringify({ captured_at: null, source: null, refresh: null, complete: null, flags: [] }),
+    JSON.stringify(junkManifest.telemetry.capture));
+
+  const none = await runExport({ messageType: 'CLAUDE_CONVERSATION_DATA', payload: claudePayload, senderUrl: 'https://claude.ai/chat/x' });
+  const noneManifest = JSON.parse(new TextDecoder().decode(none.entries.get([...none.entries.keys()].find(n => n.endsWith('.json')))));
+  assert('capture: null when the content script sent none', noneManifest.telemetry.capture === null);
+}
 
 console.log(`\nBackground outcome tests: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

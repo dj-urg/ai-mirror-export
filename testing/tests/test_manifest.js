@@ -71,7 +71,7 @@ async function run() {
   assert('manifest preserves extras', manifest.telemetry.pii_redactions === 3);
 
   // MANIFEST_SCHEMA_VERSION bumped additively (1.1.0 PII fields, 1.2.0 consent record)
-  assert('manifest schema is 1.2.0', MANIFEST_SCHEMA_VERSION === '1.2.0');
+  assert('manifest schema is 1.3.0', MANIFEST_SCHEMA_VERSION === '1.3.0');
 
   // New additive telemetry fields survive the round-trip
   const manifestWithScrub = await buildManifest({
@@ -109,6 +109,22 @@ async function run() {
   assert('toIsoUtc empty for null', toIsoUtc(null) === '');
   assert('toIsoUtc empty for garbage', toIsoUtc('not a date') === '');
   assert('toIsoUtc empty for empty string', toIsoUtc('') === '');
+  assert('toIsoUtc reads a digit string as unix seconds',
+    toIsoUtc('1735689600') === '2025-01-01T00:00:00.000Z');
+  assert('toIsoUtc reads a digit string as unix ms',
+    toIsoUtc('1735689600000') === '2025-01-01T00:00:00.000Z');
+  assert('toIsoUtc reads a fractional epoch string',
+    toIsoUtc('1735689600.5') === '2025-01-01T00:00:00.500Z');
+  assert('toIsoUtc reads a zone-less date-time as UTC (T)',
+    toIsoUtc('2026-01-15T10:30:00') === '2026-01-15T10:30:00.000Z');
+  assert('toIsoUtc reads a zone-less date-time as UTC (space, no seconds)',
+    toIsoUtc('2026-01-15 10:30') === '2026-01-15T10:30:00.000Z');
+  assert('toIsoUtc keeps an explicit offset',
+    toIsoUtc('2026-01-15T10:30:00+02:00') === '2026-01-15T08:30:00.000Z');
+  assert('toIsoUtc reads a date as UTC midnight', toIsoUtc('2026-01-15') === '2026-01-15T00:00:00.000Z');
+  assert('toIsoUtc empty for NaN / Infinity', toIsoUtc(NaN) === '' && toIsoUtc(Infinity) === '');
+  assert('toIsoUtc empty for an out-of-range number', toIsoUtc(1e300) === '');
+  assert('toIsoUtc empty for objects', toIsoUtc({}) === '' && toIsoUtc([]) === '');
 
   // canonicalHeaders
   const headers = canonicalHeaders();

@@ -162,6 +162,24 @@
       storage: { study_salt: 'STUDY-42' },
       autoExport: 'success_result'
     },
+    export_result_success_stale: {
+      // Saved, but the content script could not refresh the conversation.
+      tab: FIXTURES.tabs.claude,
+      conversationsResponse: FIXTURES.conversations.claude,
+      autoExport: 'success_stale'
+    },
+    export_result_success_passive: {
+      // Saved from a platform that cannot be re-read at export time.
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'success_passive'
+    },
+    export_result_unconfirmed: {
+      // Download started, but Firefox never reported it complete.
+      tab: FIXTURES.tabs.chatgpt,
+      conversationsResponse: FIXTURES.conversations.chatgpt,
+      autoExport: 'success_unconfirmed'
+    },
     export_result_download_failed: {
       tab: FIXTURES.tabs.chatgpt,
       conversationsResponse: FIXTURES.conversations.chatgpt,
@@ -322,12 +340,27 @@
       case 'invalid_data':
         broadcastExportResult({ platform: 'chatgpt', outcome: 'invalid_data', code: 'BAD_SHAPE', reason: 'ChatGPT mapping is not a plain object' });
         return ok();
-      case 'success_result':
-        broadcastExportResult({ platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip', downloadId: 1 });
+      case 'success_stale':
+        broadcastExportResult({
+          platform: 'claude', outcome: 'success', filename: 'claude_synthetic_2026-01-01T00-00-00Z.zip', downloadId: 1, downloadConfirmed: true,
+          capture: { captured_at: '2026-01-01T00:00:00.000Z', source: 'passive', refresh: 'failed', complete: null, flags: ['refresh_failed'] }
+        });
         return ok();
+      case 'success_passive':
+        broadcastExportResult({
+          platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip', downloadId: 1, downloadConfirmed: true,
+          capture: { captured_at: '2026-01-01T00:00:00.000Z', source: 'passive', refresh: 'not_supported', complete: null, flags: [] }
+        });
+        return ok();
+      case 'success_unconfirmed':
+        broadcastExportResult({ platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip', downloadId: 1, downloadConfirmed: false, capture: null });
+        return ok();
+      case 'success_result':
       case 'success':
       default:
-        // Simulate a brief delay so the Exporting… state is visible.
+        // The content script answers after a brief delay (so the Exporting…
+        // state is visible) and background confirms the download.
+        broadcastExportResult({ platform: 'chatgpt', outcome: 'success', filename: 'chatgpt_synthetic_2026-01-01T00-00-00Z.zip', downloadId: 1, downloadConfirmed: true, capture: null }, 500);
         return ok();
     }
   }
