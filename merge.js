@@ -7,7 +7,7 @@
  * every network request from this page.
  */
 
-import { collectBundles, checkBundle, mergeBundles, pickLatest, STATUS } from './utils/merge.js';
+import { collectBundles, checkBundle, mergeBundles, selectForMerge, STATUS, SUPERSEDED } from './utils/merge.js';
 import { buildZip } from './utils/zip.js';
 import { EXTENSION_CONFIG } from './config/settings.js';
 
@@ -21,10 +21,18 @@ const STATUS_COPY = {
   [STATUS.INVALID]: { icon: '✕', label: 'Cannot use' }
 };
 
+const SUPERSEDED_COPY = {
+  [SUPERSEDED.NEWER]: 'A newer export of this conversation was added; only the newer one will be merged.',
+  [SUPERSEDED.VERIFIED]: 'A verified export of this conversation was added; only the verified one will be merged.',
+  [SUPERSEDED.COPY]: 'This export was added more than once; it will be merged only once.'
+};
+
 const $ = (id) => document.getElementById(id);
 
 // All files added so far, keyed by path so adding the same file twice is harmless.
 const inputs = new Map();
+// Files the browser could not read, shown with the ignored files.
+let unreadable = [];
 let checked = [];
 let ignored = [];
 
@@ -34,6 +42,40 @@ function platformName(id) {
 
 function setProgress(text) {
   $('progress').textContent = text;
+}
+
+// ---------------------------------------------------------------------------
+// One job at a time
+// ---------------------------------------------------------------------------
+
+// Adding, removing, starting over and merging all read or replace `inputs`
+// and `checked`. They run one after another through this queue, so a merge
+// never sees a half-checked list and a slow check cannot overwrite a newer
+// one. While a job runs, the buttons that act on the current list are off.
+let queue = Promise.resolve();
+let jobs = 0;
+
+function setBusy(busy) {
+  $('checkSection').setAttribute('aria-busy', String(busy));
+  for (const button of document.querySelectorAll('#mergeButton, #clearAll, .file-table__action button')) {
+    button.disabled = busy;
+  }
+}
+
+function runExclusive(job) {
+  jobs++;
+  setBusy(true);
+  const run = queue.then(job).catch(() => {
+    // Nothing here may leave the page stuck: show what we have and say so.
+    try {
+      render();
+    } catch (_err) { /* the message below still tells the user what to do */ }
+    setProgress('Something went wrong while reading these files. Try adding them again, or start over.');
+  }).finally(() => {
+    if (--jobs === 0) setBusy(false);
+  });
+  queue = run;
+  return run;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,24 +114,52 @@ async function addFiles(list) {
   let done = 0;
   for (const { file, path } of items) {
     setProgress(`Reading ${++done} of ${items.length}…`);
-    inputs.set(path, { name: path, bytes: new Uint8Array(await file.arrayBuffer()) });
+    try {
+      inputs.set(path, { name: path, bytes: new Uint8Array(await file.arrayBuffer()) });
+    } catch (_err) {
+      unreadable.push({ name: path, reason: 'The browser could not read this file.' });
+    }
   }
   await recheck();
 }
 
+/** Row for an export whose check itself failed, so it is shown instead of stopping the page. */
+function uncheckable(bundle) {
+  return {
+    label: bundle.label, sources: bundle.sources || [], status: STATUS.INVALID,
+    problems: ['This export could not be checked.'], notes: [],
+    platform: null, conversationId: null, donorId: null, donorIdType: null,
+    downloadTime: null, piiScrubEnabled: null, files: []
+  };
+}
+
+/** Check everything in `inputs` again. Only call from inside runExclusive. */
 async function recheck() {
   setProgress('Checking files…');
-  const result = await collectBundles([...inputs.values()]);
-  ignored = result.ignored;
-  checked = [];
-  for (let i = 0; i < result.bundles.length; i++) {
-    checked.push(await checkBundle(result.bundles[i]));
-    // Yield so the page stays responsive on large drops.
-    if (i % 25 === 24) {
-      setProgress(`Checking ${i + 1} of ${result.bundles.length}…`);
-      await new Promise(r => setTimeout(r, 0));
+  // Built on the side and swapped in at the end: `checked` is never partial.
+  const next = [];
+  let nextIgnored = [...unreadable];
+  try {
+    const result = await collectBundles([...inputs.values()]);
+    nextIgnored = [...result.ignored, ...unreadable];
+    for (let i = 0; i < result.bundles.length; i++) {
+      try {
+        next.push(await checkBundle(result.bundles[i]));
+      } catch (_err) {
+        next.push(uncheckable(result.bundles[i]));
+      }
+      // Yield so the page stays responsive on large drops.
+      if (i % 25 === 24) {
+        setProgress(`Checking ${i + 1} of ${result.bundles.length}…`);
+        await new Promise(r => setTimeout(r, 0));
+      }
     }
+  } catch (_err) {
+    next.length = 0;
+    nextIgnored = [...inputs.keys()].map(name => ({ name, reason: 'Could not be checked.' })).concat(unreadable);
   }
+  checked = next;
+  ignored = nextIgnored;
   render();
 }
 
@@ -123,23 +193,29 @@ function removeButton(bundle) {
     class: 'button button--secondary button--small',
     'aria-label': `Remove ${bundle.label}`
   }, 'Remove');
-  button.addEventListener('click', () => removeBundle(bundle, button));
+  button.disabled = jobs > 0;
+  button.addEventListener('click', () => {
+    const buttons = [...document.querySelectorAll('.file-table__action button')];
+    runExclusive(() => removeBundle(bundle, buttons.indexOf(button)));
+  });
   return button;
 }
 
 /** Drop the files a row was built from, re-check, and keep keyboard focus nearby. */
-async function removeBundle(bundle, button) {
-  const buttons = [...document.querySelectorAll('.file-table__action button')];
-  const index = buttons.indexOf(button);
+async function removeBundle(bundle, index) {
   for (const source of bundle.sources) inputs.delete(source);
   await recheck();
   setProgress(`Removed ${bundle.label}. ${checked.length} export${checked.length === 1 ? '' : 's'} left.`);
-  const remaining = document.querySelectorAll('.file-table__action button');
-  (remaining[Math.min(index, remaining.length - 1)] || $('pickFiles')).focus();
+  // The buttons are switched back on when the queue is empty; focus after that.
+  setTimeout(() => {
+    const remaining = document.querySelectorAll('.file-table__action button');
+    (remaining[Math.min(index, remaining.length - 1)] || $('pickFiles')).focus();
+  }, 0);
 }
 
 function render() {
-  const has = checked.length > 0 || ignored.length > 0;
+  // "Start over" lives in the check section, so show it whenever anything was added.
+  const has = checked.length > 0 || ignored.length > 0 || inputs.size > 0;
   $('checkSection').hidden = !has;
   $('mergeSection').hidden = !checked.some(b => b.status === STATUS.OK || b.status === STATUS.CHANGED);
 
@@ -152,34 +228,10 @@ function render() {
     `${counts.outdated + counts.invalid} cannot be used. ` +
     `${donors} participant${donors === 1 ? '' : 's'}.`;
 
-  const superseded = pickLatest(checked.filter(b => b.status === STATUS.OK || b.status === STATUS.CHANGED));
-  const rows = checked
-    .slice()
-    .sort((a, b) =>
-      Object.values(STATUS).indexOf(b.status) - Object.values(STATUS).indexOf(a.status) ||
-      (b.downloadTime || '').localeCompare(a.downloadTime || ''))
-    .map(b => {
-      const copy = STATUS_COPY[b.status];
-      const rowCount = b.files.reduce((n, f) => n + f.rows.length, 0);
-      const notes = [...b.problems];
-      if (superseded.has(b)) {
-        notes.push('A newer export of this conversation was added; only the newer one will be merged.');
-      }
-      const details = notes.length
-        ? el('ul', { class: 'file-table__problems' }, ...notes.map(p => el('li', {}, p)))
-        : 'All files match the original export.';
-      return el('tr', { class: `file-table__row file-table__row--${b.status}` },
-        el('td', {},
-          el('span', { class: `status-pill status-pill--${b.status}` },
-            el('span', { 'aria-hidden': 'true', class: 'status-pill__icon' }, copy.icon), copy.label)),
-        el('td', { class: 'file-table__name' }, b.label),
-        el('td', {}, platformName(b.platform)),
-        exportedCell(b.downloadTime),
-        el('td', { class: 'file-table__num' }, String(rowCount)),
-        el('td', {}, details),
-        el('td', { class: 'file-table__action' }, removeButton(b)));
-    });
-  $('fileRows').replaceChildren(...rows);
+  $('changedOption').hidden = counts.changed === 0;
+  // A hidden option must not stay switched on for files added later.
+  if (counts.changed === 0) $('includeChanged').checked = false;
+  renderRows();
 
   $('ignoredList').replaceChildren(...ignored.map(i =>
     el('li', {}, el('strong', {}, i.name), `: ${i.reason}`)));
@@ -195,8 +247,41 @@ function render() {
   }));
   $('platformGroup').hidden = platforms.length < 2;
 
-  $('changedOption').hidden = counts.changed === 0;
   $('result').replaceChildren();
+}
+
+/**
+ * The table of checked exports. Which export of a conversation will be
+ * merged depends on the "include changed" option, so the rows are redrawn
+ * when that option changes.
+ */
+function renderRows() {
+  const { superseded } = selectForMerge(checked, { includeChanged: $('includeChanged').checked });
+  const rows = checked
+    .slice()
+    .sort((a, b) =>
+      Object.values(STATUS).indexOf(b.status) - Object.values(STATUS).indexOf(a.status) ||
+      (b.downloadTime || '').localeCompare(a.downloadTime || ''))
+    .map(b => {
+      const copy = STATUS_COPY[b.status];
+      const rowCount = b.files.reduce((n, f) => n + f.rows.length, 0);
+      const notes = [...b.problems, ...(b.notes || [])];
+      if (superseded.has(b)) notes.push(SUPERSEDED_COPY[superseded.get(b)]);
+      const details = notes.length
+        ? el('ul', { class: 'file-table__problems' }, ...notes.map(p => el('li', {}, p)))
+        : 'All files match the original export.';
+      return el('tr', { class: `file-table__row file-table__row--${b.status}` },
+        el('td', {},
+          el('span', { class: `status-pill status-pill--${b.status}` },
+            el('span', { 'aria-hidden': 'true', class: 'status-pill__icon' }, copy.icon), copy.label)),
+        el('td', { class: 'file-table__name' }, b.label),
+        el('td', {}, platformName(b.platform)),
+        exportedCell(b.downloadTime),
+        el('td', { class: 'file-table__num' }, String(rowCount)),
+        el('td', {}, details),
+        el('td', { class: 'file-table__action' }, removeButton(b)));
+    });
+  $('fileRows').replaceChildren(...rows);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,9 +292,37 @@ function timestampSlug(d = new Date()) {
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z').replace(/:/g, '-');
 }
 
+/**
+ * Hand the ZIP to the browser and wait until it is really on disk.
+ * downloads.download() resolves when the download starts, not when it ends.
+ */
+async function saveAndWait(url, filename) {
+  let changes = 0;
+  let wake = null;
+  const onChanged = (delta) => {
+    if (!delta.state) return;
+    changes++;
+    if (wake) wake();
+  };
+  browser.downloads.onChanged.addListener(onChanged);
+  try {
+    const id = await browser.downloads.download({ url, filename, saveAs: false });
+    for (;;) {
+      const seen = changes;
+      const [item] = await browser.downloads.search({ id });
+      if (item && item.state === 'complete') return;
+      if (!item || item.state === 'interrupted') {
+        throw new Error('the browser could not finish saving the file');
+      }
+      if (changes === seen) await new Promise(resolve => { wake = resolve; });
+    }
+  } finally {
+    browser.downloads.onChanged.removeListener(onChanged);
+  }
+}
+
+/** Only call from inside runExclusive, so `checked` cannot change underneath. */
 async function handleMerge() {
-  const button = $('mergeButton');
-  button.disabled = true;
   const result = $('result');
   result.className = 'result';
   result.textContent = 'Merging…';
@@ -227,10 +340,11 @@ async function handleMerge() {
     }
     const filename = `ai-chat-merge_${timestampSlug()}.zip`;
     const url = URL.createObjectURL(new Blob([buildZip(files)], { type: 'application/zip' }));
+    result.textContent = 'Saving…';
     try {
-      await browser.downloads.download({ url, filename, saveAs: false });
+      await saveAndWait(url, filename);
     } finally {
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      URL.revokeObjectURL(url);
     }
     result.className = 'result result--success';
     const lines = report.outputs.map(o => el('li', {}, `${o.name}: ${o.rows} row${o.rows === 1 ? "" : "s"}`));
@@ -242,9 +356,8 @@ async function handleMerge() {
     result.focus();
   } catch (err) {
     result.className = 'result result--error';
-    result.textContent = `The merge failed: ${err && err.message ? err.message : 'unknown error'}. No file was saved.`;
-  } finally {
-    button.disabled = false;
+    const reason = (err && err.message ? err.message : 'unknown error').replace(/\.$/, '');
+    result.textContent = `The merge failed: ${reason}. No file was saved.`;
   }
 }
 
@@ -256,13 +369,16 @@ function init() {
   const zone = $('dropzone');
   zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dropzone--active'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('dropzone--active'));
-  zone.addEventListener('drop', async (e) => {
+  zone.addEventListener('drop', (e) => {
     e.preventDefault();
     zone.classList.remove('dropzone--active');
+    // The entries must be taken from the event now; reading them can wait its turn.
     const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
-    const list = [];
-    for (const entry of entries) list.push(...await filesFromEntry(entry));
-    await addFiles(list);
+    runExclusive(async () => {
+      const list = [];
+      for (const entry of entries) list.push(...await filesFromEntry(entry));
+      await addFiles(list);
+    });
   });
   // Dropping a file outside the zone must not navigate the tab to it.
   window.addEventListener('dragover', (e) => e.preventDefault());
@@ -271,21 +387,26 @@ function init() {
   $('pickFiles').addEventListener('click', () => $('fileInput').click());
   $('pickFolder').addEventListener('click', () => $('folderInput').click());
   for (const id of ['fileInput', 'folderInput']) {
-    $(id).addEventListener('change', async (e) => {
+    $(id).addEventListener('change', (e) => {
       const list = [...e.target.files].map(file => ({ file, path: file.webkitRelativePath || file.name }));
       e.target.value = '';
-      await addFiles(list);
+      runExclusive(() => addFiles(list));
     });
   }
   $('clearAll').addEventListener('click', () => {
-    inputs.clear();
-    checked = [];
-    ignored = [];
-    $('includeChanged').checked = false;
-    render();
+    // Move focus first: the button is about to be switched off and hidden.
     $('pickFiles').focus();
+    runExclusive(() => {
+      inputs.clear();
+      unreadable = [];
+      checked = [];
+      ignored = [];
+      $('includeChanged').checked = false;
+      render();
+    });
   });
-  $('mergeButton').addEventListener('click', handleMerge);
+  $('includeChanged').addEventListener('change', renderRows);
+  $('mergeButton').addEventListener('click', () => runExclusive(handleMerge));
   $('pickFiles').focus();
 }
 
