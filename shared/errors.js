@@ -131,8 +131,8 @@ export const PLATFORM_TROUBLESHOOTING = {
     exportFailed: 'Wait for the reply to finish streaming, then try exporting again. If it keeps failing, reload the page and send a new message.'
   },
   google_search: {
-    noData: 'Run a search that shows an AI Overview, or use AI Mode, wait for the reply, then close and reopen this popup.',
-    exportFailed: 'Close this popup, wait a second or two for the capture, then reopen it and try again.'
+    noData: 'Run a search that shows an AI Overview, or use AI Mode, and wait for the reply to finish.',
+    exportFailed: 'Wait for the answer to finish, then try again. If it keeps failing, reload the page.'
   }
 };
 
@@ -146,8 +146,10 @@ export const PLATFORM_TROUBLESHOOTING = {
 export function sanitizeErrorMessage(message) {
   if (!message) return 'An error occurred';
 
-  // Ensure message is a string
-  let sanitized = String(message);
+  // Ensure message is a string. Cut it down before the patterns run: only
+  // the first 200 characters are kept in the end, and some of the patterns
+  // below are slow on very long input.
+  let sanitized = String(message).slice(0, 2000);
 
   // Remove UUIDs (conversation IDs, session IDs, etc.)
   sanitized = sanitized.replace(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/gi, '[id]');

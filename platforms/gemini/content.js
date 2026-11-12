@@ -40,14 +40,23 @@
   // the next poll pick up the data is better than blocking the popup on a
   // long paginated export.
   const COLD_START_WAIT_MS = 4000;
+  // Background (non-export) fetches back off after a failure or an empty
+  // history, so the popup's 2 s poll cannot turn into an RPC every 2 s.
+  const RETRY_BACKOFF_BASE_MS = 5000;
+  const RETRY_BACKOFF_MAX_MS = 60000;
+  const EMPTY_RETRY_MS = 4000;
 
   // Keyed by normalized conversation id (`c_<url id>`); value:
-  //   { id, title, conversation, messages, fetchedAt }
+  //   { id, title, conversation, messages, fetchedAt, cursorRepeated, undecodedTurns }
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
   // In-flight fetches, keyed by conversation id, so the page-load kickoff,
   // the popup poll and an export click share one network round-trip.
   const inflightFetches = new Map();
+  // Conversation id -> { failures, retryAt } for the background-fetch backoff.
+  const fetchBackoff = new Map();
+  // Request tokens parsed from the page, kept until a request fails.
+  let cachedPageConfig = null;
 
   let authFailureReported = false;
 
@@ -170,13 +179,29 @@
    * HTML has not been parsed yet.
    * @returns {{ at: string, bl: string, sid: string }}
    */
-  function readPageConfig() {
-    let html = '';
+  function readConfigSource() {
+    // The inline script holding all three tokens is far smaller than the
+    // whole document; serialising the full DOM is the fallback.
     try {
-      html = document.documentElement ? document.documentElement.innerHTML : '';
+      if (typeof document.querySelectorAll === 'function') {
+        for (const script of document.querySelectorAll('script')) {
+          const text = script.textContent || '';
+          if (['"SNlM0e"', '"cfb2h"', '"FdrFJe"'].every((key) => text.includes(key))) return text;
+        }
+      }
     } catch (_) {
-      html = '';
+      // fall through to the full document
     }
+    try {
+      return document.documentElement ? document.documentElement.innerHTML : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  function readPageConfig() {
+    if (cachedPageConfig) return cachedPageConfig;
+    const html = readConfigSource();
 
     const atMatch = html.match(/"SNlM0e":"([^"]+)"/);
     const blMatch = html.match(/"cfb2h":"([^"]+)"/);
@@ -204,11 +229,15 @@
       }
     }
 
-    return {
+    const config = {
       at: atMatch ? atMatch[1] : '',
       bl: bl || 'boq_assistant-bard-web-server_20250101.00_p0',
       sid: sid || '0'
     };
+    // The tokens are fixed for the lifetime of the document, so parse them
+    // once. A failed request clears the cache (see fetchHistoryPage).
+    if (config.at) cachedPageConfig = config;
+    return config;
   }
 
   // ==========================================================================
@@ -331,6 +360,7 @@
         signal: controller ? controller.signal : undefined
       });
     } catch (error) {
+      cachedPageConfig = null;
       if (error && error.name === 'AbortError') {
         throw new Error('Gemini did not answer in time. Reload the page and try again.');
       }
@@ -340,10 +370,12 @@
     }
 
     if (response.status === 401 || response.status === 403) {
+      cachedPageConfig = null;
       reportAuthFailure();
       throw new Error('Gemini rejected the request. Sign in and try again.');
     }
     if (!response.ok) {
+      cachedPageConfig = null;
       throw new Error(`Gemini history request failed with HTTP ${response.status}.`);
     }
 
@@ -359,6 +391,12 @@
     };
   }
 
+  /**
+   * Fetch every history page.
+   * @returns {Promise<{ turns: Array, cursorRepeated: boolean }>}
+   *   `cursorRepeated` means pagination stopped early, so older turns may be
+   *   missing; the export is flagged as incomplete.
+   */
   async function fetchAllTurns(conversationId, rawId) {
     const turns = [];
     const seenCursors = new Set();
@@ -368,14 +406,14 @@
       const result = await fetchHistoryPage(conversationId, rawId, cursor);
       turns.push(...result.turns);
 
-      if (!result.cursor) return turns;
+      if (!result.cursor) return { turns, cursorRepeated: false };
       if (result.turns.length === 0) {
         throw new Error('Gemini returned a continuation cursor with no turns.');
       }
       if (seenCursors.has(result.cursor)) {
-        // Do not silently duplicate: stop and keep what we have.
+        // Do not silently duplicate: stop, keep what we have, and say so.
         logWarn('Gemini repeated a history cursor; stopping pagination');
-        return turns;
+        return { turns, cursorRepeated: true };
       }
       seenCursors.add(result.cursor);
       cursor = result.cursor;
@@ -389,28 +427,49 @@
   // ==========================================================================
 
   function timestampToIso(tuple) {
-    if (!Array.isArray(tuple) || !Number.isFinite(Number(tuple[0]))) return '';
+    // `Number(null)` is 0, which would export a missing timestamp as 1970.
+    if (!Array.isArray(tuple) || tuple[0] === null || tuple[0] === '' || typeof tuple[0] === 'boolean') return '';
+    if (!Number.isFinite(Number(tuple[0])) || Number(tuple[0]) <= 0) return '';
     const seconds = Number(tuple[0]);
     const nanos = Number(tuple[1] || 0);
     const date = new Date(seconds * 1000 + nanos / 1000000);
     return Number.isNaN(date.getTime()) ? '' : date.toISOString();
   }
 
+  function candidateText(candidate) {
+    if (!Array.isArray(candidate) || !Array.isArray(candidate[1])) return '';
+    return candidate[1].filter((part) => typeof part === 'string').join('');
+  }
+
   /**
    * Pick the selected assistant candidate (regenerated answers produce more
    * than one). Gemini's response structure is
-   *   turn[3] = [ [candidateId, [markdown fragments], [null, [refs]], ...], ... ]
-   * and the active candidate is the first one with non-empty text.
+   *   turn[3] = [ [ [candidateId, [markdown fragments], [null, [refs]], ...], ... ], ..., selectedId ]
+   * `turn[3][3]` names the selected candidate when it is a string equal to
+   * one of the candidate ids; that candidate wins if it has text. Otherwise
+   * (older layout, or the named candidate is empty) the fallback is the
+   * first candidate with non-empty text. A turn whose candidates carry no
+   * text at all (an image-only answer, or an answer still streaming) returns
+   * the first candidate with empty text so the turn keeps its row.
    */
   function selectedCandidate(turn) {
     const candidates = turn && turn[3] && turn[3][0];
     if (!Array.isArray(candidates)) return null;
-    for (const candidate of candidates) {
-      if (!Array.isArray(candidate) || !Array.isArray(candidate[1])) continue;
-      const text = candidate[1].filter((part) => typeof part === 'string').join('');
+    const usable = candidates.filter((c) => Array.isArray(c));
+    if (usable.length === 0) return null;
+
+    const selectedId = typeof turn[3][3] === 'string' ? turn[3][3] : '';
+    if (selectedId) {
+      const named = usable.find((c) => c[0] === selectedId);
+      if (named && candidateText(named).trim()) {
+        return { candidate: named, text: candidateText(named) };
+      }
+    }
+    for (const candidate of usable) {
+      const text = candidateText(candidate);
       if (text.trim()) return { candidate, text };
     }
-    return null;
+    return { candidate: usable[0], text: '' };
   }
 
   /**
@@ -437,8 +496,8 @@
 
   /**
    * Flatten the citation list attached to an assistant candidate, one row per
-   * reference. Each ref is
-   *   [ ["cited passage", null, null, [[start, end], ...]], [1], [[url, title]], "spp_id" ]
+   * reference URL. Each ref is
+   *   [ ["cited passage", null, null, [[start, end], ...]], [1], [[url, title], ...], "spp_id" ]
    * where the passage is the part of the answer the source supports. Offsets
    * are exported as columns (JavaScript string offsets into the exported
    * `text`) rather than injected into `text`, which stays the raw model
@@ -451,12 +510,9 @@
       const ref = refList[refIndex];
       if (!Array.isArray(ref)) continue;
       const content = Array.isArray(ref[0]) ? ref[0] : null;
-      const urls = Array.isArray(ref[2]) ? ref[2] : [];
-      const first = Array.isArray(urls[0]) ? urls[0] : [];
-      const rawUrl = typeof first[0] === 'string' ? first[0] : '';
-      if (!rawUrl) continue;
-      const url = rawUrl.split('#:~:')[0];
-      const title = typeof first[1] === 'string' ? first[1] : '';
+      const urls = (Array.isArray(ref[2]) ? ref[2] : [])
+        .filter((entry) => Array.isArray(entry) && typeof entry[0] === 'string' && entry[0]);
+      if (urls.length === 0) continue;
       const snippet = content && typeof content[0] === 'string' ? content[0] : '';
       const sourceId = typeof ref[3] === 'string' ? ref[3] : '';
       const spans = content && Array.isArray(content[3]) ? content[3] : [];
@@ -467,23 +523,32 @@
       );
       const located = locatePassage(text, snippet, usableSpans, shift);
 
-      rows.push({
-        source_index: rows.length,
-        ref_index: refIndex,
-        source_id: sourceId,
-        url,
-        title,
-        snippet,
-        start_index: located ? located[0] : '',
-        end_index: located ? located[1] : '',
-        raw_spans: usableSpans.map((span) => [Number(span[0]), Number(span[1])])
-      });
+      // A reference can list more than one URL for the same passage: one
+      // row per URL, all sharing the reference's `ref_index`.
+      for (const entry of urls) {
+        rows.push({
+          source_index: rows.length,
+          ref_index: refIndex,
+          source_id: sourceId,
+          url: entry[0].split('#:~:')[0],
+          title: typeof entry[1] === 'string' ? entry[1] : '',
+          snippet,
+          start_index: located ? located[0] : '',
+          end_index: located ? located[1] : '',
+          raw_spans: usableSpans.map((span) => [Number(span[0]), Number(span[1])])
+        });
+      }
     }
     return rows;
   }
 
   function decodeTurn(turn, turnIndex) {
     if (!Array.isArray(turn)) return null;
+    // A turn is a prompt (turn[2]) plus its answer (turn[3]). If neither
+    // slot is an array the layout is not the one decoded here; the caller
+    // counts the turn as undecoded rather than exporting guessed content.
+    const hasPrompt = Array.isArray(turn[2]);
+    if (!hasPrompt && !Array.isArray(turn[3])) return null;
 
     const responseId = turn[0] && typeof turn[0][1] === 'string' ? turn[0][1] : '';
     const parentResponseId = turn[1] && typeof turn[1][1] === 'string' ? turn[1][1] : '';
@@ -511,6 +576,8 @@
       parentResponseId,
       parentCandidateId,
       createdAt,
+      hasPrompt,
+      hasAnswer: !!selected,
       rawUser,
       assistantText,
       candidateId,
@@ -521,13 +588,18 @@
     };
   }
 
+  /**
+   * @returns {{ messages: Array, undecodedTurns: number }}
+   * @throws when the history has turns but none of them could be decoded
+   */
   function historyToMessages(rawTurnsNewestFirst) {
     const seen = new Set();
     const decoded = [];
+    let undecodedTurns = 0;
 
     for (let i = 0; i < rawTurnsNewestFirst.length; i++) {
       const turn = decodeTurn(rawTurnsNewestFirst[i], i);
-      if (!turn) continue;
+      if (!turn) { undecodedTurns++; continue; }
       const key = turn.responseId
         || `${turn.createdAt || 'unknown'}\u0000${turn.rawUser}\u0000${turn.assistantText}`;
       if (seen.has(key)) continue;
@@ -535,12 +607,22 @@
       decoded.push(turn);
     }
 
+    if (rawTurnsNewestFirst.length > 0 && decoded.length === 0) {
+      throw new Error('Gemini returned history turns in an unrecognized layout. The private API may have changed.');
+    }
+    if (undecodedTurns > 0) {
+      logWarn('Some Gemini turns were not in the expected layout', { undecodedTurns });
+    }
+
     decoded.reverse();
 
+    // A prompt or answer without text (image-only, attachment-only, or an
+    // answer that is still streaming) keeps its row with empty text, so the
+    // turn is not silently missing from the export.
     const messages = [];
     for (let turnIndex = 0; turnIndex < decoded.length; turnIndex++) {
       const turn = decoded[turnIndex];
-      if (turn.rawUser) {
+      if (turn.hasPrompt) {
         messages.push({
           message_id: turn.userMessageId,
           parent_message_id: turn.parentResponseId,
@@ -554,10 +636,10 @@
           citations: []
         });
       }
-      if (turn.assistantText) {
+      if (turn.hasAnswer) {
         messages.push({
           message_id: turn.assistantMessageId,
-          parent_message_id: turn.rawUser ? turn.userMessageId : turn.parentResponseId,
+          parent_message_id: turn.hasPrompt ? turn.userMessageId : turn.parentResponseId,
           candidate_id: turn.candidateId,
           parent_candidate_id: turn.parentCandidateId,
           turn_index: turnIndex,
@@ -569,14 +651,26 @@
         });
       }
     }
-    return messages;
+    return { messages, undecodedTurns };
+  }
+
+  // Tab title seen on the conversation that was open before the last
+  // in-app navigation. Gemini updates `document.title` some time after the
+  // path changes, so a title equal to this one still belongs to the previous
+  // conversation and is not used.
+  let staleDocumentTitle = null;
+
+  function rawDocumentTitle() {
+    return typeof document.title === 'string' ? document.title : '';
   }
 
   function cleanDocumentTitle() {
-    const raw = typeof document.title === 'string' ? document.title : '';
-    return raw
+    const raw = rawDocumentTitle();
+    if (staleDocumentTitle !== null && raw === staleDocumentTitle) return '';
+    const title = raw
       .replace(/\s*[-–—|]\s*(?:Google\s+)?Gemini\s*$/i, '')
       .trim();
+    return /^(google\s+)?gemini$/i.test(title) ? '' : title;
   }
 
   function titleForRecord(record, messages) {
@@ -591,8 +685,8 @@
     return 'Untitled Conversation';
   }
 
-  function buildRecord(parsed, rawTurns) {
-    const messages = historyToMessages(rawTurns);
+  function buildRecord(parsed, rawTurns, cursorRepeated) {
+    const { messages, undecodedTurns } = historyToMessages(rawTurns);
     if (messages.length === 0) return null;
 
     const first = messages[0];
@@ -603,10 +697,13 @@
 
     return {
       id: parsed.id,
-      title: title && !/^(google\s+)?gemini$/i.test(title) ? title : '',
+      title,
+      fetchedAt: new Date().toISOString(),
+      cursorRepeated: !!cursorRepeated,
+      undecodedTurns,
       conversation: {
         id: parsed.id,
-        title: title && !/^(google\s+)?gemini$/i.test(title) ? title : '',
+        title,
         url: `${window.location.origin}${prefix}/app/${parsed.rawId}`,
         account_prefix: prefix,
         source_path: `${prefix}/app/${parsed.rawId}`,
@@ -622,33 +719,24 @@
   // ACTIVE FETCH
   // ==========================================================================
 
-  async function activelyFetchAndStore(conversationId, { force = false } = {}) {
-    if (!conversationId) return null;
-    if (!force) {
-      const existing = capturedConversations.get(conversationId);
-      if (isConversationComplete(existing)) return existing;
-    }
+  function noteFetchFailure(conversationId) {
+    const failures = (fetchBackoff.get(conversationId)?.failures || 0) + 1;
+    const delay = Math.min(RETRY_BACKOFF_BASE_MS * 2 ** (failures - 1), RETRY_BACKOFF_MAX_MS);
+    fetchBackoff.set(conversationId, { failures, retryAt: Date.now() + delay });
+  }
 
-    const inFlight = inflightFetches.get(conversationId);
-    if (inFlight) {
-      try {
-        return await inFlight;
-      } catch (_) {
-        return capturedConversations.get(conversationId) || null;
-      }
-    }
-
-    const parsed = parseConversationFromPath();
-    if (!parsed || parsed.id !== conversationId) {
-      // The user navigated away while the popup was open; nothing to fetch.
-      return capturedConversations.get(conversationId) || null;
-    }
-
+  /** One full history fetch for the open conversation; rejects on failure. */
+  function startFetch(conversationId, parsed) {
     const fetchPromise = (async () => {
-      const rawTurns = await fetchAllTurns(conversationId, parsed.rawId);
-      const record = buildRecord(parsed, rawTurns);
-      if (!record) return null;
+      const { turns, cursorRepeated } = await fetchAllTurns(conversationId, parsed.rawId);
+      const record = buildRecord(parsed, turns, cursorRepeated);
+      if (!record) {
+        // Brand-new chat with no history yet: look again soon, not every poll.
+        fetchBackoff.set(conversationId, { failures: 0, retryAt: Date.now() + EMPTY_RETRY_MS });
+        return null;
+      }
 
+      fetchBackoff.delete(conversationId);
       storeConversation(record);
       logDebug('Actively fetched conversation', {
         conversationId,
@@ -665,13 +753,69 @@
     })();
 
     inflightFetches.set(conversationId, fetchPromise);
-    try {
-      return await fetchPromise;
-    } catch (error) {
+    const clear = () => {
+      if (inflightFetches.get(conversationId) === fetchPromise) inflightFetches.delete(conversationId);
+    };
+    fetchPromise.then(clear, (error) => {
+      clear();
+      noteFetchFailure(conversationId);
       logWarn('Active fetch failed', { conversationId, error: error && error.message });
-      return capturedConversations.get(conversationId) || null;
-    } finally {
-      inflightFetches.delete(conversationId);
+    });
+    return fetchPromise;
+  }
+
+  /**
+   * Fetch the conversation and cache it.
+   *
+   * Without `force` this is the background path (page load, in-app
+   * navigation, popup poll): it reuses a complete cached copy, joins a fetch
+   * that is already running, and backs off after a failure.
+   *
+   * With `force` (export) it always starts a fetch of its own. A fetch that
+   * was already running started before the user clicked Export and may
+   * predate the latest turn, so it is waited for but not used as the fresh
+   * copy.
+   *
+   * @returns {Promise<{ record: object|null, refresh: string, error: string }>}
+   *   `refresh` is 'ok' (record comes from a fetch this call made or joined),
+   *   'failed' (the fetch failed; record is the cached copy, if any) or
+   *   'not_attempted' (cached copy returned without a request).
+   */
+  async function activelyFetchAndStore(conversationId, { force = false } = {}) {
+    const cached = () => capturedConversations.get(conversationId) || null;
+    if (!conversationId) return { record: null, refresh: 'not_attempted', error: '' };
+
+    if (!force) {
+      if (isConversationComplete(cached())) {
+        return { record: cached(), refresh: 'not_attempted', error: '' };
+      }
+      const backoff = fetchBackoff.get(conversationId);
+      if (backoff && Date.now() < backoff.retryAt && !inflightFetches.has(conversationId)) {
+        return { record: cached(), refresh: 'not_attempted', error: '' };
+      }
+    }
+
+    const parsed = parseConversationFromPath();
+    if (!parsed || parsed.id !== conversationId) {
+      // The user navigated away while the popup was open; nothing to fetch.
+      return { record: cached(), refresh: 'not_attempted', error: '' };
+    }
+
+    let fetchPromise = inflightFetches.get(conversationId);
+    if (fetchPromise && force) {
+      await fetchPromise.catch(() => {});
+      fetchPromise = null;
+    }
+    if (!fetchPromise) fetchPromise = startFetch(conversationId, parsed);
+
+    try {
+      const record = await fetchPromise;
+      if (record) return { record, refresh: 'ok', error: '' };
+      // An empty history: nothing new to export. On export, a cached copy
+      // that the fresh fetch did not confirm counts as a failed refresh.
+      return { record: cached(), refresh: force ? 'failed' : 'not_attempted', error: '' };
+    } catch (error) {
+      return { record: cached(), refresh: 'failed', error: (error && error.message) || 'Gemini history request failed.' };
     }
   }
 
@@ -688,11 +832,15 @@
 
   // SPA navigation: Gemini swaps conversations without a full page reload.
   let _lastPath = window.location.pathname;
+  let _lastTitle = rawDocumentTitle();
   setInterval(() => {
     if (window.location.pathname !== _lastPath) {
       _lastPath = window.location.pathname;
+      // `_lastTitle` was read on the previous tick, before the navigation.
+      staleDocumentTitle = _lastTitle;
       kickoffIfOnChatPage();
     }
+    _lastTitle = rawDocumentTitle();
   }, 1500);
 
   // ==========================================================================
@@ -704,6 +852,38 @@
       _captured_conversation_id: record.id,
       conversation: record.conversation,
       messages: record.messages
+    };
+  }
+
+  /**
+   * Provenance of an exported record, sent next to the payload so the
+   * background can record it in the export manifest.
+   */
+  function buildCapture(record, refresh) {
+    const flags = [];
+    if (refresh === 'failed') flags.push('refresh_failed');
+    if (record.cursorRepeated) flags.push('cursor_repeated');
+    if (record.undecodedTurns > 0) flags.push('undecoded_turns');
+    // The newest turn has no answer text: the reply was most likely still
+    // being generated when the history was read (an image-only answer looks
+    // the same here).
+    const last = record.messages[record.messages.length - 1];
+    if (last && (last.role !== 'assistant' || !last.text)) flags.push('in_flight');
+
+    let complete = true;
+    if (flags.includes('cursor_repeated') || flags.includes('undecoded_turns') || flags.includes('in_flight')) {
+      complete = false;
+    } else if (refresh !== 'ok') {
+      // The cached copy may predate turns sent since it was fetched.
+      complete = null;
+    }
+
+    return {
+      captured_at: record.fetchedAt || '',
+      source: refresh === 'ok' ? 'export_refresh' : 'active',
+      refresh,
+      complete,
+      flags
     };
   }
 
@@ -755,10 +935,11 @@
     if (message.type === 'EXPORT_CONVERSATION' && message.platform === 'gemini') {
       const conversationId = message.conversationId || extractConversationIdFromPath();
 
-      const forward = (record) => {
+      const forward = (record, refresh) => {
         browser.runtime.sendMessage({
           type: MESSAGE_TYPE,
           payload: assemblePayload(record),
+          capture: buildCapture(record, refresh),
           platform: 'gemini',
           conversationId: record.id
         }).then(() => sendResponse({ success: true }))
@@ -768,8 +949,8 @@
       // Always refresh before exporting. Gemini streams new replies without
       // re-requesting its history, so the copy cached at page load (or
       // mid-answer on a brand-new chat) misses later turns. A failed refresh
-      // falls back to the cached copy inside activelyFetchAndStore.
-      activelyFetchAndStore(conversationId, { force: true }).then((record) => {
+      // falls back to the cached copy, marked `refresh: 'failed'` in `capture`.
+      activelyFetchAndStore(conversationId, { force: true }).then(({ record, refresh }) => {
         if (!isConversationComplete(record)) {
           sendResponse({
             success: false,
@@ -777,7 +958,9 @@
           });
           return;
         }
-        forward(record);
+        forward(record, refresh);
+      }).catch((error) => {
+        sendResponse({ success: false, error: (error && error.message) || 'Export failed.' });
       });
       return true;
     }
