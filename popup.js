@@ -2140,6 +2140,7 @@ function initMainUI() {
   hydratePrivacySettings();
   wirePrivacySettings();
   wireReviewCard();
+  wireMergeLink();
 
   wirePreviewBanner();
 
@@ -2151,6 +2152,23 @@ function initMainUI() {
   checkAndUpdateUI()
     .catch(() => {})
     .then(() => focusInitialTarget());
+}
+
+/**
+ * Open the merge page (merge.html) in a new tab and close the popup.
+ * tabs.create needs no `tabs` permission.
+ */
+function wireMergeLink() {
+  const link = document.getElementById('openMergePage');
+  if (!link) return;
+  link.addEventListener('click', async () => {
+    try {
+      await browser.tabs.create({ url: browser.runtime.getURL('merge.html') });
+      window.close();
+    } catch (error) {
+      popupLogError('openMergePage', error);
+    }
+  });
 }
 
 /**

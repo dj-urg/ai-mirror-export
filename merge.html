@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merge exports · AI Chat Exporter</title>
+
+  <!--
+    Merge page. Runs entirely inside the extension: the extension-page CSP
+    in manifest.json (connect-src 'none', form-action 'none') means the
+    browser itself blocks any network request from this page. Files are
+    read into memory, merged, and handed to the downloads API; nothing is
+    stored.
+  -->
+
+  <link rel="stylesheet" href="merge.css">
+</head>
+
+<body>
+  <header class="merge-header">
+    <h1 class="merge-header__title">Merge exported files</h1>
+    <p class="merge-header__lead">Combine exports from AI Chat Exporter, your own or ones other participants gave you, into one set of CSV files.</p>
+    <p class="merge-header__privacy">
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path fill-rule="evenodd" clip-rule="evenodd"
+          d="M6 1a2 2 0 00-2 2v1H3a1 1 0 00-1 1v5a1 1 0 001 1h6a1 1 0 001-1V5a1 1 0 00-1-1H8V3a2 2 0 00-2-2zM5.5 3a.5.5 0 01.5-.5.5.5 0 01.5.5v1h-1V3z"
+          fill="currentColor" />
+      </svg>
+      Everything happens on this computer. This page is not allowed to connect to the internet, and nothing is kept after you close the tab.
+    </p>
+  </header>
+
+  <main class="merge-main">
+    <section class="merge-step" aria-labelledby="stepAddTitle">
+      <h2 class="merge-step__title" id="stepAddTitle">1. Add exports</h2>
+      <div class="dropzone" id="dropzone">
+        <p class="dropzone__text">Drop export ZIP files or a folder here</p>
+        <p class="dropzone__hint">You can also add unzipped CSV files together with their <code>_manifest</code> file.</p>
+        <div class="dropzone__actions">
+          <button type="button" class="button button--primary" id="pickFiles">Choose files…</button>
+          <button type="button" class="button button--secondary" id="pickFolder">Choose a folder…</button>
+        </div>
+        <input type="file" id="fileInput" multiple accept=".zip,.csv,.json" hidden>
+        <input type="file" id="folderInput" webkitdirectory hidden>
+      </div>
+      <p class="merge-progress" id="progress" role="status" aria-live="polite"></p>
+    </section>
+
+    <section class="merge-step" aria-labelledby="stepCheckTitle" id="checkSection" hidden>
+      <h2 class="merge-step__title" id="stepCheckTitle">2. Check</h2>
+      <p class="merge-summary" id="summary"></p>
+      <div class="table-wrap">
+        <table class="file-table">
+          <caption class="visually-hidden">Checked exports</caption>
+          <thead>
+            <tr>
+              <th scope="col">Status</th>
+              <th scope="col">Export</th>
+              <th scope="col">Platform</th>
+              <th scope="col">Rows</th>
+              <th scope="col">Details</th>
+            </tr>
+          </thead>
+          <tbody id="fileRows"></tbody>
+        </table>
+      </div>
+      <ul class="ignored-list" id="ignoredList" aria-label="Files that were ignored"></ul>
+      <button type="button" class="button button--secondary" id="clearAll">Start over</button>
+    </section>
+
+    <section class="merge-step" aria-labelledby="stepMergeTitle" id="mergeSection" hidden>
+      <h2 class="merge-step__title" id="stepMergeTitle">3. Merge</h2>
+
+      <fieldset class="option-group" id="platformGroup">
+        <legend class="option-group__legend">Platforms to include</legend>
+        <div class="option-group__items" id="platformOptions"></div>
+      </fieldset>
+
+      <div class="changed-option" id="changedOption" hidden>
+        <label class="checkbox">
+          <input type="checkbox" id="includeChanged">
+          <span>Include changed or unverified files anyway</span>
+        </label>
+        <p class="changed-option__explain" id="changedExplain">
+          These files no longer match the checksum the extension recorded when it exported them,
+          or arrived without their manifest, so we cannot confirm they are the original export.
+          This usually happens when a file was opened and saved in Excel or another program,
+          which can silently change dates, IDs and long texts. If you include them, the merge
+          report lists every one so the change can be accounted for in your analysis.
+          Where possible, ask for the original ZIP instead.
+        </p>
+      </div>
+
+      <button type="button" class="button button--primary button--large" id="mergeButton">Merge and download</button>
+      <div class="result" id="result" role="status" aria-live="polite" tabindex="-1"></div>
+    </section>
+
+    <details class="advice" aria-label="Opening the merged files">
+      <summary class="advice__summary">Opening the merged files</summary>
+      <p class="advice__text">Use LibreOffice Calc, R or Python. Avoid Microsoft Excel for analysis:
+        it cuts cells longer than 32,767 characters, can turn IDs and timestamps into numbers or dates,
+        and saving from Excel changes the file. Each merged row is copied unchanged from an export, with two
+        extra columns, <code>source_file</code> and <code>source_sha256</code>, telling you where it came from.</p>
+    </details>
+  </main>
+
+  <script type="module" src="merge.js"></script>
+</body>
+
+</html>
