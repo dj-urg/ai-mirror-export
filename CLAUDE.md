@@ -96,7 +96,7 @@ python3 -m http.server 8766       # from repo root
 # open http://localhost:8766/dev/harness.html
 ```
 
-Dropdown picks one of 38 harness states (ready and idle per platform,
+Dropdown picks one of 41 harness states (ready and idle per platform,
 loading, errors, sign-out, consent gate, and the export outcomes, which
 click Export for you); theme radio flips the palette; viewport radio
 shows 320/380/600 widths. Behind the scenes, a mock `browser.*` sits in
@@ -162,8 +162,9 @@ control rendering; Chromium runs produce different metrics.
 - The review step's "Show in Downloads" (`downloads.show`)
 - M365 Copilot's WebSocket interception path (no synthetic fixture, no
   raw-capture validation yet)
-- DeepSeek's token-bearing history refresh and Google's single re-fetch
-  (content scripts have no automated coverage; Gemini's is the exception,
-  `test_gemini_content.js`, against a fake RPC, not the real site)
+- DeepSeek's token-bearing history refresh, Google's export-only re-fetch
+  and every platform's export-time refresh against the live site (the
+  `test_*_scripts.js` / `test_*_capture.js` / `*_content.js` tests run
+  the content scripts against fakes, not the real sites)
 
 See `docs/manual-tests.md` for the full checklist.

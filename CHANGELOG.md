@@ -4,11 +4,25 @@
 
 ### What's new
 
-- **Merge exported files.** A new page, opened from **Merge exported files…** in the extension, combines many exports, your own or ones other participants gave you, into one set of CSV files. It checks every export against the record the extension saved when it was made, leaves out files that were changed afterwards (unless you choose to include them), uses only the newest export of each conversation, and writes a plain-language report of what it did. Everything happens in your browser: the page cannot connect to the internet, and nothing is kept after you close it. No new permissions.
+- **Merge exported files.** A new page, opened from **Merge exported files…** in the extension, combines many exports, your own or ones other participants gave you, into one set of CSV files. It checks every export against the record the extension saved when it was made, leaves out files that were changed afterwards (unless you choose to include them), prefers a verified export of each conversation and then the newest, and writes a plain-language report of what it did. Everything happens in your browser: the page cannot connect to the internet, and nothing is kept after you close it. No new permissions.
+
+### Fixed
+
+- **"Export complete" now means the file is saved.** The popup used to say so as soon as the page handed over the data. It now waits until Firefox reports the download finished, says so if it never does, and shows a failure if the download was interrupted.
+- **Exports are less likely to miss recent messages.** Claude, Grok, Mistral, DeepSeek and Gemini read the conversation again at every export. If that fails, the popup says the file may be missing messages. On ChatGPT, Copilot, Perplexity and Microsoft 365 Copilot the popup says when the copy was captured, so you can reload first.
+- **Google:** the export reads the page as it is now; nothing is requested from Google when a page loads; text keeps its line breaks and is no longer cut short. You no longer need to close and reopen the popup.
+- **Microsoft 365 Copilot:** messages from several connections are combined, suggested replies are no longer exported as messages, and the newest conversation is picked correctly.
+- **Merge page:** safer with damaged or very large ZIPs, prefers verified exports, and says "Saved" only once the file is written.
+- **Security hardening:** page hooks only accept the site's own conversation requests, and the scrubber can no longer freeze on very long text.
 
 ### For researchers
 
-- New `merge.html` page with `utils/merge.js`, `utils/zip_read.js` (STORE and DEFLATE) and `utils/csv_parse.js`. Output: per-schema CSVs plus `all_messages_canonical.csv`, each row byte-identical to its source with `source_file` and `source_sha256` appended, and `merge_manifest.json` (`1.0.0`). Only exports from the current extension version are merged. Details in "Merging exports" in [`METHODS.md`](METHODS.md). Export output is unchanged.
+- **Manifest schema `1.3.0`:** adds `checksum_basis` and `telemetry.capture` (how and when the conversation was read; see "Capture provenance" in [`METHODS.md`](METHODS.md)). Because the merge page only accepts the current version, exports made with earlier 3.1.0 builds show as "Older version" there.
+- **`pii_ruleset_version` `1.1.0`:** dates and year ranges are no longer redacted as phone numbers; international and unseparated 0-leading numbers are; JSON id/time keys keep only id/time-shaped values. Scrub-on exports only.
+- **`chatgpt_metadata.num_user_messages`** now counts exported rows; it used to include ChatGPT's hidden custom-instructions node. Schema unchanged (`1.0.0`).
+- **Content changes without schema changes:** DeepSeek `text` joins every request fragment and no longer falls back to thinking text for an answer; Copilot and Mistral rows are ordered by `createdAt`; Perplexity repeated answer blocks are exported once; Gemini keeps rows with empty text, writes one citation row per URL and `''` for a missing timestamp; Google `source_page_url` keeps only `q` and `udm`; `text_cleaned` no longer strips text like `a < b > c`.
+- **Merge manifest `1.1.0`:** `exports_merged`, distinct-conversation counts, per-file `merged` / `not_merged_because`.
+- New `merge.html` page with `utils/merge.js`, `utils/zip_read.js` (STORE and DEFLATE) and `utils/csv_parse.js`. Output: per-schema CSVs plus `all_messages_canonical.csv`, each row byte-identical to its source with `source_file` and `source_sha256` appended, and `merge_manifest.json` (`1.1.0`). Only exports from the current extension version are merged. Details in "Merging exports" in [`METHODS.md`](METHODS.md). Export output is unchanged.
 
 ## 3.1.0 — 2026-11-02
 

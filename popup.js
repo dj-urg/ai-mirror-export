@@ -327,7 +327,7 @@ function formatStuckDetail({ threshold, mechanism, platformName, stuck = false }
   }
   const threshSecs = Math.round(threshold / 1000);
   if (mechanism === 'reopen') {
-    return `${prefix}still no capture after ${threshSecs}s. The extension reads this page's state when the popup opens — close this popup, wait a second or two, then reopen it.`;
+    return `${prefix}still no capture after ${threshSecs}s. Wait for the reply to finish; if this message stays, reload the page.`;
   }
   // 'reload' mechanism (default)
   return `${prefix}still no data after ${threshSecs}s. The extension only captures as the page loads. Reload the tab in your browser, then reopen this popup.`;
