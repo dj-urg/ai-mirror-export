@@ -101,21 +101,37 @@
 
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+  // Only DeepSeek's own history read is captured: same origin, exactly this
+  // path, GET. A looser match would let any request whose URL merely
+  // contains the path (another host, a longer path) be stored as a
+  // conversation.
+  const HISTORY_PATH = '/api/v0/chat/history_messages';
+
+  function parseHistoryUrl(url) {
+    if (typeof url !== 'string' || !url) return null;
+    try {
+      const u = new URL(url, window.location.href);
+      if (u.origin !== window.location.origin) return null;
+      if (u.pathname !== HISTORY_PATH) return null;
+      return u;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function isConversationUrl(url) {
-    if (!url) return false;
-    return /\/api\/v0\/chat\/history_messages(?:[/?#]|$)/.test(url);
+    return parseHistoryUrl(url) !== null;
   }
 
   function conversationIdFromUrl(url) {
-    if (!url) return null;
-    try {
-      const u = new URL(url, window.location.origin);
-      const id = u.searchParams.get('chat_session_id');
-      if (id && UUID_RE.test(id)) return id;
-      return null;
-    } catch {
-      return null;
-    }
+    const u = parseHistoryUrl(url);
+    if (!u) return null;
+    const id = u.searchParams.get('chat_session_id');
+    return id && UUID_RE.test(id) ? id : null;
+  }
+
+  function isGet(method) {
+    return method === undefined || method === null || String(method).toUpperCase() === 'GET';
   }
 
   // ============================================================================
@@ -182,18 +198,28 @@
     const response = await originalFetch.apply(this, args);
 
     try {
+      // The URL and method come from the request only when it is a string
+      // or a real Request; the response's own URL (after redirects) has the
+      // last word, so an object that merely looks like a request cannot
+      // label another response as a conversation.
       const request = args[0];
+      const init = args[1];
       let url = '';
+      let method;
 
       if (typeof request === 'string') {
         url = request;
+        method = init && init.method;
       } else if (request instanceof Request) {
         url = request.url;
-      } else if (request && typeof request === 'object' && request.url) {
-        url = request.url;
-      } else {
-        url = String(request);
+        method = (init && init.method) || request.method;
+      } else if (request instanceof URL) {
+        url = request.href;
+        method = init && init.method;
       }
+
+      if (!isGet(method) || response.type !== 'basic') return response;
+      if (typeof response.url === 'string' && response.url) url = response.url;
 
       if (isConversationUrl(url)) {
         const validation = validateResponse(response);
@@ -242,22 +268,30 @@
   // DeepSeek switches a given endpoint from fetch to XHR.
   // ============================================================================
 
+  // Per-request state lives in a WeakMap, not on the XHR object, where page
+  // code could read or overwrite it.
+  const xhrRequests = new WeakMap();
+
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     try {
-      this.__deepseekExporterUrl = typeof url === 'string' ? url : String(url);
-      this.__deepseekExporterMethod = method;
+      xhrRequests.set(this, {
+        method,
+        url: typeof url === 'string' ? url : (url instanceof URL ? url.href : '')
+      });
     } catch (_) {}
     return originalXhrOpen.call(this, method, url, ...rest);
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
     try {
-      const url = this.__deepseekExporterUrl || '';
-      if (isConversationUrl(url)) {
-        const urlConvId = conversationIdFromUrl(url);
+      const req = xhrRequests.get(this);
+      if (req && isGet(req.method) && isConversationUrl(req.url)) {
         this.addEventListener('load', () => {
           try {
             if (this.status < 200 || this.status >= 300) return;
+            // The final URL (after redirects) decides, not the one passed to open().
+            if (!isConversationUrl(this.responseURL)) return;
+            const urlConvId = conversationIdFromUrl(this.responseURL);
             const text = this.responseText;
             if (!text || text.length > MAX_RESPONSE_SIZE) return;
             let data;

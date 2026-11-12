@@ -99,21 +99,35 @@
   // GET endpoint flows through.
   // ============================================================================
 
-  // Capture-group version: pulls the UUID off the request URL so we can stamp
-  // it onto the payload before forwarding. Grok's conversation response is a
-  // flat `{ responses: [...] }` with no top-level conversationId, so the URL
-  // is the only reliable source for the id.
-  const CONV_URL_RE = /\/rest\/[^?#]*conversations?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[?#]|$|\/(?!(?:title|rename|feedback|share|delete)\b))/i;
-
-  function isConversationUrl(url) {
-    if (!url) return false;
-    return CONV_URL_RE.test(url);
-  }
+  // The UUID is taken from the request path so it can be stamped onto the
+  // payload before forwarding: Grok's conversation response is a flat
+  // `{ responses: [...] }` with no top-level conversationId, so the URL is the
+  // only reliable source for the id.
+  //
+  // Only Grok's own conversation reads are captured: same origin, exactly
+  // one of the two conversation paths, GET. A looser match would let any
+  // request whose URL merely contains such a path (another host, a query
+  // string, a POST for part of a conversation) be stored as a conversation.
+  const CONV_PATH_RE = /^\/rest\/app-chat\/conversations\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:\/responses)?\/?$/i;
 
   function conversationIdFromUrl(url) {
-    if (!url) return null;
-    const m = url.match(CONV_URL_RE);
-    return m ? m[1] : null;
+    if (typeof url !== 'string' || !url) return null;
+    try {
+      const u = new URL(url, window.location.href);
+      if (u.origin !== window.location.origin) return null;
+      const m = u.pathname.match(CONV_PATH_RE);
+      return m ? m[1] : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function isConversationUrl(url) {
+    return conversationIdFromUrl(url) !== null;
+  }
+
+  function isGet(method) {
+    return method === undefined || method === null || String(method).toUpperCase() === 'GET';
   }
 
   // ============================================================================
@@ -182,18 +196,28 @@
     const response = await originalFetch.apply(this, args);
 
     try {
+      // The URL and method come from the request only when it is a string
+      // or a real Request; the response's own URL (after redirects) has the
+      // last word, so an object that merely looks like a request cannot
+      // label another response as a conversation.
       const request = args[0];
+      const init = args[1];
       let url = '';
+      let method;
 
       if (typeof request === 'string') {
         url = request;
+        method = init && init.method;
       } else if (request instanceof Request) {
         url = request.url;
-      } else if (request && typeof request === 'object' && request.url) {
-        url = request.url;
-      } else {
-        url = String(request);
+        method = (init && init.method) || request.method;
+      } else if (request instanceof URL) {
+        url = request.href;
+        method = init && init.method;
       }
+
+      if (!isGet(method) || response.type !== 'basic') return response;
+      if (typeof response.url === 'string' && response.url) url = response.url;
 
       if (isConversationUrl(url)) {
         const validation = validateResponse(response);
@@ -242,22 +266,30 @@
   // even if Grok switches a given endpoint from fetch to XHR.
   // ============================================================================
 
+  // Per-request state lives in a WeakMap, not on the XHR object, where page
+  // code could read or overwrite it.
+  const xhrRequests = new WeakMap();
+
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     try {
-      this.__grokExporterUrl = typeof url === 'string' ? url : String(url);
-      this.__grokExporterMethod = method;
+      xhrRequests.set(this, {
+        method,
+        url: typeof url === 'string' ? url : (url instanceof URL ? url.href : '')
+      });
     } catch (_) {}
     return originalXhrOpen.call(this, method, url, ...rest);
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
     try {
-      const url = this.__grokExporterUrl || '';
-      if (isConversationUrl(url)) {
-        const urlConvId = conversationIdFromUrl(url);
+      const req = xhrRequests.get(this);
+      if (req && isGet(req.method) && isConversationUrl(req.url)) {
         this.addEventListener('load', () => {
           try {
             if (this.status < 200 || this.status >= 300) return;
+            // The final URL (after redirects) decides, not the one passed to open().
+            const urlConvId = conversationIdFromUrl(this.responseURL);
+            if (!urlConvId) return;
             const text = this.responseText;
             if (!text || text.length > MAX_RESPONSE_SIZE) return;
             let data;

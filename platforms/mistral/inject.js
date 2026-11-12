@@ -106,13 +106,25 @@
   // procedure in a batch when parsing the response.
   // ==========================================================================
 
-  const TRPC_PATH_RE = /\/api\/trpc\/([^/?#]+)/;
+  // Only Mistral's own tRPC reads are captured: same origin, a path that is
+  // exactly /api/trpc/<procedures>, GET. A looser match would let any
+  // request whose URL merely contains such a path be stored as a chat.
+  const TRPC_PATH_RE = /^\/api\/trpc\/([^/]+)$/;
+
+  function isGet(method) {
+    return method === undefined || method === null || String(method).toUpperCase() === 'GET';
+  }
 
   function trpcProcedures(url) {
-    if (!url) return [];
-    const m = url.match(TRPC_PATH_RE);
+    if (typeof url !== 'string' || !url) return [];
+    let u;
+    try { u = new URL(url, window.location.href); } catch (_) { return []; }
+    if (u.origin !== window.location.origin) return [];
+    const m = u.pathname.match(TRPC_PATH_RE);
     if (!m) return [];
-    return m[1].split(',').map(s => s.trim()).filter(Boolean);
+    let list;
+    try { list = decodeURIComponent(m[1]); } catch (_) { return []; }
+    return list.split(',').map(s => s.trim()).filter(Boolean);
   }
 
   function isInterestingRequest(url) {
@@ -126,7 +138,7 @@
   // to our procedure to find its arguments.
   function parseTrpcInput(url) {
     try {
-      const u = new URL(url, window.location.origin);
+      const u = new URL(url, window.location.href);
       const raw = u.searchParams.get('input');
       if (!raw) return null;
       return JSON.parse(raw);
@@ -206,11 +218,26 @@
         // chat.byId returns the chat record directly as json.
         out.push({ chatId: json.id || chatId, kind: 'chat', chat: json });
       } else if (name === 'message.all') {
-        const items = Array.isArray(json.items) ? json.items : [];
+        // A reply without an `items` array is not a message list (an error
+        // or another shape); forwarding it as an empty list would wipe a
+        // stored conversation.
+        if (!Array.isArray(json.items)) continue;
+        const items = json.items;
         if (items.length === 0 && !chatId) continue;
         const resolvedChatId = chatId || (items[0] && items[0].chatId) || null;
         if (!resolvedChatId) continue;
-        out.push({ chatId: resolvedChatId, kind: 'messages', messages: items });
+        // The request's cursor and the reply's nextCursor tell the content
+        // script whether this is the whole list or one page of it.
+        const input = parseTrpcInput(url);
+        const entryInput = input && input[String(i)] && input[String(i)].json;
+        const requestCursor = entryInput && entryInput.cursor !== undefined && entryInput.cursor !== null;
+        const nextCursor = json.nextCursor !== undefined && json.nextCursor !== null && json.nextCursor !== '';
+        out.push({
+          chatId: resolvedChatId,
+          kind: 'messages',
+          messages: items,
+          partial: Boolean(requestCursor || nextCursor)
+        });
       }
     }
     return out;
@@ -224,12 +251,27 @@
     const response = await originalFetch.apply(this, args);
 
     try {
+      // The URL and method come from the request only when it is a string
+      // or a real Request; the response's own URL (after redirects) has the
+      // last word, so an object that merely looks like a request cannot
+      // label another response as a chat.
       const request = args[0];
+      const init = args[1];
       let url = '';
-      if (typeof request === 'string') url = request;
-      else if (request instanceof Request) url = request.url;
-      else if (request && typeof request === 'object' && request.url) url = request.url;
-      else url = String(request);
+      let method;
+      if (typeof request === 'string') {
+        url = request;
+        method = init && init.method;
+      } else if (request instanceof Request) {
+        url = request.url;
+        method = (init && init.method) || request.method;
+      } else if (request instanceof URL) {
+        url = request.href;
+        method = init && init.method;
+      }
+
+      if (!isGet(method) || response.type !== 'basic') return response;
+      if (typeof response.url === 'string' && response.url) url = response.url;
 
       if (!isInterestingRequest(url)) return response;
 
@@ -269,21 +311,30 @@
   // tRPC links can switch transports under load.
   // ==========================================================================
 
+  // Per-request state lives in a WeakMap, not on the XHR object, where page
+  // code could read or overwrite it.
+  const xhrRequests = new WeakMap();
+
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     try {
-      this.__mistralExporterUrl = typeof url === 'string' ? url : String(url);
-      this.__mistralExporterMethod = method;
+      xhrRequests.set(this, {
+        method,
+        url: typeof url === 'string' ? url : (url instanceof URL ? url.href : '')
+      });
     } catch (_) {}
     return originalXhrOpen.call(this, method, url, ...rest);
   };
 
   XMLHttpRequest.prototype.send = function (...args) {
     try {
-      const url = this.__mistralExporterUrl || '';
-      if (isInterestingRequest(url)) {
+      const req = xhrRequests.get(this);
+      if (req && isGet(req.method) && isInterestingRequest(req.url)) {
         this.addEventListener('load', () => {
           try {
             if (this.status < 200 || this.status >= 300) return;
+            // The final URL (after redirects) decides, not the one passed to open().
+            const url = this.responseURL;
+            if (!isInterestingRequest(url)) return;
             const text = this.responseText;
             if (!text || text.length > MAX_RESPONSE_SIZE) return;
             const partials = extractFromTrpcBatch(url, text);
