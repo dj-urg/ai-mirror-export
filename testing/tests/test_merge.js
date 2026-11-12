@@ -9,14 +9,14 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { buildZip } from '../../utils/zip.js';
+import { buildZip, crc32 } from '../../utils/zip.js';
 import { readZip } from '../../utils/zip_read.js';
 import { parseCSV, CsvParseError } from '../../utils/csv_parse.js';
 import { escapeCSVField } from '../../utils/csv.js';
 import { sha256Hex } from '../../utils/manifest.js';
 import {
-  collectBundles, checkBundle, mergeBundles, schemaFromFilename,
-  STATUS, CANONICAL_OUTPUT, PROVENANCE_HEADERS
+  collectBundles, checkBundle, mergeBundles, pickLatest, selectForMerge, schemaFromFilename,
+  STATUS, SUPERSEDED, CANONICAL_OUTPUT, PROVENANCE_HEADERS
 } from '../../utils/merge.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -64,11 +64,13 @@ async function deflateZip(entries) {
     const comp = new Uint8Array(await new Response(stream).arrayBuffer());
     const lh = new DataView(new ArrayBuffer(30));
     lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(8, 8, true);
+    lh.setUint32(14, crc32(raw), true);
     lh.setUint32(18, comp.length, true); lh.setUint32(22, raw.length, true);
     lh.setUint16(26, nameBytes.length, true);
     parts.push(new Uint8Array(lh.buffer), nameBytes, comp);
     const ch = new DataView(new ArrayBuffer(46));
     ch.setUint32(0, 0x02014b50, true); ch.setUint16(10, 8, true);
+    ch.setUint32(16, crc32(raw), true);
     ch.setUint32(20, comp.length, true); ch.setUint32(24, raw.length, true);
     ch.setUint16(28, nameBytes.length, true); ch.setUint32(42, offset, true);
     central.push(new Uint8Array(ch.buffer), nameBytes);
@@ -165,11 +167,14 @@ async function run() {
   const edited = goldenZip('claude__scrub_off', (f, c) =>
     f.includes('_messages_canonical_') ? c.replace('Explain idempotence', 'Explain IDEMPOTENCE') : c);
   const { checked: c2 } = await checkAll([edited, goldenZip('grok__scrub_off')]);
-  assert('edited export flagged changed', c2[0].status === STATUS.CHANGED &&
-    c2[0].problems.some(p => p.includes('changed after it was exported')));
+  const editedChecked = c2.find(b => b.label === edited.name);
+  assert('edited export flagged changed', editedChecked.status === STATUS.CHANGED &&
+    editedChecked.problems.some(p => p.includes('changed after it was exported')));
   const m2 = await mergeBundles(c2);
+  const editedInput = m2.report.inputs.find(i => i.label === edited.name);
   assert('changed excluded by default', m2.report.conversations === 1 &&
-    !m2.report.inputs[0].merged && /include anyway/.test(m2.report.inputs[0].not_merged_because));
+    !editedInput.merged && /include anyway/.test(editedInput.not_merged_because) &&
+    editedInput.files.every(f => !f.merged));
   const m2b = await mergeBundles(c2, { includeChanged: true });
   assert('changed included on request', m2b.report.conversations === 2);
   const reportTxt = m2b.files.find(f => f.name === 'MERGE_REPORT.txt').content;
@@ -181,6 +186,10 @@ async function run() {
   assert('canonical with renamed column warned, not combined',
     m2c.report.warnings.some(w => w.includes('shared layout')) &&
     !m2c.report.outputs.some(o => o.name === `${CANONICAL_OUTPUT}.csv`));
+  assert('canonical with renamed column is not merged at all, per file',
+    !m2c.report.outputs.some(o => o.schema === 'grok_messages_canonical') &&
+    m2c.report.inputs[0].merged &&
+    m2c.report.inputs[0].files.filter(f => !f.merged).length === 1);
 
   // --- outdated version never merged ---------------------------------------
   const old = goldenZip('grok__scrub_off', (f, c) => f.endsWith('.json') ? c.replace('"extractor_version": "3.1.0"', '"extractor_version": "3.0.0"') : c);
@@ -218,8 +227,181 @@ async function run() {
   const { ignored } = await collectBundles([{ name: 'notes.docx', bytes: enc.encode('x') }]);
   assert('other files ignored with reason', ignored.length === 1);
 
+  await runHardening();
+
   console.log(`[test_merge] ${passed} passed, ${failed} failed`);
   if (failed > 0) throw new Error(`test_merge: ${failed} failure(s)`);
+}
+
+/** Golden case dir -> [{name, content}] with an optional per-file edit. */
+function goldenEntries(caseName, mutate = null) {
+  const dir = join(GOLDEN, caseName);
+  return readdirSync(dir).filter(f => f !== 'ZIP_NAME.txt').sort().map(f => {
+    const content = readFileSync(join(dir, f), 'utf8');
+    return { name: f, content: mutate ? mutate(f, content) : content };
+  });
+}
+
+function mergedCsvs(result) {
+  return JSON.stringify(result.files.filter(f => f.name.endsWith('.csv')));
+}
+
+/** Malformed, duplicated, conflicting and reordered input. */
+async function runHardening() {
+  const grok = goldenEntries('grok__scrub_off');
+  const isManifest = (f) => f.endsWith('.json');
+  const withManifest = (edit) => goldenZip('grok__scrub_off', (f, c) => isManifest(f) ? edit(c) : c);
+
+  // --- duplicate CSV names inside one bundle ---------------------------------
+  const csvEntry = grok.find(e => e.name.includes('_messages_canonical_'));
+  const sameTwice = { name: 'dup_same.zip', bytes: buildZip([...grok, { name: `copy/${csvEntry.name}`, content: csvEntry.content }]) };
+  const { checked: d1 } = await checkAll([sameTwice]);
+  assert('identical duplicate dropped with a note', d1[0].status === STATUS.OK &&
+    d1[0].notes.some(n => n.includes('more than once')) &&
+    d1[0].files.filter(f => f.filename === csvEntry.name).length === 1, JSON.stringify(d1[0].problems));
+  const differs = { name: 'dup_diff.zip', bytes: buildZip([...grok,
+    { name: `copy/${csvEntry.name}`, content: csvEntry.content.replace('grok', 'grak') }]) };
+  const { checked: d2 } = await checkAll([differs]);
+  assert('differing duplicate cannot be used', d2[0].status === STATUS.INVALID &&
+    d2[0].problems.some(p => p.includes('different contents')) &&
+    !d2[0].files.some(f => f.filename === csvEntry.name));
+
+  // --- damaged manifests never throw -----------------------------------------
+  const badManifests = [
+    () => 'null', () => '[]', () => '"text"', () => '{"files": {}}', () => '{"files": [null]}',
+    (c) => c.replace('"files": [', '"files": [7,'),
+    (c) => c.replace(/"platform": "grok"/, '"platform": {"a": 1}'),
+    (c) => c.replace(/"sha256": "[0-9a-f]+"/, '"sha256": 5'),
+    (c) => { const m = JSON.parse(c); m.files.push(m.files[0]); return JSON.stringify(m); }
+  ];
+  let damaged = 0;
+  for (const edit of badManifests) {
+    const { checked: bad } = await checkAll([withManifest(edit)]);
+    if (bad[0].status === STATUS.INVALID && bad[0].problems.includes('The manifest file is damaged.')) damaged++;
+  }
+  assert('malformed manifests are reported as damaged', damaged === badManifests.length, `${damaged}/${badManifests.length}`);
+  const { checked: proto } = await checkAll([withManifest(c => c.replace('"schema": "grok_metadata"', '"schema": "constructor"'))]);
+  assert('schema name from Object.prototype is not a file type', proto[0].status === STATUS.INVALID &&
+    proto[0].problems.some(p => p.includes('not a file type')));
+  const { checked: extraKeys } = await checkAll([goldenZip('grok__scrub_off')]);
+  assert('unknown manifest keys are ignored', extraKeys[0].status === STATUS.OK);
+  const noCsv = { name: 'only_manifest.zip', bytes: buildZip(grok.filter(e => isManifest(e.name))) };
+  assert('manifest without any CSV cannot be used', (await checkAll([noCsv])).checked[0].status === STATUS.INVALID);
+
+  // --- output of an earlier merge is refused ---------------------------------
+  const base = await mergeBundles((await checkAll([goldenZip('grok__scrub_off')])).checked);
+  const mergedCsv = base.files.find(f => f.name === 'grok_messages.csv');
+  const { checked: again } = await checkAll([{ name: mergedCsv.name, bytes: enc.encode(mergedCsv.content) }]);
+  assert('CSV from an earlier merge refused', again[0].status === STATUS.INVALID &&
+    again[0].problems.some(p => p.includes('earlier merge')));
+
+  // --- same conversation: verified beats changed, whatever the order ----------
+  const changedNewer = goldenZip('grok__scrub_off', (f, c) =>
+    isManifest(f) ? c.replace(/"download_time": "[^"]+"/, '"download_time": "2099-01-01T00:00:00.000Z"')
+      : f.includes('_messages_canonical_') ? c.replace('grok', 'grak') : c);
+  changedNewer.name = 'a_changed_newer.zip';
+  const pair = [changedNewer, goldenZip('grok__scrub_off')];
+  const { checked: p1 } = await checkAll(pair);
+  const changedBundle = p1.find(b => b.label === 'a_changed_newer.zip');
+  assert('fixture: newer copy is changed', changedBundle.status === STATUS.CHANGED);
+  assert('verified export preferred over a newer changed one',
+    pickLatest(p1).get(changedBundle) === SUPERSEDED.VERIFIED &&
+    pickLatest(p1.slice().reverse()).get(changedBundle) === SUPERSEDED.VERIFIED);
+  assert('nothing is superseded while changed files are excluded',
+    selectForMerge(p1).superseded.size === 0 &&
+    selectForMerge(p1, { includeChanged: true }).superseded.has(changedBundle));
+  const mp = await mergeBundles(p1, { includeChanged: true, mergedAt: 'T' });
+  assert('changed copy not merged next to the verified one', mp.report.exports_merged === 1 &&
+    /verified export/.test(mp.report.inputs.find(i => i.label === 'a_changed_newer.zip').not_merged_because));
+  const copy = goldenZip('grok__scrub_off');
+  copy.name = 'second_copy.zip';
+  const { checked: p2 } = await checkAll([goldenZip('grok__scrub_off'), copy]);
+  assert('same export added twice is merged once', [...pickLatest(p2).values()].join() === SUPERSEDED.COPY &&
+    (await mergeBundles(p2)).report.conversations === 1);
+
+  // --- result does not depend on input order ---------------------------------
+  const many = scrubOffCases.map(c => goldenZip(c)).concat([changedNewer]);
+  const forward = await mergeBundles((await checkAll(many)).checked, { includeChanged: true, mergedAt: 'T' });
+  const backward = await mergeBundles((await checkAll(many.slice().reverse())).checked.reverse(), { includeChanged: true, mergedAt: 'T' });
+  assert('merge output independent of input order',
+    JSON.stringify(forward.files) === JSON.stringify(backward.files));
+
+  // --- column layout: verified exports decide --------------------------------
+  const swapColumns = (c) => {
+    const { headers, rows } = parseCSV(c);
+    const swap = (r) => [r[1], r[0], ...r.slice(2)];
+    return '﻿' + [swap(headers), ...rows.map(swap)].map(r => r.map(escapeCSVField).join(',')).join('\r\n') + '\r\n';
+  };
+  const foreign = goldenZip('grok__scrub_off', (f, c) => f.startsWith('grok_messages_grok') ? swapColumns(c) : c);
+  foreign.name = 'a_foreign_layout.zip';   // sorts before the verified export
+  const verifiedOnly = await mergeBundles((await checkAll([goldenZip('claude__scrub_off')])).checked, { mergedAt: 'T' });
+  const { checked: l1 } = await checkAll([foreign, goldenZip('claude__scrub_off')]);
+  const ml1 = await mergeBundles(l1, { includeChanged: true, mergedAt: 'T' });
+  assert('changed-only layout is merged with a warning',
+    ml1.report.warnings.some(w => w.startsWith('grok_messages.csv: none of these files could be verified')));
+  // A second conversation (so it is not superseded) whose messages file has swapped columns.
+  // Its other files are copies of the verified export's, so nothing of it is merged.
+  const foreignClaude = {
+    name: 'a_foreign_claude.zip',
+    bytes: buildZip(goldenEntries('claude__scrub_off', (f, c) =>
+      isManifest(f) ? c.replace(/"conversation_id": "[^"]+"/, '"conversation_id": "other-conversation"')
+        : /^claude_messages_(?!canonical)/.test(f) ? swapColumns(c) : c))
+  };
+  const { checked: l2 } = await checkAll([foreignClaude, goldenZip('claude__scrub_off')]);
+  const ml2 = await mergeBundles(l2, { includeChanged: true, mergedAt: 'T' });
+  const out = (m, name) => m.files.find(f => f.name === name)?.content;
+  assert('export with nothing left to merge is reported as not merged',
+    l2.find(b => b.label === 'a_foreign_claude.zip').status === STATUS.CHANGED && ml2.report.exports_merged === 1 &&
+    /None of its files/.test(ml2.report.inputs.find(i => i.label === 'a_foreign_claude.zip').not_merged_because));
+  assert('foreign layout never replaces the verified layout',
+    out(ml2, 'claude_messages.csv') === out(verifiedOnly, 'claude_messages.csv') &&
+    ml2.report.warnings.some(w => w.includes('columns differ from other claude_messages files')));
+  const foreignFile = ml2.report.inputs.find(i => i.label === 'a_foreign_claude.zip').files.find(f => f.schema === 'claude_messages');
+  assert('left-out file is recorded per file', foreignFile.merged === false && /columns differ/.test(foreignFile.not_merged_because));
+  const noRequired = goldenZip('grok__scrub_off', (f, c) => f.startsWith('grok_messages_grok') ? c.replace('conversation_id', 'conversation_ib') : c);
+  const mr = await mergeBundles((await checkAll([noRequired])).checked, { includeChanged: true });
+  assert('file without its required columns is left out',
+    mr.report.warnings.some(w => w.includes('expected columns are missing')) &&
+    !mr.report.outputs.some(o => o.name === 'grok_messages.csv'));
+
+  // --- files without a manifest ------------------------------------------------
+  const looseCsvs = grok.filter(e => e.name.endsWith('.csv')).map(e => ({ name: `x/${e.name}`, bytes: enc.encode(e.content) }));
+  const { checked: n1 } = await checkAll(looseCsvs);
+  const mn1 = await mergeBundles(n1, { includeChanged: true });
+  assert('loose CSVs of one export count as one conversation',
+    n1.length === looseCsvs.length && mn1.report.conversations === 1 && mn1.report.exports_merged === looseCsvs.length,
+    `${mn1.report.conversations}`);
+  assert('participant read from the donor_id column', mn1.report.participants === 1);
+  const { checked: n2 } = await checkAll([goldenZip('grok__scrub_off'), ...looseCsvs]);
+  const mn2 = await mergeBundles(n2, { includeChanged: true, mergedAt: 'T' });
+  assert('loose copy of an already merged file is not added again',
+    mergedCsvs(mn2) === mergedCsvs(base) && mn2.report.conversations === 1 && mn2.report.exports_merged === 1 &&
+    mn2.report.warnings.some(w => w.includes('same content')));
+  const twoFolders = [...looseCsvs, ...looseCsvs.map(f => ({ name: f.name.replace('x/', 'y/'), bytes: f.bytes }))];
+  const { checked: n3 } = await checkAll(twoFolders);
+  assert('same loose file from two folders is kept as two rows', n3.length === twoFolders.length &&
+    new Set(n3.map(b => b.label)).size === twoFolders.length);
+  const dirA = grok.map(e => ({ name: `a/${e.name}`, bytes: enc.encode(e.content) }));
+  const dirB = grok.map(e => ({ name: `b/${e.name}`, bytes: enc.encode(isManifest(e.name) ? e.content : e.content.replace('grok', 'grak')) }));
+  const { checked: n4 } = await checkAll([...dirB, ...dirA]);
+  assert('a manifest takes the CSVs from its own folder',
+    n4.length === 2 && n4.filter(b => b.status === STATUS.OK).length === 1 &&
+    n4.filter(b => b.status === STATUS.CHANGED).length === 1, JSON.stringify(n4.map(b => [b.status, b.problems])));
+
+  // --- platform filter ---------------------------------------------------------
+  const { checked: f1 } = await checkAll([goldenZip('grok__scrub_off'), goldenZip('claude__scrub_off')]);
+  const mf = await mergeBundles(f1, { platforms: ['grok'] });
+  assert('unselected platform reported as such', mf.report.conversations === 1 &&
+    mf.report.inputs.find(i => i.platform === 'claude').not_merged_because === 'Platform not selected.');
+  const empty = await mergeBundles(f1, { platforms: [] });
+  assert('nothing selected merges nothing', empty.report.conversations === 0 && empty.report.exports_merged === 0);
+
+  // --- zip writer limits -------------------------------------------------------
+  let tooMany = null;
+  try { buildZip(Array.from({ length: 0xFFFF }, (_, i) => ({ name: `${i}`, content: '' }))); } catch (e) { tooMany = e; }
+  assert('buildZip refuses 65535 entries', tooMany instanceof Error && /Too many files/.test(tooMany.message));
+  assert('buildZip still writes 65534 entries',
+    buildZip(Array.from({ length: 0xFFFE }, (_, i) => ({ name: `${i}`, content: '' }))).length > 0);
 }
 
 await run();

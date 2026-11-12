@@ -36,7 +36,7 @@ const CRC32_TABLE = (() => {
   return table;
 })();
 
-function crc32(bytes) {
+export function crc32(bytes) {
   let crc = 0xFFFFFFFF;
   for (let i = 0; i < bytes.length; i++) {
     crc = CRC32_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
@@ -87,6 +87,12 @@ function dosDateTime(date) {
 // Public API
 // ---------------------------------------------------------------------------
 
+// Classic ZIP stores counts in 16 bits and sizes/offsets in 32 bits; the
+// all-ones values are reserved as ZIP64 markers. Larger archives are refused
+// instead of being written with wrapped (wrong) numbers.
+const MAX_ENTRIES = 0xFFFF - 1;
+const MAX_UINT32 = 0xFFFFFFFF - 1;
+
 /**
  * Build a ZIP archive (STORE mode) from an array of entries.
  *
@@ -96,6 +102,9 @@ function dosDateTime(date) {
 export function buildZip(entries) {
   if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error('buildZip requires a non-empty array of entries');
+  }
+  if (entries.length > MAX_ENTRIES) {
+    throw new Error(`Too many files for one ZIP (${entries.length}; the limit is ${MAX_ENTRIES}).`);
   }
 
   const encoder = new TextEncoder();
@@ -108,6 +117,10 @@ export function buildZip(entries) {
     const data = toBytes(entry.content);
     const crc = crc32(data);
     const size = data.length;
+    if (nameBytes.length > 0xFFFF) throw new Error('A file name is too long for a ZIP archive.');
+    if (size > MAX_UINT32 || offset + 30 + nameBytes.length + size > MAX_UINT32) {
+      throw new Error('The files are too large for one ZIP (4 GB limit).');
+    }
     const { dosDate, dosTime } = dosDateTime(entry.date);
 
     // Local file header: 30 bytes + filename + data
@@ -156,6 +169,9 @@ export function buildZip(entries) {
   // Serialize central directory
   let centralSize = 0;
   for (const p of centralParts) centralSize += p.length;
+  if (offset + centralSize > MAX_UINT32) {
+    throw new Error('The files are too large for one ZIP (4 GB limit).');
+  }
 
   // End of central directory record: 22 bytes.
   // Layout per APPNOTE 6.3.9 §4.3.16: signature(4) + disk#(2) + diskWithCD(2) +
