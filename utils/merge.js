@@ -488,9 +488,14 @@ export function formatReport(report) {
   lines.push(
     'Opening the files',
     '-----------------',
-    'Use LibreOffice Calc, R or Python. Avoid Microsoft Excel for analysis: it',
-    'cuts cells longer than 32,767 characters, can turn IDs and timestamps into',
-    'numbers or dates, and saving from Excel changes the file.',
+    'Analyse the merged files in 4CAT, the main toolkit for this project: upload',
+    'all_messages_canonical.csv as a custom (CSV) dataset. How to use 4CAT is',
+    'explained at https://4cat.nl/.',
+    '',
+    'Do not open or save the files in Microsoft Excel first: it cuts cells longer',
+    'than 32,767 characters, can turn IDs and timestamps into numbers or dates, and',
+    'saving from Excel changes the file. For a quick look outside 4CAT, use',
+    'LibreOffice Calc, R or Python.',
     ''
   );
   return lines.join('\r\n');
