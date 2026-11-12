@@ -598,6 +598,20 @@ code {
   margin: var(--space-sm) 0 0;
 }
 
+.advice__link {
+  color: var(--color-primary);
+}
+
+.advice__link:hover {
+  color: var(--color-primary-hover);
+}
+
+.advice__link:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
