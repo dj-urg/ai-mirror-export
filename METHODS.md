@@ -209,6 +209,16 @@ Every CSV carries a `schema_version` column (per file type) next to `extractor_v
 
 All other schemas remain at 1.0.0.
 
+## Merging exports (`merge.html`)
+
+The merge page combines export bundles from any number of donors. It runs as an extension page, so the extension-page CSP (`connect-src 'none'`) blocks network access; inputs are read into memory and the output goes through `downloads.download`. The logic is `utils/merge.js` (with `utils/zip_read.js` and `utils/csv_parse.js`); the export path is untouched.
+
+- **Verification.** Each CSV's SHA-256 (over the bytes without the UTF-8 BOM, as in the manifest) and row count are compared with its bundle's manifest. A mismatch, a CSV missing from or not listed in the manifest, or a CSV with no manifest marks the bundle `changed`; these are merged only when the user opts in, and are listed in the report. A bundle whose `extractor_version`, `manifest_schema_version` or any file's `schema_version` differs from the current release is `outdated` and never merged; only current-version exports are supported. Unparseable CSVs (strict RFC 4180, equal field counts) and non-exports are `invalid`.
+- **Combining.** Rows are grouped by schema name, one output per schema, plus `all_messages_canonical.csv` from every `*_messages_canonical` file whose header is exactly the canonical header. Fields are parsed as raw strings and re-written with `escapeCSVField`, so each output row is byte-identical to its source row (the formula-prefix `'` stays as exported); `source_file` and `source_sha256` are appended. Within a schema, a file whose header differs from the first one seen is skipped with a warning.
+- **Re-exports.** Bundles are keyed by (`donor_id_hashed`, `platform`, `conversation_id`); only the one with the latest `download_time` is merged. CSVs without a manifest have no key and are not de-duplicated.
+- **Warnings.** Mixed `pii_scrub_enabled` values and mixed `donor_id_type` values are reported. Donor IDs hashed with different study codes cannot be detected and will look like different participants.
+- **Output.** A STORE ZIP with the CSVs (UTF-8 BOM, CRLF), `merge_manifest.json` (schema `1.0.0`: inputs with status, problems and file checksums; outputs with rows and SHA-256; options; warnings) and `MERGE_REPORT.txt`.
+
 ## Verification
 
 Automated tests (unit, per-platform golden exports, a PII sweep, schema and version checks), the popup accessibility baseline and the real-data validation method and log are described in [`docs/validation.md`](docs/validation.md).

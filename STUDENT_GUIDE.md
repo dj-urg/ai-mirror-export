@@ -524,6 +524,29 @@ Every ZIP contains a manifest describing itself (e.g. `claude_manifest_c6a2d8dc_
 
 ---
 
+## 5b. Merging many exports into one dataset
+
+Every export is one conversation. To work with many conversations at once, yours or ones other participants gave you, use the merge page that comes with the extension. Do not merge in Excel (see below).
+
+1. Click the extension icon, then **Merge exported files…** at the bottom. The merge page opens in a new tab.
+2. Drop the export ZIPs (or a folder of them) onto the page, or use **Choose files…** / **Choose a folder…**. Unzipped CSVs work too, as long as their `_manifest` file is added with them.
+3. The page checks every export against the manifest that was saved with it:
+   - **✓ Verified**: the files are exactly what the extension exported.
+   - **! Changed**: a file no longer matches its recorded checksum, or has no manifest. This usually means it was opened and saved in Excel or another program. These are left out unless you tick **Include changed or unverified files anyway**; the merge report then lists each one.
+   - **✕ Older version / Cannot use**: made with an older version of the extension, or not an export at all. Ask the person to export the conversation again with the current version.
+4. Untick any platforms you do not need, then click **Merge and download**. One ZIP, `ai-chat-merge_<time>.zip`, lands in your Downloads folder.
+
+What is in the merged ZIP:
+
+- `all_messages_canonical.csv`: every message from every platform in the shared layout (section 4). Usually the file to start with.
+- One CSV per file type, for example `claude_messages.csv` or `chatgpt_sources.csv`, combining that file type from every export.
+- `MERGE_REPORT.txt`: what was merged, what was left out and why, and any warnings (for example, a mix of exports with and without sensitive-data removal).
+- `merge_manifest.json`: the same information for scripts, including the checksum of every input and output file.
+
+Each merged row is copied unchanged from its export, with two columns added at the end: `source_file` (the CSV the row came from) and `source_sha256` (that file's checksum, which matches the original manifest). If the same conversation was exported more than once, only the newest export is used.
+
+Everything happens inside your browser. The merge page is not allowed to connect to the internet, and nothing is kept after you close the tab. Open the results in LibreOffice Calc, R or Python rather than Excel: Excel cuts cells longer than 32,767 characters, can turn IDs and timestamps into numbers or dates, and changes the file when you save it.
+
 ## 6. Privacy and donor identity
 
 - **`donor_id`** is a UUID generated locally in the browser the first time the donor exports. It is stored for one year, then rotated. It is not linked to any OpenAI / Anthropic / Google / Microsoft account.

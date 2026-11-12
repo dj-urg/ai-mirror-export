@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### What's new
+
+- **Merge exported files.** A new page, opened from **Merge exported files…** in the extension, combines many exports, your own or ones other participants gave you, into one set of CSV files. It checks every export against the record the extension saved when it was made, leaves out files that were changed afterwards (unless you choose to include them), uses only the newest export of each conversation, and writes a plain-language report of what it did. Everything happens in your browser: the page cannot connect to the internet, and nothing is kept after you close it. No new permissions.
+
+### For researchers
+
+- New `merge.html` page with `utils/merge.js`, `utils/zip_read.js` (STORE and DEFLATE) and `utils/csv_parse.js`. Output: per-schema CSVs plus `all_messages_canonical.csv`, each row byte-identical to its source with `source_file` and `source_sha256` appended, and `merge_manifest.json` (`1.0.0`). Only exports from the current extension version are merged. Details in "Merging exports" in [`METHODS.md`](METHODS.md). Export output is unchanged.
+
 ## 3.1.0 — 2026-11-02
 
 ### What's new
