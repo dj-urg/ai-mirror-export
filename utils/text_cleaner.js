@@ -33,7 +33,7 @@ const GROK_RENDER_RE = /<grok:render\b[^>]*>[\s\S]*?<\/grok:render>/gi;
  * `a < b` or `2 > 1` stays untouched. Handles paired tags, self-closing tags,
  * and namespaced tags (`<ns:name>`).
  */
-const HTML_TAG_RE = /<\/?[a-zA-Z][a-zA-Z0-9:._-]*(?:\s[^>]*)?\/?>/g;
+const HTML_TAG_RE = /<\/?[a-zA-Z][a-zA-Z0-9:._-]*(?:\s[^<>]*)?\/?>/g;
 
 /**
  * ChatGPT's inline citation placeholders. Two observed variants:
