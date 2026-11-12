@@ -40,23 +40,30 @@
   // Pick up the signing secret from inject.js. MAIN world runs at document_start
   // the same as this content script; if MAIN hasn't finished when we read, a
   // MutationObserver catches the write.
+  // Only a value with the shape inject.js generates (32 random bytes as hex)
+  // is accepted, and the wait is bounded so the page cannot supply a secret
+  // of its own later on.
   const _ATTR = 'data-perplexity-exporter-secret';
-  let SECRET_KEY = document.documentElement.getAttribute(_ATTR) || null;
-  if (SECRET_KEY) {
+  const SECRET_SHAPE = /^[0-9a-f]{64}$/;
+  const SECRET_WAIT_MS = 5000;
+  let SECRET_KEY = null;
+  function adoptSecret() {
+    const s = document.documentElement.getAttribute(_ATTR);
+    if (s === null) return false;
     document.documentElement.removeAttribute(_ATTR);
-  } else {
+    if (!SECRET_SHAPE.test(s)) return false;
+    SECRET_KEY = s;
+    return true;
+  }
+  if (!adoptSecret()) {
     const _secretObserver = new MutationObserver(() => {
-      const s = document.documentElement.getAttribute(_ATTR);
-      if (s) {
-        SECRET_KEY = s;
-        document.documentElement.removeAttribute(_ATTR);
-        _secretObserver.disconnect();
-      }
+      if (adoptSecret()) _secretObserver.disconnect();
     });
     _secretObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: [_ATTR]
     });
+    setTimeout(() => _secretObserver.disconnect(), SECRET_WAIT_MS);
   }
 
   function redactSensitiveData(data) {
@@ -110,13 +117,39 @@
     return '';
   }
 
-  function entryKeyOf(entry, fallbackIndex) {
-    if (!entry || typeof entry !== 'object') return `idx:${fallbackIndex}`;
-    return entry.uuid
-      || entry.backend_uuid
-      || entry.id
-      || entry.entry_uuid
-      || `idx:${fallbackIndex}`;
+  const ENTRY_TIME_KEYS = ['created_at', 'created_datetime', 'query_datetime', 'timestamp'];
+
+  // Key used to recognise the same entry across pages. An entry without any
+  // id is keyed by its question and time (or, failing that, its content), so
+  // receiving the same page twice does not add it twice.
+  function entryKeyOf(entry) {
+    if (!entry || typeof entry !== 'object') return `noid:${JSON.stringify(entry)}`;
+    const id = entry.uuid || entry.backend_uuid || entry.id || entry.entry_uuid;
+    if (id) return String(id);
+    const question = pickString(entry, ['query_str', 'query', 'prompt']);
+    const time = pickTimestamp(entry, ENTRY_TIME_KEYS);
+    if (question && time !== '') return `noid:${time}:${question}`;
+    return `noid:${JSON.stringify(entry)}`;
+  }
+
+  // Time of an entry in ms, or null when it carries no usable timestamp.
+  function entryTimeOf(entry) {
+    const v = pickTimestamp(entry, ENTRY_TIME_KEYS);
+    if (v === '') return null;
+    // Numeric timestamps are epoch seconds or milliseconds.
+    const ms = typeof v === 'number' ? (v < 1e11 ? v * 1000 : v) : Date.parse(v);
+    return Number.isFinite(ms) ? ms : null;
+  }
+
+  // Entries in conversation order. Pages arrive in whatever order the user
+  // scrolled (newest first, older pages later), so arrival order is not
+  // conversation order. Sorting is by entry time and stable; if any entry
+  // has no usable time, arrival order is kept rather than guessing.
+  function orderedEntries(entries) {
+    const timed = entries.map((entry, i) => ({ entry, i, t: entryTimeOf(entry) }));
+    if (timed.some(x => x.t === null)) return entries.slice();
+    timed.sort((a, b) => a.t - b.t || a.i - b.i);
+    return timed.map(x => x.entry);
   }
 
   // Extract the entries array from whatever field name Perplexity used on the
@@ -132,6 +165,7 @@
 
   function mergeConversation(threadUuid, page) {
     let conv = capturedConversations.get(threadUuid);
+    const isNew = !conv;
     if (!conv) {
       conv = {
         uuid: threadUuid,
@@ -159,7 +193,7 @@
     const pageEntries = readEntries(page);
     for (let i = 0; i < pageEntries.length; i++) {
       const entry = pageEntries[i];
-      const key = entryKeyOf(entry, conv.entries.length);
+      const key = entryKeyOf(entry);
       const existingIdx = conv.entryKeys.get(key);
       if (existingIdx === undefined) {
         conv.entryKeys.set(key, conv.entries.length);
@@ -171,14 +205,19 @@
       }
     }
 
+    // has_more describes the page that carried it. A page without the field
+    // leaves the last known answer in place.
+    const hasMore = typeof page.has_more === 'boolean'
+      ? page.has_more
+      : (conv.lastPageMeta ? conv.lastPageMeta.has_more : null);
     conv.lastPageMeta = {
       next_cursor: page.next_cursor || page.cursor || null,
-      has_more: typeof page.has_more === 'boolean' ? page.has_more : null,
+      has_more: hasMore,
       page_count: (conv.lastPageMeta?.page_count || 0) + 1
     };
 
     conversationTimestamps.set(threadUuid, Date.now());
-    enforceLruLimit();
+    if (isNew) enforceLruLimit();
   }
 
   function enforceLruLimit() {
@@ -219,7 +258,7 @@
       title: conv.title,
       created_at: conv.created_at,
       updated_at: conv.updated_at,
-      entries: conv.entries,
+      entries: orderedEntries(conv.entries),
       page_count: conv.lastPageMeta?.page_count || 0
     };
   }
@@ -303,9 +342,19 @@
         return false;
       }
 
+      // How this export was captured. If the last page Perplexity sent said
+      // more entries exist, the thread was not loaded to its start.
+      const hasMore = capturedConversations.get(conversationId).lastPageMeta?.has_more ?? null;
       browser.runtime.sendMessage({
         type: MESSAGE_TYPE,
         payload,
+        capture: {
+          captured_at: new Date(conversationTimestamps.get(conversationId) || Date.now()).toISOString(),
+          source: 'passive',
+          refresh: 'not_supported',
+          complete: hasMore === null ? null : !hasMore,
+          flags: hasMore === true ? ['has_more'] : []
+        },
         platform: 'perplexity'
       }).then(() => {
         sendResponse({ success: true });

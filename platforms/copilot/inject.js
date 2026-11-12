@@ -8,6 +8,14 @@
 (function () {
   'use strict';
 
+  // Idempotency guard. If this file is evaluated more than once in the same
+  // page, a second evaluation must not wrap fetch again or mint a second
+  // signing secret. The marker is a non-enumerable boolean; it carries no
+  // data. It is set further down, once the prerequisites are known to be
+  // present, so a failed first evaluation does not block a later one.
+  const INSTALL_MARKER = '__aiChatExporterCopilotInjectInstalled';
+  if (window[INSTALL_MARKER] === true) return;
+
   const PLATFORM = 'Copilot';
   const MESSAGE_TYPE = 'COPILOT_CONVERSATION_DATA';
   const SOURCE_ID = 'copilot-exporter-inject';
@@ -23,6 +31,13 @@
   const originalFetch = window.fetch;
   const originalPostMessage = window.postMessage.bind(window);
   const originalMessageSecurity = window.MessageSecurity;
+
+  if (typeof originalFetch !== 'function' || !originalMessageSecurity) return;
+  try {
+    Object.defineProperty(window, INSTALL_MARKER, {
+      value: true, enumerable: false, configurable: false, writable: false
+    });
+  } catch { /* defineProperty refused: install once anyway */ }
 
   // Generate the signing secret here in the MAIN world at document_start,
   // before any page scripts execute. Write it to a dataset attribute so
@@ -103,15 +118,43 @@
   }
 
 
+  // Copilot URL shape: /c/api/conversations/{conversationId}/history
+  // (optional query). The whole pathname has to match, on this origin, so a
+  // URL that merely contains these substrings (another host, a fragment, a
+  // query value, a sub-resource) is never captured.
+  const HISTORY_PATH_RE = /^\/c\/api\/conversations\/([^/]+)\/history\/?$/i;
+
   /**
-   * Extract conversation ID from Copilot API URL
+   * The URL a fetch call went to. Prefers the URL the browser reports on the
+   * response; otherwise takes it from a string, URL or real Request argument
+   * and nothing else (an arbitrary object with a `url` property is not a
+   * request).
+   */
+  function requestUrl(request, response) {
+    if (response && typeof response.url === 'string' && response.url) return response.url;
+    if (typeof request === 'string') return request;
+    if (request instanceof URL) return request.href;
+    if (request instanceof Request) return request.url;
+    return '';
+  }
+
+  /**
+   * Extract conversation ID from a Copilot history API URL
    * @param {string} url - The API URL
-   * @returns {string} The conversation ID or 'unknown'
+   * @returns {string|null} The conversation ID, or null if the URL is not a
+   *   same-origin history request
    */
   function extractConversationIdFromUrl(url) {
-    // Match pattern: /c/api/conversations/{conversationId}/history
-    const match = url.match(/\/c\/api\/conversations\/([^/]+)\/history/);
-    return match ? match[1] : 'unknown';
+    if (!url) return null;
+    let parsed;
+    try {
+      parsed = new URL(url, window.location.href);
+    } catch {
+      return null;
+    }
+    if (parsed.origin !== window.location.origin) return null;
+    const match = parsed.pathname.match(HISTORY_PATH_RE);
+    return match ? match[1] : null;
   }
 
   /**
@@ -122,25 +165,9 @@
     const response = await originalFetch.apply(this, args);
 
     try {
-      // Extract URL from arguments
-      const request = args[0];
-      let url = '';
-
-      if (typeof request === 'string') {
-        url = request;
-      } else if (request instanceof Request) {
-        url = request.url;
-      } else if (request && typeof request === 'object' && request.url) {
-        url = request.url;
-      } else {
-        url = String(request);
-      }
-
       // Check if this is a conversation history API request
-      // Copilot URL shape: /c/api/conversations/{conversationId}/history (optional query)
-      // Anchor the pattern so unrelated URLs that merely contain these substrings don't match.
-      const isConversationRequest = url &&
-        /\/c\/api\/conversations\/[^/?#]+\/history(?:[?#]|$)/i.test(url);
+      const conversationId = extractConversationIdFromUrl(requestUrl(args[0], response));
+      const isConversationRequest = conversationId !== null;
 
       if (isConversationRequest) {
         logDebug('Detected conversation API request, attempting to capture...');
@@ -178,10 +205,7 @@
             // Verify this looks like conversation data
             // Copilot conversations have a results array
             if (Array.isArray(data.results)) {
-              // Extract conversation ID from URL
-              const conversationId = extractConversationIdFromUrl(url);
-
-              // Add conversation ID to the payload
+              // Add conversation ID (from the URL) to the payload
               const payloadWithId = {
                 ...data,
                 conversationId: conversationId

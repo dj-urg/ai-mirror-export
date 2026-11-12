@@ -27,23 +27,30 @@
   // Read the signing secret that inject.js wrote in MAIN world. Both scripts
   // run at document_start, so a MutationObserver covers the (unlikely) race
   // where our read happens before inject's write.
+  // Only a value with the shape inject.js generates (32 random bytes as hex)
+  // is accepted, and the wait is bounded so the page cannot supply a secret
+  // of its own later on.
   const _ATTR = 'data-m365-copilot-exporter-secret';
-  let SECRET_KEY = document.documentElement.getAttribute(_ATTR) || null;
-  if (SECRET_KEY) {
+  const SECRET_SHAPE = /^[0-9a-f]{64}$/;
+  const SECRET_WAIT_MS = 5000;
+  let SECRET_KEY = null;
+  function adoptSecret() {
+    const s = document.documentElement.getAttribute(_ATTR);
+    if (s === null) return false;
     document.documentElement.removeAttribute(_ATTR);
-  } else {
+    if (!SECRET_SHAPE.test(s)) return false;
+    SECRET_KEY = s;
+    return true;
+  }
+  if (!adoptSecret()) {
     const _secretObserver = new MutationObserver(() => {
-      const s = document.documentElement.getAttribute(_ATTR);
-      if (s) {
-        SECRET_KEY = s;
-        document.documentElement.removeAttribute(_ATTR);
-        _secretObserver.disconnect();
-      }
+      if (adoptSecret()) _secretObserver.disconnect();
     });
     _secretObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: [_ATTR]
     });
+    setTimeout(() => _secretObserver.disconnect(), SECRET_WAIT_MS);
   }
 
   function redactSensitiveData(data) {
@@ -72,7 +79,9 @@
   }
 
   function storeConversation(id, data) {
-    if (capturedConversations.size >= MAX_STORED_CONVERSATIONS) {
+    // Only a new conversation can push the store over its limit; an update
+    // to one we already hold must not evict anything.
+    if (!capturedConversations.has(id) && capturedConversations.size >= MAX_STORED_CONVERSATIONS) {
       let oldestId = null;
       let oldestTime = Infinity;
       for (const [convId, ts] of conversationTimestamps.entries()) {
@@ -150,7 +159,15 @@
       return;
     }
 
+    // Without a secret nothing can be verified. Never fall through to an
+    // HMAC keyed with "null", which any page script could compute.
+    if (typeof SECRET_KEY !== 'string' || !SECRET_SHAPE.test(SECRET_KEY)) {
+      logWarn('Secret key not available, dropping message');
+      return;
+    }
+
     const { signature, ...messageData } = event.data;
+    if (typeof signature !== 'string') return;
     const isValid = await verifySignature(JSON.stringify(messageData), signature, SECRET_KEY);
     if (!isValid) {
       logWarn('Invalid message signature');
@@ -205,8 +222,17 @@
           const firstUser = results.find(r => r && r.author === 'user' && typeof r.text === 'string' && r.text.length > 0);
           if (firstUser) title = firstUser.text.slice(0, 80);
         }
-        return { id, title, isComplete: Boolean(data.isComplete) };
+        return {
+          id,
+          title,
+          isComplete: Boolean(data.isComplete),
+          lastUpdated: conversationTimestamps.get(id) || 0
+        };
       });
+      // Oldest first, most recently updated last: the popup treats the last
+      // entry as the current conversation, and so does the export fallback
+      // below.
+      conversations.sort((a, b) => a.lastUpdated - b.lastUpdated);
       sendResponse({
         success: true,
         conversations,
@@ -220,7 +246,7 @@
       // M365's conversationId lives in the Chathub WebSocket URL, not the page
       // URL — the popup can't extract it. If the caller doesn't pass one,
       // fall back to the most recently captured conversation.
-      let targetId = message.conversationId;
+      let targetId = typeof message.conversationId === 'string' ? message.conversationId : null;
       let data = targetId ? capturedConversations.get(targetId) : null;
       if (!data && !targetId) {
         let newest = null;
@@ -247,9 +273,25 @@
         });
         return false;
       }
+      // How this export was captured. A turn that only the idle timer
+      // closed, or a capture that dropped an oversized frame, may be missing
+      // content, so it is not reported as complete.
+      const flags = [];
+      if (data.completionReason === 'idle_timeout') flags.push('idle_timeout');
+      if (data.truncated === true) flags.push('truncated');
+      const capturedAt = data.metadata && typeof data.metadata.captured_at === 'string'
+        ? data.metadata.captured_at
+        : new Date(conversationTimestamps.get(targetId) || Date.now()).toISOString();
       browser.runtime.sendMessage({
         type: MESSAGE_TYPE,
         payload: data,
+        capture: {
+          captured_at: capturedAt,
+          source: 'websocket',
+          refresh: 'not_supported',
+          complete: flags.length === 0,
+          flags
+        },
         platform: 'm365_copilot'
       }).then(() => sendResponse({ success: true }))
         .catch(error => sendResponse({ success: false, error: error.message }));

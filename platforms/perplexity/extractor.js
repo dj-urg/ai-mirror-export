@@ -108,10 +108,17 @@ function normalizeEntry(entry, threadUuid, turnIndex) {
 
     const answerPayload = readBlockPayload(block, ANSWER_BLOCK_TYPES);
     if (answerPayload) {
-      const txt = readBlockText(answerPayload.value, [
+      let txt = readBlockText(answerPayload.value, [
         'answer', 'text', 'content', 'markdown'
       ]);
-      if (txt) answerChunks.push(txt);
+      // While (or after) streaming, `answer` can be null with the text only
+      // in `chunks`.
+      if (!txt && answerPayload.value && Array.isArray(answerPayload.value.chunks)) {
+        txt = answerPayload.value.chunks.filter(c => typeof c === 'string').join('');
+      }
+      // Perplexity repeats the whole answer in several blocks (one per
+      // intended usage). Keep one copy of an identical answer.
+      if (txt && !answerChunks.includes(txt)) answerChunks.push(txt);
     }
 
     const codePayload = readBlockPayload(block, CODE_BLOCK_TYPES);

@@ -23,30 +23,40 @@
   const MAX_CONVERSATION_AGE_MS = 3600000; // 1 hour
   const CLEANUP_INTERVAL_MS = 300000; // 5 minutes
 
-  // Store captured conversations in memory with timestamps
+  // Store captured conversations in memory with timestamps.
+  // capturedConversations holds the export payload; captureInfo holds
+  // bookkeeping about how it was assembled (never exported as data).
   const capturedConversations = new Map();
   const conversationTimestamps = new Map();
+  const captureInfo = new Map();
 
   // Read the signing secret written by inject.js (MAIN world) via setAttribute.
   // Using getAttribute/removeAttribute is XRay-wrapper-safe in Firefox content
   // scripts. Both scripts run at document_start before any page script executes.
+  // Only a value with the shape inject.js generates (32 random bytes as hex)
+  // is accepted, and the wait is bounded so the page cannot supply a secret
+  // of its own later on.
   const _ATTR = 'data-copilot-exporter-secret';
-  let SECRET_KEY = document.documentElement.getAttribute(_ATTR) || null;
-  if (SECRET_KEY) {
+  const SECRET_SHAPE = /^[0-9a-f]{64}$/;
+  const SECRET_WAIT_MS = 5000;
+  let SECRET_KEY = null;
+  function adoptSecret() {
+    const s = document.documentElement.getAttribute(_ATTR);
+    if (s === null) return false;
     document.documentElement.removeAttribute(_ATTR);
-  } else {
+    if (!SECRET_SHAPE.test(s)) return false;
+    SECRET_KEY = s;
+    return true;
+  }
+  if (!adoptSecret()) {
     const _secretObserver = new MutationObserver(() => {
-      const s = document.documentElement.getAttribute(_ATTR);
-      if (s) {
-        SECRET_KEY = s;
-        document.documentElement.removeAttribute(_ATTR);
-        _secretObserver.disconnect();
-      }
+      if (adoptSecret()) _secretObserver.disconnect();
     });
     _secretObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: [_ATTR]
     });
+    setTimeout(() => _secretObserver.disconnect(), SECRET_WAIT_MS);
   }
 
   /**
@@ -101,12 +111,33 @@
 
 
   /**
+   * Key used to recognise the same message across history responses.
+   * Messages without an id are compared by content.
+   */
+  function messageKeyOf(result) {
+    if (result && (typeof result.id === 'string' || typeof result.id === 'number') && result.id !== '') {
+      return `id:${result.id}`;
+    }
+    return `noid:${JSON.stringify(result)}`;
+  }
+
+  /**
    * Store conversation with memory management
    * Implements LRU (Least Recently Used) eviction when limit is reached
+   *
+   * Copilot loads long conversations through several /history responses
+   * (and re-requests history as the user scrolls), so a response is merged
+   * into what is already held instead of replacing it: messages are matched
+   * by id, a later copy of a message replaces the earlier one in place, and
+   * new messages are appended. Top-level fields (pagination markers
+   * included) are kept, the latest response winning.
    */
   function storeConversation(id, data) {
-    // Clean up oldest conversation if at limit
-    if (capturedConversations.size >= MAX_STORED_CONVERSATIONS) {
+    const existing = capturedConversations.get(id);
+
+    // Clean up oldest conversation if at limit. Only a new conversation can
+    // push the store over its limit; an update must not evict anything.
+    if (!existing && capturedConversations.size >= MAX_STORED_CONVERSATIONS) {
       // Find oldest conversation by timestamp
       let oldestId = null;
       let oldestTime = Infinity;
@@ -121,13 +152,31 @@
       if (oldestId) {
         capturedConversations.delete(oldestId);
         conversationTimestamps.delete(oldestId);
+        captureInfo.delete(oldestId);
         logDebug('Memory limit reached. Evicted oldest conversation', { conversationId: oldestId });
       }
     }
 
+    const info = captureInfo.get(id) || { responseCount: 0, largestResponse: 0 };
+    const results = existing ? existing.results.slice() : [];
+    const indexByKey = new Map(results.map((r, i) => [messageKeyOf(r), i]));
+    for (const result of data.results) {
+      const key = messageKeyOf(result);
+      const at = indexByKey.get(key);
+      if (at === undefined) {
+        indexByKey.set(key, results.length);
+        results.push(result);
+      } else {
+        results[at] = result;
+      }
+    }
+    info.responseCount += 1;
+    info.largestResponse = Math.max(info.largestResponse, data.results.length);
+
     // Store conversation with current timestamp
-    capturedConversations.set(id, data);
+    capturedConversations.set(id, { ...(existing || {}), ...data, results });
     conversationTimestamps.set(id, Date.now());
+    captureInfo.set(id, info);
   }
 
   /**
@@ -141,6 +190,7 @@
       if (now - timestamp > MAX_CONVERSATION_AGE_MS) {
         capturedConversations.delete(id);
         conversationTimestamps.delete(id);
+        captureInfo.delete(id);
         cleanedCount++;
       }
     }
@@ -228,8 +278,16 @@
       return;
     }
 
+    // Without a secret nothing can be verified. Never fall through to an
+    // HMAC keyed with "null", which any page script could compute.
+    if (typeof SECRET_KEY !== 'string' || !SECRET_SHAPE.test(SECRET_KEY)) {
+      logWarn('Secret key not available, dropping message');
+      return;
+    }
+
     // Verify signature
     const { signature, ...messageData } = event.data;
+    if (typeof signature !== 'string') return;
     const messageString = JSON.stringify(messageData);
     const isValid = await verifySignature(messageString, signature, SECRET_KEY);
 
@@ -331,10 +389,23 @@
         return false;
       }
 
+      // How this export was captured. When the messages held are more than
+      // any single /history response delivered, the history arrived in pages
+      // and there is no way to tell from here that every page was loaded.
+      const info = captureInfo.get(conversationId) || { largestResponse: 0 };
+      const paged = conversationData.results.length > info.largestResponse;
+
       // Forward to background for CSV generation
       browser.runtime.sendMessage({
         type: MESSAGE_TYPE,
         payload: conversationData,
+        capture: {
+          captured_at: new Date(conversationTimestamps.get(conversationId) || Date.now()).toISOString(),
+          source: 'passive',
+          refresh: 'not_supported',
+          complete: paged ? false : null,
+          flags: paged ? ['paged'] : []
+        },
         platform: 'copilot'
       }).then(() => {
         sendResponse({ success: true });

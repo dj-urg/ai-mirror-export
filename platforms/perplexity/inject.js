@@ -20,14 +20,11 @@
   // scripting API as well as manifest.json, so it can be evaluated more
   // than once in the same page. A second evaluation must not wrap fetch
   // and XMLHttpRequest again or mint a second signing secret. The marker is
-  // a non-enumerable boolean; it carries no data.
+  // a non-enumerable boolean; it carries no data. It is set further down,
+  // once the prerequisites are known to be present, so an evaluation that
+  // could not install anything does not block a later one.
   const INSTALL_MARKER = '__aiChatExporterPerplexityInjectInstalled';
   if (window[INSTALL_MARKER] === true) return;
-  try {
-    Object.defineProperty(window, INSTALL_MARKER, {
-      value: true, enumerable: false, configurable: false, writable: false
-    });
-  } catch (_) { /* defineProperty refused: fall through and install once anyway */ }
 
   const PLATFORM = 'Perplexity';
   const MESSAGE_TYPE = 'PERPLEXITY_CONVERSATION_DATA';
@@ -42,6 +39,13 @@
   const originalXhrSend = XMLHttpRequest.prototype.send;
   const originalPostMessage = window.postMessage.bind(window);
   const originalMessageSecurity = window.MessageSecurity;
+
+  if (typeof originalFetch !== 'function' || !originalMessageSecurity) return;
+  try {
+    Object.defineProperty(window, INSTALL_MARKER, {
+      value: true, enumerable: false, configurable: false, writable: false
+    });
+  } catch (_) { /* defineProperty refused: fall through and install once anyway */ }
 
   // Generate the signing secret in the MAIN world before any page scripts run,
   // then stash it in a documentElement attribute so content.js can read it once
@@ -123,12 +127,34 @@
 
   // Match /rest/thread/<uuid> (and the historical /rest/threads/<uuid>) with
   // the UUID as the last path segment so we don't accidentally pick up
-  // sub-resources like /export, /share, /comments.
-  const UUID_RE = /\/rest\/threads?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]|$)/i;
+  // sub-resources like /export, /share, /comments. The whole pathname has to
+  // match, on this origin: a URL that only contains the pattern (another
+  // host, a query value, a fragment) is never captured.
+  const THREAD_PATH_RE = /^\/rest\/threads?\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 
   function extractThreadUuid(url) {
-    const m = typeof url === 'string' ? url.match(UUID_RE) : null;
+    if (typeof url !== 'string' || !url) return null;
+    let parsed;
+    try {
+      parsed = new URL(url, window.location.href);
+    } catch (_) {
+      return null;
+    }
+    if (parsed.origin !== window.location.origin) return null;
+    const m = parsed.pathname.match(THREAD_PATH_RE);
     return m ? m[1] : null;
+  }
+
+  // The URL a fetch call went to. Prefers the URL the browser reports on the
+  // response; otherwise takes it from a string, URL or real Request argument
+  // and nothing else (an arbitrary object with a `url` property is not a
+  // request).
+  function requestUrl(request, response) {
+    if (response && typeof response.url === 'string' && response.url) return response.url;
+    if (typeof request === 'string') return request;
+    if (request instanceof URL) return request.href;
+    if (request instanceof Request) return request.url;
+    return '';
   }
 
   async function sendDataToContentScript(threadUuid, data) {
@@ -159,14 +185,7 @@
     const response = await originalFetch.apply(this, args);
 
     try {
-      const request = args[0];
-      let url = '';
-      if (typeof request === 'string') url = request;
-      else if (request instanceof Request) url = request.url;
-      else if (request && typeof request === 'object' && request.url) url = request.url;
-      else url = String(request);
-
-      const threadUuid = extractThreadUuid(url);
+      const threadUuid = extractThreadUuid(requestUrl(args[0], response));
       if (!threadUuid) return response;
 
       logDebug('fetch matched thread URL', { uuid: threadUuid, status: response.status });
@@ -210,7 +229,8 @@
   // XMLHttpRequest hook as a fallback — some SPA frameworks still use XHR.
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     try {
-      this.__perplexityExporterUrl = typeof url === 'string' ? url : String(url);
+      this.__perplexityExporterUrl = typeof url === 'string' ? url
+        : url instanceof URL ? url.href : '';
     } catch (_) {}
     return originalXhrOpen.call(this, method, url, ...rest);
   };
@@ -223,6 +243,8 @@
         this.addEventListener('load', () => {
           try {
             if (this.status < 200 || this.status >= 300) return;
+            // After a redirect the response may come from somewhere else.
+            if (this.responseURL && extractThreadUuid(this.responseURL) !== threadUuid) return;
             const text = this.responseText;
             if (!text || text.length > MAX_RESPONSE_SIZE) return;
             let data;
