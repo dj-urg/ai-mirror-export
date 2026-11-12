@@ -311,6 +311,69 @@ assert(Array.isArray(PII_SCRUB_OPTION_KEYS) && PII_SCRUB_OPTION_KEYS.includes('U
 assert(Object.isFrozen(PII_SCRUB_OPTION_KEYS),
   'PII_SCRUB_OPTION_KEYS is frozen so callers cannot mutate it');
 
+// --- Ruleset 1.1.0: linear-time patterns, dates, compact phones ---------
+{
+  // Each of these took seconds (quadratic backtracking) under ruleset 1.0.0.
+  const N = 40000;
+  const slow = {
+    'dotted run without @': 'a.'.repeat(N),
+    'digit-dash run': '12-'.repeat(N),
+    'plus run': 'a+'.repeat(N),
+    'URL with a run of colons': 'http://' + 'a:'.repeat(N),
+    'base64url run': 'aB3_-'.repeat(N),
+    'version-like run': '1.2.'.repeat(N),
+    'one @ and a long dotted domain': 'a@' + 'b.'.repeat(N)
+  };
+  for (const [label, input] of Object.entries(slow)) {
+    const t0 = performance.now();
+    scrubText(input, { stripUrls: true });
+    const ms = performance.now() - t0;
+    assert(ms < 1500, `scrubText stays linear on ${label} (${ms.toFixed(0)} ms)`);
+  }
+
+  // Same matches as the old \b-anchored pattern.
+  assertEq(scrubText('mail -jane.doe@x.org, ..a@b.co'), 'mail -<REDACTED:EMAIL>, ..<REDACTED:EMAIL>',
+    'EMAIL: leading punctuation stays, address starts at the first word character');
+  assertEq(scrubText('a_b%c+d@sub.example.co.uk!'), '<REDACTED:EMAIL>!', 'EMAIL: full local part and domain');
+  assertEq(scrubText('https://u:p@h/x and https://:pw@host/x'), '<REDACTED:URL> and <REDACTED:URL>',
+    'URL credentials: with and without a user name');
+
+  // Dates and year ranges are not phone numbers.
+  for (const keep of ['Born 2024-01-15 ok', 'at 2024-01-15T10:30:00Z', '2012-03-04 10:30:15.123 x',
+    'years 2019-2024 and 1990–2015']) {
+    assertEq(scrubText(keep), keep, `PHONE: date-like text is kept (${keep})`);
+  }
+  assertEq(scrubText('2024-01-15 555-123-4567'), '2024-01-15 <REDACTED:PHONE>',
+    'PHONE: a number next to a date is still redacted');
+
+  // Numbers without the 2-4 digit grouping.
+  assertEq(scrubText('call +31612345678 now'), 'call <REDACTED:PHONE> now', 'PHONE: solid international');
+  assertEq(scrubText('call +31 6 12345678'), 'call <REDACTED:PHONE>', 'PHONE: international, one-digit group');
+  assertEq(scrubText('call +31 6 1234 5678'), 'call <REDACTED:PHONE>', 'PHONE: international, spaced');
+  assertEq(scrubText('call 0612345678.'), 'call <REDACTED:PHONE>.', 'PHONE: solid national');
+  assertEq(scrubText('v 0.1234567890'), 'v 0.1234567890', 'PHONE: a decimal fraction is kept');
+  assertEq(scrubText('price 0123456789,50'), 'price 0123456789,50', 'PHONE: a decimal amount is kept');
+  assertEq(scrubText('id 01234567890123'), 'id 01234567890123', 'PHONE: a longer digit run is kept');
+
+  // JSON columns: id / time keys protect ids and timestamps, not whatever sits there.
+  const j = JSON.parse(scrubJsonText(JSON.stringify({
+    user_id: 'jane@example.com', id: 'abc-123', message_id: 'c_0123456789abcdef0123456789abcdef0123',
+    created_at: '2024-01-15T10:00:00Z', date: 'Mon, 15 Jan 2024 10:00:00 GMT', time: 'ask jane@example.com',
+    update_time: '1700000000.123'
+  })).value);
+  assertEq(j.user_id, '<REDACTED:EMAIL>', 'JSON: an email under an id key is scrubbed');
+  assertEq(j.id, 'abc-123', 'JSON: a bare id is kept');
+  assertEq(j.message_id, 'c_0123456789abcdef0123456789abcdef0123', 'JSON: a long bare id is kept (no TOKEN)');
+  assertEq(j.created_at, '2024-01-15T10:00:00Z', 'JSON: an ISO timestamp is kept');
+  assertEq(j.date, 'Mon, 15 Jan 2024 10:00:00 GMT', 'JSON: an RFC 1123 date is kept');
+  assertEq(j.update_time, '1700000000.123', 'JSON: an epoch string is kept');
+  assertEq(j.time, 'ask <REDACTED:EMAIL>', 'JSON: prose under a time key is scrubbed');
+
+  const proto = scrubJsonText('{"__proto__":{"note":"jane@example.com"},"a":1}').value;
+  assertEq(proto, '{"__proto__":{"note":"<REDACTED:EMAIL>"},"a":1}', 'JSON: a "__proto__" key survives and is scrubbed');
+  assert(({}).note === undefined, 'JSON: scrubbing a "__proto__" key does not touch Object.prototype');
+}
+
 // --- Report -------------------------------------------------------------
 console.log(`\nPII tests: ${passed} passed, ${failed} failed`);
 if (failed > 0) {

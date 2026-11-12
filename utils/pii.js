@@ -9,7 +9,13 @@
 // back to the exact rules that produced them. Semver: patch for tightening a
 // bounded regex, minor for adding/removing a category, major for anything a
 // downstream parser could break on.
-export const PII_RULESET_VERSION = '1.0.0';
+// 1.1.0: EMAIL and URL-credential patterns rewritten to run in linear time
+// (same matches, except that a URL with an empty user name, `//:pass@host`,
+// is now caught); ISO dates and year ranges are no longer redacted as PHONE;
+// international numbers in any grouping (`+31612345678`, `+31 6 12345678`)
+// and solid national ones (`0612345678`) are; values under
+// id / time keys in JSON columns are kept only when they look like one.
+export const PII_RULESET_VERSION = '1.1.0';
 
 // Option keys exposed in `_manifest.json` under `pii_scrub_options`.
 // Scrubbing is otherwise all-or-nothing (via `pii_scrub_enabled`); the keys
@@ -23,12 +29,29 @@ export const PII_SCRUB_OPTION_KEYS = Object.freeze(['URL']);
 // JWT -> URL -> CC -> SSN -> names -> generic token).
 // ---------------------------------------------------------------------------
 
-// RFC-5322-lite: local@domain.tld. Keep conservative.
-const EMAIL_RE = /\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,24}\b/g;
+// RFC-5322-lite: local@domain.tld. Keep conservative. The lookbehind pins
+// the match to the start of a run of local-part characters, so a long run
+// without an '@' is scanned once instead of once per character. Group 1 is
+// leading punctuation that stays in the text (the address starts at the
+// first word character, as with a plain `\b`).
+const EMAIL_RE = /(?<![A-Za-z0-9._%+\-])([.%+\-]*)[A-Za-z0-9_][A-Za-z0-9._%+\-]*@[A-Za-z0-9.\-]+\.[A-Za-z]{2,24}\b/g;
 
 // International (+countrycode) + NANP styles. Requires 7+ digits of signal to
 // avoid chewing on short numerics. Allows (), spaces, dots, dashes as separators.
 const PHONE_RE = /(?:(?<![A-Za-z0-9])\+\d{1,3}[\s.\-]?)?(?:\(\d{2,4}\)[\s.\-]?|\d{2,4}[\s.\-])\d{2,4}[\s.\-]?\d{2,4}(?:[\s.\-]?\d{2,4})?(?![A-Za-z0-9])/g;
+
+// Phone numbers PHONE_RE does not see because it needs groups of 2-4 digits
+// with a separator between them: international numbers in any grouping
+// (`+31612345678`, `+31 6 12345678`; a '+' and 8-15 digits, single
+// separators allowed) and national trunk-prefix numbers written solid
+// (`0612345678`, 10 or 11 digits).
+const PHONE_INTL_RE = /(?<![A-Za-z0-9])\+\d(?:[\s.\-]?\d){7,14}(?!\d)/g;
+const PHONE_COMPACT_RE = /(?<![A-Za-z0-9+.,\-])0\d{9,10}(?![A-Za-z0-9]|[.,\-]\d)/g;
+
+// ISO dates / datetimes (2024-01-15, 2024-01-15 10:30) and year ranges
+// (2019-2024). They have the digit grouping of a phone number, so they are
+// set aside before the phone rules run.
+const DATE_LIKE_RE = /((?<!\d)(?:19|20)\d{2}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?)?(?!\d)|(?<![\d\-])(?:19|20)\d{2}[-\u2013](?:19|20)\d{2}(?![\d\-]))/;
 
 // IPv4 with each octet 0-255. Avoids matching inside longer digit runs.
 const IPV4_RE = /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g;
@@ -51,8 +74,10 @@ const SSN_RE = /\b\d{3}-\d{2}-\d{4}\b/g;
 const BEARER_RE = /\bBearer\s+[A-Za-z0-9._\-]+/gi;
 const SK_KEY_RE = /\b(?:sk|pk|rk|xoxb|xoxp|ghp|gho|ghs|ghr|AKIA|ASIA|AIza)[A-Za-z0-9_\-]{16,}\b/g;
 
-// URL with embedded userinfo (e.g., https://user:pass@host/path).
-const URL_USERINFO_RE = /\b(?:https?|ftp):\/\/[^\s/@"'<>]+:[^\s/@"'<>]*@[^\s"'<>]+/gi;
+// URL with embedded userinfo (e.g., https://user:pass@host/path). The user
+// part stops at the first ':' so the pattern cannot backtrack over a long
+// run of colons.
+const URL_USERINFO_RE = /\b(?:https?|ftp):\/\/[^\s/@"'<>:]*:[^\s/@"'<>]*@[^\s"'<>]+/gi;
 
 // Generic long token: 32+ alphanumeric (plus _ and -) run, bounded.
 // Deliberately conservative — runs after everything else so it won't eat emails.
@@ -211,7 +236,7 @@ export function scrubText(text, options) {
 
   // Order matters.
   out = out.replace(URL_USERINFO_RE, '<REDACTED:URL>');
-  out = out.replace(EMAIL_RE, '<REDACTED:EMAIL>');
+  out = out.replace(EMAIL_RE, '$1<REDACTED:EMAIL>');
   out = out.replace(JWT_RE, '<REDACTED:JWT>');
   out = out.replace(BEARER_RE, '<REDACTED:TOKEN>');
   out = out.replace(SK_KEY_RE, '<REDACTED:TOKEN>');
@@ -224,10 +249,16 @@ export function scrubText(text, options) {
     if (digits.length < 13 || digits.length > 19) return m;
     return luhnValid(digits) ? '<REDACTED:CC>' : m;
   });
-  out = out.replace(PHONE_RE, (m) => {
-    const digits = m.replace(/[^\d]/g, '');
-    return digits.length >= 7 && digits.length <= 15 ? '<REDACTED:PHONE>' : m;
-  });
+  out = out.split(DATE_LIKE_RE).map((part, i) => {
+    if (i % 2 === 1) return part; // a date or year range: not a phone number
+    return part
+      .replace(PHONE_INTL_RE, '<REDACTED:PHONE>')
+      .replace(PHONE_RE, (m) => {
+        const digits = m.replace(/[^\d]/g, '');
+        return digits.length >= 7 && digits.length <= 15 ? '<REDACTED:PHONE>' : m;
+      })
+      .replace(PHONE_COMPACT_RE, '<REDACTED:PHONE>');
+  }).join('');
   out = out.replace(IPV4_RE, '<REDACTED:IP>');
 
   const namesRe = buildNamesRegex(opts.names);
@@ -368,6 +399,17 @@ const JSON_TIME_KEY_RE = /(^|[_-])(at|time|timestamp|date|datetime)$|(At|Time|Ti
 const JSON_URL_KEY_RE = /(^|[_-])(url|urls|link|href|src)$|(Url|Urls|Link|Href|Src)$/;
 const ISO_DATE_VALUE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+(Z|[+-]\d{2}:?\d{2})?)?$/;
 const UUID_VALUE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// What a value under an id key may look like and still be kept as-is: one
+// token of id characters. An email address or a spaced phone number stored
+// under `user_id` does not match and is scrubbed like any other string.
+const BARE_ID_VALUE_RE = /^[A-Za-z0-9_\-:.|/=~]{1,256}$/;
+const EPOCH_VALUE_RE = /^\d{1,17}(?:\.\d+)?$/;
+
+/** A value under a time key that really is a timestamp (epoch or parseable date). */
+function looksLikeTimestamp(value) {
+  if (EPOCH_VALUE_RE.test(value)) return true;
+  return value.length <= 64 && !value.includes('@') && !Number.isNaN(Date.parse(value));
+}
 
 function addCounts(acc, counts) {
   acc.total += counts.total;
@@ -379,7 +421,8 @@ function addCounts(acc, counts) {
 function scrubJsonValue(value, key, options, counts) {
   if (typeof value === 'string') {
     if (value.length === 0) return value;
-    if (JSON_ID_KEY_RE.test(key) || JSON_TIME_KEY_RE.test(key)) return value;
+    if (JSON_ID_KEY_RE.test(key) && BARE_ID_VALUE_RE.test(value)) return value;
+    if (JSON_TIME_KEY_RE.test(key) && looksLikeTimestamp(value)) return value;
     if (ISO_DATE_VALUE_RE.test(value) || UUID_VALUE_RE.test(value)) return value;
     const out = JSON_URL_KEY_RE.test(key) ? scrubUrlValue(value, options) : scrubText(value, options);
     addCounts(counts, countRedactions(value, out));
@@ -388,7 +431,14 @@ function scrubJsonValue(value, key, options, counts) {
   if (Array.isArray(value)) return value.map(v => scrubJsonValue(v, key, options, counts));
   if (value && typeof value === 'object') {
     const out = {};
-    for (const [k, v] of Object.entries(value)) out[k] = scrubJsonValue(v, k, options, counts);
+    for (const [k, v] of Object.entries(value)) {
+      // defineProperty, not assignment: a "__proto__" key from JSON.parse is
+      // an ordinary own property and must survive as one.
+      Object.defineProperty(out, k, {
+        value: scrubJsonValue(v, k, options, counts),
+        enumerable: true, writable: true, configurable: true
+      });
+    }
     return out;
   }
   return value;
