@@ -53,12 +53,42 @@ function countOrphanedNodes(conversationData) {
 }
 
 /**
- * Convert a Unix timestamp (seconds, possibly fractional) to an ISO 8601 string.
- * Returns '' for null, undefined, 0, or any falsy value.
+ * Convert a timestamp to an ISO 8601 UTC string. Never throws.
+ *   number  Unix seconds (possibly fractional); values above 1e12 are
+ *           milliseconds.
+ *   string  digits only: a Unix timestamp as above; otherwise a date string,
+ *           read as UTC when it carries no zone.
+ * Returns '' for null, undefined, 0, and anything that is not a valid date.
  */
 function unixToISO(ts) {
     if (!ts) return '';
-    return new Date(ts * 1000).toISOString();
+    let date;
+    if (typeof ts === 'number') {
+        date = new Date(ts > 1e12 ? ts : ts * 1000);
+    } else if (typeof ts === 'string') {
+        const trimmed = ts.trim();
+        if (/^\d+(?:\.\d+)?$/.test(trimmed)) return unixToISO(Number(trimmed));
+        const zoneless = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(trimmed);
+        date = new Date(zoneless ? trimmed.replace(' ', 'T') + 'Z' : trimmed);
+    } else {
+        return '';
+    }
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function isObject(value) {
+    return value !== null && typeof value === 'object';
+}
+
+/**
+ * True for a message that becomes a row in CSV B. The hidden context nodes
+ * (custom instructions, memory) go to CSV E instead. The metadata counts use
+ * the same rule, so they always agree with the rows.
+ */
+function isExportedMessage(message) {
+    if (!isObject(message)) return false;
+    const contentType = message.content?.content_type;
+    return contentType !== 'user_editable_context' && contentType !== 'model_editable_context';
 }
 
 /**
@@ -71,18 +101,24 @@ function computeNodeDepths(mapping) {
     const depths = new Map();
     let rootId = null;
     for (const nodeId in mapping) {
-        if (!mapping[nodeId].parent) {
+        if (isObject(mapping[nodeId]) && !mapping[nodeId].parent) {
             rootId = nodeId;
             break;
         }
     }
     if (!rootId) return depths;
 
+    // A child id that is missing from the mapping is skipped, and a node is
+    // visited once, so a malformed tree (dangling child, cycle) cannot throw
+    // or loop forever.
     const queue = [[rootId, 0]];
-    while (queue.length > 0) {
-        const [nodeId, depth] = queue.shift();
+    for (let i = 0; i < queue.length; i++) {
+        const [nodeId, depth] = queue[i];
+        if (depths.has(nodeId) || !isObject(mapping[nodeId])) continue;
         depths.set(nodeId, depth);
-        for (const childId of (mapping[nodeId].children || [])) {
+        const children = mapping[nodeId].children;
+        if (!Array.isArray(children)) continue;
+        for (const childId of children) {
             queue.push([childId, depth + 1]);
         }
     }
@@ -100,11 +136,11 @@ function computeNodeDepths(mapping) {
 function visiblePathSet(conversationData) {
     const mapping = conversationData.mapping;
     const current = conversationData.current_node;
-    if (!mapping || typeof mapping !== 'object' || typeof current !== 'string' || !mapping[current]) return null;
+    if (!isObject(mapping) || typeof current !== 'string' || !isObject(mapping[current])) return null;
     const path = new Set();
     let id = current;
     let guard = 0;
-    while (id && mapping[id] && !path.has(id) && guard++ < 100000) {
+    while (id && isObject(mapping[id]) && !path.has(id) && guard++ < 100000) {
         path.add(id);
         id = mapping[id].parent || null;
     }
@@ -134,9 +170,10 @@ function normalizeMessages(conversationData) {
         const nodes = [];
         for (const nodeId in mapping) {
             const node = mapping[nodeId];
+            if (!isObject(node)) continue;
             nodes.push({
                 nodeId,
-                message: node.message || null,
+                message: isObject(node.message) ? node.message : null,
                 parent: node.parent || null,
                 depth: nodeDepths.has(nodeId) ? nodeDepths.get(nodeId) : ''
             });
@@ -146,47 +183,69 @@ function normalizeMessages(conversationData) {
 
     // New format: flat messages array in chronological order
     if (Array.isArray(conversationData.messages)) {
-        return conversationData.messages.map((message, index) => ({
-            nodeId: message.id || String(index),
-            message,
-            parent: message.metadata?.parent_id || null,
-            depth: index
-        }));
+        const nodes = [];
+        conversationData.messages.forEach((message, index) => {
+            if (!isObject(message)) return;
+            nodes.push({
+                nodeId: message.id || String(index),
+                message,
+                parent: message.metadata?.parent_id || null,
+                depth: index
+            });
+        });
+        return nodes;
     }
 
     return [];
 }
 
 /**
+ * Join the text-bearing parts of a `parts` array. A part is a plain string or
+ * an object with a string `text` (text parts, voice-mode `audio_transcription`
+ * parts). Parts without text (images, audio pointers, null) are left out.
+ */
+function joinTextParts(parts) {
+    const texts = [];
+    for (const part of parts) {
+        if (typeof part === 'string') texts.push(part);
+        else if (isObject(part) && typeof part.text === 'string') texts.push(part.text);
+    }
+    return texts.join('\n');
+}
+
+/**
  * Extract text content from message content object
  */
 function extractTextFromContent(content) {
-    if (!content) return '';
+    if (!isObject(content)) return '';
 
     const contentType = content.content_type;
 
-    if (contentType === 'text' && Array.isArray(content.parts)) {
-        return content.parts.join('\n');
-    }
-    if (contentType === 'multimodal_text' && Array.isArray(content.parts)) {
-        return content.parts
-            .filter(part => typeof part === 'string' || part.content_type === 'text')
-            .map(part => typeof part === 'string' ? part : part.text || '')
-            .join('\n');
-    }
-    if (contentType === 'thoughts' && Array.isArray(content.thoughts)) {
-        // Use summary (non-empty label) with fallback to content
-        return content.thoughts.map(thought => thought.summary || thought.content || '').join('\n\n');
-    }
-    if (contentType === 'reasoning_recap') {
-        // New format: content.content is a plain string; old format used content.parts
-        if (typeof content.content === 'string') return content.content;
-        if (Array.isArray(content.parts)) return content.parts.join('\n');
-    }
-    if (contentType === 'execution_output') return content.text || '';
-    if (contentType === 'code') return content.text || '';
     if (contentType === 'user_editable_context') return '';
     if (contentType === 'model_editable_context') return '';
+
+    if (contentType === 'thoughts' && Array.isArray(content.thoughts)) {
+        // Use summary (non-empty label) with fallback to content
+        return content.thoughts
+            .map(thought => {
+                const label = thought?.summary || thought?.content;
+                return typeof label === 'string' ? label : '';
+            })
+            .join('\n\n');
+    }
+    if (contentType === 'reasoning_recap' && typeof content.content === 'string') {
+        // New format: content.content is a plain string; old format used content.parts
+        return content.content;
+    }
+
+    // Every other content type, known or not, keeps its text in `parts`
+    // (text, multimodal_text), in `text` (code, execution_output, tether_quote,
+    // system_error) or in `result` (tether_browsing_display). Reading them
+    // generically means a content type this code has never seen still exports
+    // its text.
+    if (Array.isArray(content.parts)) return joinTextParts(content.parts);
+    if (typeof content.text === 'string') return content.text;
+    if (typeof content.result === 'string') return content.result;
 
     return '';
 }
@@ -222,8 +281,8 @@ function extractUserProfile(nodes) {
     for (const { message } of nodes) {
         if (message?.content?.content_type === 'user_editable_context') {
             const meta = message.metadata?.user_context_message_data;
-            if (meta?.about_user_message) return meta.about_user_message.trim();
-            const profile = message.content.user_profile || '';
+            if (typeof meta?.about_user_message === 'string' && meta.about_user_message) return meta.about_user_message.trim();
+            const profile = typeof message.content.user_profile === 'string' ? message.content.user_profile : '';
             const match = profile.match(/User profile:\s*```(.+?)```/s);
             return match ? match[1].trim() : '';
         }
@@ -238,8 +297,8 @@ function extractUserInstructions(nodes) {
     for (const { message } of nodes) {
         if (message?.content?.content_type === 'user_editable_context') {
             const meta = message.metadata?.user_context_message_data;
-            if (meta?.about_model_message) return meta.about_model_message.trim();
-            const instructions = message.content.user_instructions || '';
+            if (typeof meta?.about_model_message === 'string' && meta.about_model_message) return meta.about_model_message.trim();
+            const instructions = typeof message.content.user_instructions === 'string' ? message.content.user_instructions : '';
             const match = instructions.match(/```(.+?)```/s);
             return match ? match[1].trim() : '';
         }
@@ -248,27 +307,27 @@ function extractUserInstructions(nodes) {
 }
 
 /**
- * Count messages by role from normalized nodes array
+ * Count the exported messages with a given role from normalized nodes array.
+ * The hidden context nodes are left out, as they are in CSV B (ChatGPT stores
+ * custom instructions as a `user` message that the user never typed).
  */
 function countMessagesByRole(nodes, role) {
     let count = 0;
     for (const { message } of nodes) {
-        if (message?.author?.role === role) count++;
+        if (isExportedMessage(message) && message.author?.role === role) count++;
     }
     return count;
 }
 
 /**
- * Count all messages (excluding user_editable_context and model_editable_context)
- * from normalized nodes array
+ * Count all exported messages (excluding user_editable_context and
+ * model_editable_context) from normalized nodes array. Equals the number of
+ * rows in CSV B.
  */
 function countAllMessages(nodes) {
     let count = 0;
     for (const { message } of nodes) {
-        if (message?.content) {
-            const ct = message.content.content_type;
-            if (ct !== 'user_editable_context' && ct !== 'model_editable_context') count++;
-        }
+        if (isExportedMessage(message)) count++;
     }
     return count;
 }
@@ -364,19 +423,20 @@ function extractConversationMessages(conversationData) {
     const visible = visiblePathSet(conversationData);
 
     for (const { nodeId, message, parent, depth } of nodes) {
-        if (!message) continue;
+        if (!isExportedMessage(message)) continue;
 
         const content = message.content;
         const contentType = content?.content_type || '';
-
-        if (contentType === 'user_editable_context' || contentType === 'model_editable_context') continue;
 
         const authorRole = message.author?.role || '';
 
         const rawText = extractTextFromContent(content);
         messages.push({
             conversation_id: conversationId,
-            node_id: message.id || nodeId,
+            // The mapping key, not message.id: parent_id is a mapping key too,
+            // so the two columns join even if a payload ever gives a message
+            // an id that differs from its node's key.
+            node_id: nodeId,
             parent_id: parent || '',
             turn_number: depth,
             author_role: authorRole,
@@ -517,14 +577,15 @@ function extractSearchResults(conversationData) {
     for (const { nodeId, message } of nodes) {
         if (!message) continue;
 
-        const messageId = message.id || nodeId;
+        const messageId = nodeId;
 
         // --- search_result_groups ---
         const groups = message.metadata?.search_result_groups;
         if (Array.isArray(groups)) {
             for (const group of groups) {
-                if (!Array.isArray(group.entries)) continue;
+                if (!Array.isArray(group?.entries)) continue;
                 for (const entry of group.entries) {
+                    if (!isObject(entry)) continue;
                     results.push({
                         conversation_id: conversationId,
                         message_id: messageId,
@@ -552,13 +613,14 @@ function extractSearchResults(conversationData) {
 
         if (Array.isArray(contentRefs)) {
             for (const ref of contentRefs) {
-                if (ref.type !== 'grouped_webpages') continue;
+                if (ref?.type !== 'grouped_webpages') continue;
 
                 // Inner array is called "items" in grouped_webpages
                 const items = ref.items || ref.entries || ref.webpages || ref.results || [];
                 if (!Array.isArray(items)) continue;
 
                 for (const item of items) {
+                    if (!isObject(item)) continue;
                     // grouped_webpages use a refs[] array; search_result entries use a ref_id object
                     const refId = item.ref_id || item.refs?.[0] || {};
 
@@ -652,7 +714,7 @@ function extractMessageUrls(conversationData) {
     }
 
     function addUrl(messageId, url) {
-        if (!url || isImageUrl(url)) return;
+        if (typeof url !== 'string' || !url || isImageUrl(url)) return;
         const clean = stripUtmParams(url);
         const key = `${messageId}\x00${clean}`;
         if (seen.has(key)) return;
@@ -668,13 +730,13 @@ function extractMessageUrls(conversationData) {
     for (const { nodeId, message } of nodes) {
         if (!message) continue;
 
-        const messageId = message.id || nodeId;
+        const messageId = nodeId;
 
         // 1. New format: safe_urls inside content_references entries
         const contentRefs = message.metadata?.content_references;
         if (Array.isArray(contentRefs)) {
             for (const ref of contentRefs) {
-                if (Array.isArray(ref.safe_urls)) {
+                if (Array.isArray(ref?.safe_urls)) {
                     for (const url of ref.safe_urls) {
                         addUrl(messageId, url);
                     }
