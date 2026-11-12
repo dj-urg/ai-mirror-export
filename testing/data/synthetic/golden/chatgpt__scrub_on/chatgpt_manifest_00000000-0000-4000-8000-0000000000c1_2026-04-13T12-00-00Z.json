@@ -47,7 +47,7 @@
     "pii_scrub_options": {
       "URL": false
     },
-    "pii_ruleset_version": "1.0.0",
+    "pii_ruleset_version": "1.1.0",
     "pii_redactions_total": 3,
     "pii_redactions_by_type": {
       "PHONE": 2,
