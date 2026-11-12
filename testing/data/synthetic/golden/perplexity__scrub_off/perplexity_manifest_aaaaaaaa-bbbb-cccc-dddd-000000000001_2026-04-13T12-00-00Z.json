@@ -1,5 +1,5 @@
 {
-  "manifest_schema_version": "1.2.0",
+  "manifest_schema_version": "1.3.0",
   "extractor_version": "3.1.0",
   "platform": "perplexity",
   "conversation_id": "aaaaaaaa-bbbb-cccc-dddd-000000000001",
@@ -7,6 +7,7 @@
   "donor_id_hashed": "a8ff5f366f9931e7f7c779dbd77b1b8830625345a0f5753266af256a15d699ca",
   "donor_id_type": "persistent",
   "download_time": "2026-04-13T12:00:00.000Z",
+  "checksum_basis": "utf8_without_bom",
   "files": [
     {
       "filename": "perplexity_metadata_aaaaaaaa-bbbb-cccc-dddd-000000000001_2026-04-13T12-00-00Z.csv",
@@ -51,6 +52,7 @@
     "consent_version": "1",
     "consent_given_at": "2026-01-01T00:00:00.000Z",
     "orphaned_nodes": 0,
+    "capture": null,
     "validation": {
       "perplexity_messages": {
         "valid": true,

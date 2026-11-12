@@ -64,9 +64,11 @@ export const SCHEMA_VERSIONS = Object.freeze({
 // 1.1.0 added additive telemetry fields: pii_scrub_options, pii_ruleset_version,
 // pii_redactions_by_type. 1.2.0 added consent_version and consent_given_at
 // (the consent text version and time the donor agreed to, from storage).
+// 1.3.0 added `checksum_basis` and `telemetry.capture` (how and when the
+// page data was obtained: source, export-time refresh result, completeness).
 // Downstream parsers that ignore unknown keys stay compatible. Bump major
 // when a field is renamed or removed.
-export const MANIFEST_SCHEMA_VERSION = '1.2.0';
+export const MANIFEST_SCHEMA_VERSION = '1.3.0';
 
 const CANONICAL_HEADERS = Object.freeze([
   'donor_id',
@@ -215,27 +217,41 @@ export async function buildManifest({
     donor_id_hashed: donorIdHashed,
     donor_id_type: donorIdType,
     download_time: downloadTime,
+    // `bytes` and `sha256` describe each file's UTF-8 content without the
+    // byte-order mark the ZIP entry starts with (EF BB BF, added for Excel).
+    checksum_basis: 'utf8_without_bom',
     files: fileEntries,
     ...(extras ? { telemetry: extras } : {})
   };
   return JSON.stringify(manifest, null, 2);
 }
 
+// Epoch seconds / milliseconds sent as a string ("1700000000", "1700000000.5").
+const EPOCH_STRING_RE = /^\d{9,17}(?:\.\d+)?$/;
+// "2026-01-15T10:30", "2026-01-15 10:30:00.123": a date-time with no zone.
+const ZONELESS_DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
+
 /**
  * Normalize any timestamp input to an RFC 3339 UTC string, or '' if unparseable.
- * Accepts: ISO strings, Unix seconds (number), Unix milliseconds (number).
+ * Accepts: ISO strings, Unix seconds or milliseconds (number, or a string of
+ * digits as some APIs send them). A date-time string without a zone is read
+ * as UTC, so the result does not depend on the time zone of the computer
+ * that made the export.
  * @param {string|number|null|undefined} v
  * @returns {string}
  */
 export function toIsoUtc(v) {
   if (v === null || v === undefined || v === '') return '';
-  if (typeof v === 'number' && Number.isFinite(v)) {
-    const ms = v > 1e12 ? v : v * 1000;
+  if (typeof v === 'string' && EPOCH_STRING_RE.test(v.trim())) v = Number(v);
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) return '';
+    const ms = Math.abs(v) > 1e12 ? v : v * 1000;
     const d = new Date(ms);
     return Number.isNaN(d.getTime()) ? '' : d.toISOString();
   }
   if (typeof v === 'string') {
-    const d = new Date(v);
+    const s = v.trim();
+    const d = new Date(ZONELESS_DATETIME_RE.test(s) ? `${s.replace(' ', 'T')}Z` : s);
     return Number.isNaN(d.getTime()) ? '' : d.toISOString();
   }
   return '';

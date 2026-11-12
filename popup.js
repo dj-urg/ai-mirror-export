@@ -224,6 +224,18 @@ const CAPTURE_LOADING_TIMEOUT_MS = 15000;
 // After the content script hands the data to background, how long to wait
 // for background's EXPORT_RESULT before giving the Export button back.
 const EXPORT_RESULT_WAIT_MS = 15000;
+// How long the content script may take to answer an export request. Some
+// platforms re-read the conversation from the site first.
+const EXPORT_REPLY_WAIT_MS = 45000;
+
+/** Reject with Error(label) when the promise has not settled within ms. */
+function withTimeout(promise, ms, label) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(label)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 // EXPORT_RESULT outcomes that end an export started from this popup.
 const EXPORT_OUTCOMES = new Set(['success', 'download_failed', 'processing_failed', 'empty_export', 'invalid_data']);
@@ -1118,6 +1130,13 @@ function setupEventDrivenUpdates() {
  */
 function handleExportResultMessage(detail) {
   if (!detail || typeof detail.outcome !== 'string') return;
+  // Results are broadcast to every open extension page. An export outcome
+  // that names another tab belongs to a popup in another window.
+  if (EXPORT_OUTCOMES.has(detail.outcome) && typeof detail.tabId === 'number' &&
+      state.currentTab && typeof state.currentTab.id === 'number' &&
+      detail.tabId !== state.currentTab.id) {
+    return;
+  }
   state.export.isExporting = false;
   if (EXPORT_OUTCOMES.has(detail.outcome)) {
     state.export.resultArrived = true;
@@ -1125,20 +1144,16 @@ function handleExportResultMessage(detail) {
     if (state.export.heldFor === null) state.export.heldFor = pageKey(state.currentTab);
   }
   switch (detail.outcome) {
-    case 'success':
-      // Background confirmed the download. The sync-path "Export complete."
-      // card may already be showing; re-affirm with the real filename and
+    case 'success': {
+      // Background started the download and, unless downloadConfirmed is
+      // false, saw Firefox finish writing it. Show the real filename and
       // open the review step.
-      updateStatus(
-        'success',
-        'Export complete.',
-        detail.filename
-          ? `Saved to Downloads as ${detail.filename}`
-          : 'Check your Downloads folder.'
-      );
+      const copy = successCopy(detail);
+      updateStatus(copy.type, copy.message, copy.detail);
       updateExportButton(true);
       showReviewCard(detail);
       break;
+    }
     case 'download_failed':
       // detail.reason is sanitised exception text; it goes to the log only.
       popupLogError('EXPORT_RESULT download_failed', detail.reason || 'no reason');
@@ -1246,6 +1261,50 @@ function wireReviewCard() {
 }
 
 /**
+ * Status-card copy for a finished export. A capture the content script
+ * could not refresh, or knows to be partial, is a warning: the file exists
+ * but may lack the latest messages. See METHODS.md "Capture provenance".
+ *
+ * @param {{filename?: string, downloadConfirmed?: boolean, capture?: Object|null}} detail
+ * @returns {{type: string, message: string, detail: string}}
+ */
+function successCopy(detail) {
+  const saved = detail.filename
+    ? `Saved to Downloads as ${detail.filename}.`
+    : 'Check your Downloads folder.';
+  const capture = (detail.capture && typeof detail.capture === 'object') ? detail.capture : null;
+
+  if (capture && (capture.refresh === 'failed' || capture.complete === false)) {
+    return {
+      type: 'warning',
+      message: 'Export saved, but it may be missing messages.',
+      detail: `${saved} The extension could not confirm it has the whole conversation. Reload the page, wait for it to finish loading, and export again.`
+    };
+  }
+  if (detail.downloadConfirmed === false) {
+    return {
+      type: 'warning',
+      message: 'Export sent to Downloads.',
+      detail: `Firefox has not confirmed the file yet. ${detail.filename ? `Look for ${detail.filename} in your Downloads folder` : 'Check your Downloads folder'}; if it is not there, export again.`
+    };
+  }
+  // Platforms the extension cannot re-read at export time: say how old the
+  // captured copy is so the user can judge whether to reload first.
+  if (capture && capture.refresh === 'not_supported') {
+    const at = capture.captured_at ? new Date(capture.captured_at) : null;
+    if (at && !Number.isNaN(at.getTime())) {
+      const time = at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      return {
+        type: 'success',
+        message: 'Export complete.',
+        detail: `${saved} It holds the conversation as this page loaded it at ${time}. If newer messages are missing, reload the page and export again.`
+      };
+    }
+  }
+  return { type: 'success', message: 'Export complete.', detail: saved };
+}
+
+/**
  * Plain-language copy for a background validation code (see
  * validateConversationData in background.js).
  * @param {string|undefined} code
@@ -1257,6 +1316,11 @@ function invalidDataCopy(code) {
       return {
         message: 'This conversation is too large to export.',
         detail: 'The conversation data is over 50 MB, which is more than the extension can process in the browser.'
+      };
+    case 'SENDER_REJECTED':
+      return {
+        message: 'The export was not accepted.',
+        detail: 'The extension only takes conversation data from the main page of a supported site. Reload the tab and try again.'
       };
     case 'UNSERIALIZABLE':
       return {
@@ -1581,8 +1645,10 @@ async function checkAndUpdateUI() {
           updateExportButton(false);
           hideFilePreview();
         } else {
-          // Pick the latest (array is in insertion order; last entry is newest).
-          const latest = conversations[conversations.length - 1];
+          // Pick the most recently updated conversation. Older content
+          // scripts send no lastUpdated; the last entry is then the newest.
+          const latest = conversations.reduce((best, c) =>
+            (Number(c && c.lastUpdated) || 0) >= (Number(best && best.lastUpdated) || 0) ? c : best);
           if (latest.isComplete) {
             clearWaiting();
             updateStatus(
@@ -1646,7 +1712,7 @@ async function checkAndUpdateUI() {
             'success',
             isAIMode ? 'Ready to export AI Mode conversation.' : 'Ready to export AI Overview.',
             isAIMode
-              ? 'Each turn exports as a separate row. To capture newer turns, close and reopen this popup.'
+              ? 'Each turn exports as a separate row. Export reads the conversation as it is on the page now.'
               : `Query: "${query}"`
           );
           updateExportButton(true);
@@ -1661,7 +1727,7 @@ async function checkAndUpdateUI() {
             'info',
             isAIMode ? 'No AI Mode turns detected yet.' : 'No AI Overview on this page.',
             isAIMode
-              ? 'Ask a question in AI Mode, wait for the reply, then close and reopen this popup. After reopening, wait a second or two for the capture to show up.'
+              ? 'Ask a question in AI Mode and wait for the reply to finish.'
               : 'Try AI Mode (tab at top of results) or a query that triggers one.'
           );
           updateExportButton(false);
@@ -1843,7 +1909,11 @@ async function handleExportClick() {
     // Send export request to content script
     let response;
     try {
-      response = await browser.tabs.sendMessage(tab.id, exportMessage);
+      response = await withTimeout(
+        browser.tabs.sendMessage(tab.id, exportMessage),
+        EXPORT_REPLY_WAIT_MS,
+        'EXPORT_REPLY_TIMEOUT'
+      );
     } catch (messageError) {
       // Content script communication error
       popupLogError('handleExportClick', messageError, {
@@ -1852,7 +1922,9 @@ async function handleExportClick() {
       });
 
       // Determine specific error type
-      if (messageError.message && messageError.message.includes('Receiving end does not exist')) {
+      if (messageError.message === 'EXPORT_REPLY_TIMEOUT') {
+        throw new Error('EXPORT_FAILED:The page did not answer in time.', { cause: messageError });
+      } else if (messageError.message && messageError.message.includes('Receiving end does not exist')) {
         throw new Error('CONTENT_SCRIPT_NOT_LOADED');
       } else if (messageError.message && messageError.message.includes('permission')) {
         throw new Error('PERMISSION_DENIED');
@@ -1876,23 +1948,28 @@ async function handleExportClick() {
       // Background answers a validation failure before the content script's
       // reply gets here; don't paint over that outcome.
       if (!state.export.resultArrived) {
-        updateStatus(
-          'success',
-          'Export complete.',
-          'Check your Downloads folder.'
-        );
+        // Nothing is saved yet: only background's result says so.
+        updateStatus('loading', 'Saving your export...', 'Building the ZIP file.');
 
-        // Reset button to normal state (no spinner). It stays disabled until
-        // EXPORT_RESULT arrives, or until the wait runs out, so a missing
-        // result can't leave the user without a way to try again.
-        updateExportButton(false, 'Export ZIP', false);
+        // The button stays disabled until EXPORT_RESULT arrives, or until the
+        // wait runs out, so a missing result can't leave the user without a
+        // way to try again. A missing result is not a success.
+        updateExportButton(false, 'Exporting...', true);
         state.export.resultWaitTimer = setTimeout(() => {
-          if (!state.export.isExporting && !state.export.resultArrived) updateExportButton(true);
+          if (state.export.isExporting || state.export.resultArrived) return;
+          updateStatus(
+            'warning',
+            'The export did not confirm.',
+            'Check your Downloads folder for a new ZIP file. If there is none, reload the page and export again.'
+          );
+          updateExportButton(true, 'Export ZIP', false);
         }, EXPORT_RESULT_WAIT_MS);
       }
     } else {
       // Export failed with error from content script
-      const errorMessage = response?.error || 'Unknown error occurred';
+      const errorMessage = (typeof response?.error === 'string' && response.error)
+        ? response.error
+        : 'Unknown error occurred';
       const sanitizedError = sanitizeErrorMessage(errorMessage);
 
       popupLogError('handleExportClick', `Export failed: ${errorMessage}`, {
@@ -2118,10 +2195,16 @@ function wirePrivacySettings() {
     // this is on; refresh it if the list is visible.
     if (state.export.canExport) updateFilePreview(state.ui.fileListKey ? state.ui.fileListKey.split('|').pop() : '');
   });
-  if (salt) salt.addEventListener('change', () => {
+  // Save on every keystroke: closing the popup (or pressing Export with the
+  // field still focused) fires no change event.
+  const saveSalt = () => {
     const v = salt.value.trim().slice(0, 256);
-    browser.storage.local.set({ study_salt: v }).catch(() => {});
-  });
+    return browser.storage.local.set({ study_salt: v }).catch(() => {});
+  };
+  if (salt) {
+    salt.addEventListener('input', saveSalt);
+    salt.addEventListener('change', saveSalt);
+  }
 }
 
 /**
@@ -2137,8 +2220,9 @@ function initMainUI() {
 
   setupEventDrivenUpdates();
 
-  hydratePrivacySettings();
-  wirePrivacySettings();
+  // Hydrate before wiring so a stored value can't be overwritten by an
+  // early input event, and before the first status check enables Export.
+  const settingsReady = hydratePrivacySettings().then(wirePrivacySettings);
   wireReviewCard();
   wireMergeLink();
 
@@ -2149,7 +2233,8 @@ function initMainUI() {
   // Focus the primary action only once the first status check has resolved:
   // before that the export button is still disabled and focus would stay on
   // <body> (the harness mock resolves synchronously, which hid this).
-  checkAndUpdateUI()
+  settingsReady
+    .then(() => checkAndUpdateUI())
     .catch(() => {})
     .then(() => focusInitialTarget());
 }

@@ -213,16 +213,29 @@ const CopilotHandler = {
       .join('\n\n');
   },
 
+  /**
+   * The content script merges history pages in arrival order, so an older
+   * page loaded by scrolling up lands after newer messages. Sort by
+   * createdAt (stable). If any message lacks a readable time the order
+   * cannot be trusted either way, so arrival order is kept.
+   */
+  inChronologicalOrder(results) {
+    const timed = results.map(r => ({ r, t: Date.parse(toIsoUtc(r && r.createdAt) || '') }));
+    if (timed.some(x => Number.isNaN(x.t))) return results;
+    return timed.sort((a, b) => a.t - b.t).map(x => x.r);
+  },
+
   flattenConversationData(convJson) {
     if (!convJson || !Array.isArray(convJson.results)) {
       _console.warn('[Copilot] Invalid conversation data: missing results');
       return [];
     }
-    const results = convJson.results;
+    const results = this.inChronologicalOrder(convJson.results);
     const conversationId = convJson.conversationId || '';
     const rows = [];
     for (const result of results) {
       try {
+        if (!result || typeof result !== 'object') continue;
         const text = this.extractTextFromContent(result.content);
         const authorType = result.author?.type || '';
         const role = authorType === 'human' ? 'user' :
@@ -533,6 +546,13 @@ function validateConversationData(data, platform) {
       }
       if ('mapping' in data && (data.mapping === null || typeof data.mapping !== 'object' || Array.isArray(data.mapping))) {
         return { isValid: false, code: 'BAD_SHAPE', error: 'ChatGPT mapping is not a plain object' };
+      }
+      // An id with nothing under it (a metadata-only response, or a
+      // conversation that has no nodes yet) would export a ZIP with a
+      // metadata row and no messages.
+      if (!(data.mapping && Object.keys(data.mapping).length > 0) &&
+          !(Array.isArray(data.messages) && data.messages.length > 0)) {
+        return { isValid: false, code: 'EMPTY', error: 'ChatGPT conversation has no messages (empty mapping)' };
       }
       break;
     case 'claude':
@@ -861,6 +881,11 @@ function pushCsv(list, stem, schemaName, content, slug) {
 async function handleConversationData(message) {
   const platform = message.platform || 'unknown';
   const conversationData = message.payload;
+  const capture = sanitizeCapture(message.capture);
+  // Every result of this export names the tab it came from, so a popup
+  // opened on another tab does not show it as its own.
+  const tabId = typeof message.tabId === 'number' ? message.tabId : null;
+  const broadcast = (detail) => broadcastExportResult(tabId === null ? detail : { ...detail, tabId });
   // Optional id the content script derived from the page URL; used for
   // naming only when the payload itself yields none.
   const hintedConversationId = (typeof message.conversationId === 'string'
@@ -870,6 +895,12 @@ async function handleConversationData(message) {
 
   if (!conversationData) {
     _console.error(`[${platform}] No conversation data in message`);
+    broadcast({
+      platform,
+      outcome: 'invalid_data',
+      code: 'NOT_OBJECT',
+      reason: 'No conversation data in message'
+    });
     return;
   }
 
@@ -879,7 +910,7 @@ async function handleConversationData(message) {
     // Branch on the structured `code` set by validateConversationData, not
     // on the human-readable error string — the latter can drift (and did,
     // before the independent review flagged it). docs/ux-audit.md §3.1 B2.
-    broadcastExportResult({
+    broadcast({
       platform,
       outcome: validation.code === 'EMPTY' ? 'empty_export' : 'invalid_data',
       code: validation.code || 'BAD_SHAPE',
@@ -1041,7 +1072,12 @@ async function handleConversationData(message) {
       perSchemaValidation.perplexity_messages = validateRows(scrubMessages.rows, 'perplexity_messages');
 
     } else if (platform === 'grok') {
-      const result = extractGrokConversation(conversationData, { donorId, donorIdType, downloadTime });
+      // A payload with no id of its own takes the id the content script read
+      // from the page URL, so the rows and the file names agree.
+      const grokData = (!resolveConversationId(conversationData) && hintedConversationId)
+        ? { ...conversationData, _captured_conversation_id: hintedConversationId }
+        : conversationData;
+      const result = extractGrokConversation(grokData, { donorId, donorIdType, downloadTime });
 
       const scrubMetadata = scrubRowsIfEnabled([result.metadata], piiScrubEnabled, piiScrubOptions, platform);
       mergeScrubCounts(piiStats, scrubMetadata);
@@ -1175,9 +1211,10 @@ async function handleConversationData(message) {
       if (rawRows.length === 0) {
         // Every message failed to flatten (or the payload had none). Do not
         // ship an empty CSV; tell the popup instead.
-        broadcastExportResult({
+        broadcast({
           platform,
           outcome: 'empty_export',
+          code: 'EMPTY',
           reason: 'No messages could be extracted from this conversation'
         });
         return;
@@ -1237,20 +1274,42 @@ async function handleConversationData(message) {
 
     } else {
       _console.error(`[${platform}] No handler found for platform`);
+      broadcast({
+        platform,
+        outcome: 'processing_failed',
+        code: 'NO_HANDLER',
+        reason: 'No handler found for platform'
+      });
       return;
     }
 
     if (csvFiles.length === 0 || csvFiles.every(f => !f.content)) {
       _console.warn(`[${platform}] No data extracted from conversation`);
-      broadcastExportResult({
+      broadcast({
         platform,
         outcome: 'empty_export',
+        code: 'EMPTY',
         reason: 'No data could be extracted from this conversation'
       });
       return;
     }
 
     for (const f of csvFiles) f.rowCount = countRows(f.content);
+
+    // A payload that passed validation can still yield no message rows (only
+    // hidden system nodes, or a shape the extractor does not know). Do not
+    // ship a ZIP that looks like a conversation with nothing in it.
+    const messagesFile = csvFiles.find(f => /_messages$/.test(f.schemaName));
+    if (messagesFile && messagesFile.rowCount === 0) {
+      _console.warn(`[${platform}] No message rows extracted from conversation`);
+      broadcast({
+        platform,
+        outcome: 'empty_export',
+        code: 'EMPTY',
+        reason: 'No messages could be extracted from this conversation'
+      });
+      return;
+    }
 
     const conversationIdForManifest = conversationIdForNaming;
 
@@ -1266,6 +1325,9 @@ async function handleConversationData(message) {
       consent_version: consentVersion,
       consent_given_at: consentGivenAt,
       orphaned_nodes: orphanCount,
+      // How and when the page data was obtained (see METHODS.md, "Capture
+      // provenance"); null when the content script sent none.
+      capture,
       validation: summarizeValidation(perSchemaValidation),
       ...(extractionTelemetry ? { extraction_telemetry: extractionTelemetry } : {})
     };
@@ -1300,37 +1362,151 @@ async function handleConversationData(message) {
 
     const zipFilename = `${platform}_${slug}.zip`;
 
+    // Listen before starting so a download that finishes at once is not missed.
+    const watcher = watchDownloads();
     browser.downloads.download({ url, filename: zipFilename, saveAs: false })
-      .then((downloadId) => {
+      .then(async (downloadId) => {
+        const id = typeof downloadId === 'number' ? downloadId : null;
+        const state = await watcher.settled(id);
+        // The blob must outlive the write to disk; revoke once it is done.
         setTimeout(() => URL.revokeObjectURL(url), 1000);
+        if (state.status === 'interrupted') {
+          _console.error(`[${platform}] Download interrupted:`, state.error);
+          broadcast({
+            platform,
+            outcome: 'download_failed',
+            code: 'DOWNLOAD_INTERRUPTED',
+            reason: sanitizeErrorMessage(state.error) || 'Download interrupted',
+            filename: zipFilename
+          });
+          if (tabId !== null) setExportFailureBadge(tabId);
+          return;
+        }
         // downloadId lets the popup's review step call downloads.show().
-        broadcastExportResult({
+        broadcast({
           platform,
           outcome: 'success',
           filename: zipFilename,
-          downloadId: typeof downloadId === 'number' ? downloadId : null
+          downloadId: id,
+          // false when the browser had not reported the file as written yet.
+          downloadConfirmed: state.status === 'complete',
+          capture
         });
       })
       .catch(error => {
+        watcher.stop();
         _console.error(`[${platform}] Download failed:`, error);
         URL.revokeObjectURL(url);
-        broadcastExportResult({
+        broadcast({
           platform,
           outcome: 'download_failed',
+          code: 'DOWNLOAD_REJECTED',
           reason: sanitizeErrorMessage(error && (error.message || String(error))) || 'Download failed',
           filename: zipFilename
         });
+        if (tabId !== null) setExportFailureBadge(tabId);
       });
   } catch (error) {
     _console.error(`[${platform}] Error processing conversation data:`, error);
-    broadcastExportResult({
+    broadcast({
       platform,
       outcome: 'processing_failed',
+      code: 'PROCESSING_ERROR',
       reason: sanitizeErrorMessage(error && (error.message || String(error))) || 'Processing failed'
     });
     // Re-throw so the message-listener's .catch() sets the toolbar '!' badge.
     throw error;
   }
+}
+
+const CAPTURE_SOURCES = new Set(['passive', 'active', 'export_refresh', 'dom', 'refetch', 'websocket']);
+const CAPTURE_REFRESH = new Set(['ok', 'failed', 'not_attempted', 'not_supported']);
+const CAPTURE_FLAG_RE = /^[a-z0-9_]{1,40}$/;
+
+/**
+ * Reduce the content script's `capture` note to its known fields. It ends
+ * up in the manifest, so nothing free-form is copied: enums, a timestamp, a
+ * boolean and short machine-readable flags only.
+ * @returns {{captured_at: string|null, source: string|null, refresh: string|null,
+ *   complete: boolean|null, flags: string[]}|null}
+ */
+function sanitizeCapture(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const at = (typeof raw.captured_at === 'string' && raw.captured_at.length <= 40) || typeof raw.captured_at === 'number'
+    ? toIsoUtc(raw.captured_at)
+    : '';
+  return {
+    captured_at: at || null,
+    source: CAPTURE_SOURCES.has(raw.source) ? raw.source : null,
+    refresh: CAPTURE_REFRESH.has(raw.refresh) ? raw.refresh : null,
+    complete: typeof raw.complete === 'boolean' ? raw.complete : null,
+    flags: Array.isArray(raw.flags)
+      ? [...new Set(raw.flags.filter(f => typeof f === 'string' && CAPTURE_FLAG_RE.test(f)))].slice(0, 16)
+      : []
+  };
+}
+
+// How long to wait for the browser to report a download as written before
+// reporting it as started but unconfirmed. Exports are local blobs, so this
+// normally resolves within milliseconds.
+const DOWNLOAD_SETTLE_MS = 8000;
+
+/**
+ * Watch `downloads.onChanged` so an export is reported as saved only once
+ * the file is on disk, and as failed when the browser interrupts it (disk
+ * full, blocked folder, cancelled). Call before `downloads.download`, then
+ * `settled(id)` with the id it returned.
+ * @returns {{settled: (id: number|null) => Promise<{status: 'complete'|'interrupted'|'unknown', error?: string}>, stop: () => void}}
+ */
+function watchDownloads() {
+  const onChanged = browser.downloads && browser.downloads.onChanged;
+  if (!onChanged || typeof onChanged.addListener !== 'function') {
+    return { settled: async () => ({ status: 'unknown' }), stop: () => {} };
+  }
+  const seen = new Map(); // download id -> final state, for events that beat settled()
+  let waiting = null;     // { id, resolve }
+  const finalState = (delta) => {
+    const state = delta && delta.state && delta.state.current;
+    if (state === 'complete') return { status: 'complete' };
+    if (state === 'interrupted') {
+      return { status: 'interrupted', error: (delta.error && delta.error.current) || 'interrupted' };
+    }
+    return null;
+  };
+  const listener = (delta) => {
+    const state = finalState(delta);
+    if (!state) return;
+    if (waiting && waiting.id === delta.id) waiting.resolve(state);
+    else seen.set(delta.id, state);
+  };
+  const stop = () => { try { onChanged.removeListener(listener); } catch (_) { /* already gone */ } };
+  onChanged.addListener(listener);
+  return {
+    stop,
+    settled: (id) => new Promise((resolve) => {
+      let timer = null;
+      const finish = (state) => {
+        if (timer !== null) clearTimeout(timer);
+        waiting = null;
+        stop();
+        resolve(state);
+      };
+      if (id === null) return finish({ status: 'unknown' });
+      if (seen.has(id)) return finish(seen.get(id));
+      waiting = { id, resolve: finish };
+      // No event in time: ask once for the current state before giving up.
+      timer = setTimeout(async () => {
+        timer = null;
+        let state = { status: 'unknown' };
+        try {
+          const [item] = await browser.downloads.search({ id });
+          if (item && item.state === 'complete') state = { status: 'complete' };
+          else if (item && item.state === 'interrupted') state = { status: 'interrupted', error: item.error || 'interrupted' };
+        } catch (_) { /* downloads.search unavailable: leave it unconfirmed */ }
+        finish(state);
+      }, DOWNLOAD_SETTLE_MS);
+    })
+  };
 }
 
 /**
@@ -1450,36 +1626,52 @@ browser.runtime.onMessage.addListener((message, sender) => {
     return false;
   }
 
-  if (!sender.tab || typeof sender.tab.url !== 'string') {
-    _console.warn('[Background] Privileged message without tab origin');
+  // A rejected export must not look like one that is still running: tell
+  // the popup, which is otherwise left waiting for a result that never comes.
+  const rejectExport = (why) => {
+    _console.warn(`[Background] ${why}`);
+    const fromTab = sender.tab && typeof sender.tab.id === 'number' ? sender.tab.id : null;
+    broadcastExportResult({
+      platform: expectedPlatform,
+      outcome: 'invalid_data',
+      code: 'SENDER_REJECTED',
+      reason: why,
+      ...(fromTab === null ? {} : { tabId: fromTab })
+    });
     return false;
+  };
+
+  if (!sender.tab || typeof sender.tab.url !== 'string') {
+    return rejectExport('Privileged message without tab origin');
   }
 
   if (sender.frameId !== 0) {
-    _console.warn('[Background] Privileged message from subframe rejected');
-    return false;
+    return rejectExport('Privileged message from subframe rejected');
   }
 
   let senderUrl;
   try {
     senderUrl = new URL(sender.tab.url);
   } catch {
-    _console.warn('[Background] Invalid URL in sender tab');
-    return false;
+    return rejectExport('Invalid URL in sender tab');
   }
 
   if (senderUrl.protocol !== 'https:') {
-    _console.warn('[Background] Non-https sender rejected');
-    return false;
+    return rejectExport('Non-https sender rejected');
   }
 
   if (!senderHostnameMatchesPlatform(senderUrl.hostname, expectedPlatform)) {
-    _console.warn('[Background] Message type does not match sender origin');
-    return false;
+    return rejectExport('Message type does not match sender origin');
   }
 
   const tabId = sender.tab.id;
-  handleConversationData({ platform: expectedPlatform, payload: message.payload, conversationId: message.conversationId })
+  handleConversationData({
+    platform: expectedPlatform,
+    payload: message.payload,
+    conversationId: message.conversationId,
+    capture: message.capture,
+    tabId
+  })
     .then((result) => {
       // Clear any stale "!" badge from a previous failed export on this tab.
       if (typeof tabId === 'number') clearExportFailureBadge(tabId);
