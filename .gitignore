@@ -238,3 +238,7 @@ secrets.json
 *.key
 *.pem
 *.cert
+
+# Generated month of synthetic data for 4CAT testing (regenerate with python3 dev/synthetic-4cat/gen.py)
+dev/synthetic-4cat/*.csv
+dev/synthetic-4cat/*.xlsx

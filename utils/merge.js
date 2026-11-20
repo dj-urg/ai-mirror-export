@@ -23,10 +23,13 @@ import {
   SCHEMA_VERSIONS,
   MANIFEST_SCHEMA_VERSION
 } from './manifest.js';
+import { buildSourcesOutputs, isSourcesSchema, messageKey, SOURCES_OUTPUT, SOURCES_COUNT_OUTPUT } from './merge_sources.js';
 
-export const MERGE_MANIFEST_SCHEMA_VERSION = '1.1.0';
+export const MERGE_MANIFEST_SCHEMA_VERSION = '1.2.0';
 export const CANONICAL_OUTPUT = 'all_messages_canonical';
 export const PROVENANCE_HEADERS = Object.freeze(['source_file', 'source_sha256']);
+export const FOURCAT_OUTPUT = 'all_messages_canonical_4cat';
+const FOURCAT_DROPPED = 'platform_specific_json';
 
 const UTF8_BOM = '﻿';
 const MERGE_MANIFEST_NAME = 'merge_manifest.json';
@@ -542,6 +545,34 @@ function countMerged(mergedBundles, isMergedFile) {
 }
 
 /**
+ * The copy of all_messages_canonical.csv for 4CAT's CSV upload.
+ *
+ * 4CAT (checked against 1.57) guesses the CSV dialect of an upload from its
+ * header row alone, which yields doublequote=false, and then validates the
+ * first data row: a quoted cell with a doubled quote splits that row into
+ * extra fields and the upload is refused ("Couldn't correctly read the
+ * file"). Every platform_specific_json cell is JSON, so the copy leaves that
+ * column out, and if the first row still has a quote anywhere, the first row
+ * without one is moved to the top. All other cells are unchanged; 4CAT's
+ * import itself sniffs a larger sample and reads them correctly.
+ *
+ * @param {string[][]} rows    Canonical rows, with provenance columns.
+ * @returns {string} CSV content without BOM.
+ */
+function fourCatCopy(rows) {
+  const headers = [...canonicalHeaders(), ...PROVENANCE_HEADERS];
+  const drop = headers.indexOf(FOURCAT_DROPPED);
+  const keep = (r) => r.filter((_v, i) => i !== drop);
+  const out = rows.map(keep);
+  const hasQuote = (r) => r.some(v => v.includes('"'));
+  if (out.length && hasQuote(out[0])) {
+    const safe = out.findIndex(r => !hasQuote(r));
+    if (safe > 0) out.unshift(out.splice(safe, 1)[0]);
+  }
+  return [csvLine(keep(headers)), ...out.map(csvLine)].join('\r\n') + '\r\n';
+}
+
+/**
  * Merge checked bundles.
  *
  * Column layouts are never mixed. The shared `_canonical` files must have
@@ -605,13 +636,17 @@ export async function mergeBundles(checked, opts = {}) {
   const add = (schema, file) => {
     let group = bySchema.get(schema);
     if (!group) {
-      group = { lines: [csvLine([...file.headers, ...PROVENANCE_HEADERS])], rows: 0 };
+      group = { lines: [csvLine([...file.headers, ...PROVENANCE_HEADERS])], rows: 0, rowsData: [] };
       bySchema.set(schema, group);
     }
-    for (const row of file.rows) group.lines.push(csvLine([...row, file.filename, file.sha256]));
+    for (const row of file.rows) {
+      group.lines.push(csvLine([...row, file.filename, file.sha256]));
+      if (schema === CANONICAL_OUTPUT) group.rowsData.push([...row, file.filename, file.sha256]);
+    }
     group.rows += file.rows.length;
   };
   const seenContent = new Set();   // schema + sha256 of files already merged
+  const sourcesFiles = [];         // merged <platform>_sources files, for all_sources_canonical
   for (const [schema, list] of candidates) {
     for (const { file } of list) {
       if (signature(file.headers) !== layouts.get(schema)) {
@@ -628,6 +663,7 @@ export async function mergeBundles(checked, opts = {}) {
       seenContent.add(contentKey);
       add(schema, file);
       if (schema.endsWith('_canonical')) add(CANONICAL_OUTPUT, file);
+      if (isSourcesSchema(schema)) sourcesFiles.push(file);
     }
   }
 
@@ -645,6 +681,52 @@ export async function mergeBundles(checked, opts = {}) {
       sha256: await sha256Hex(content),
       content
     });
+  }
+
+  const canonicalGroup = bySchema.get(CANONICAL_OUTPUT);
+  if (canonicalGroup) {
+    const content = fourCatCopy(canonicalGroup.rowsData);
+    outputs.splice(1, 0, {
+      name: `${FOURCAT_OUTPUT}.csv`,
+      schema: FOURCAT_OUTPUT,
+      schema_version: null,
+      rows: canonicalGroup.rows,
+      sha256: await sha256Hex(content),
+      content
+    });
+  }
+
+  // created_at_iso of every merged message, so each source gets the time of the message citing it.
+  // Keyed with the export's download_time too: a message id is not unique across exports when
+  // the same Google search is exported twice (conversation_id is the query, message_id is 0).
+  const messageTimes = new Map();
+  if (canonicalGroup) {
+    const h = canonicalHeaders();
+    const [d, p, c, m, t, j] = ['donor_id', 'platform', 'conversation_id', 'message_id', 'created_at_iso',
+      'platform_specific_json'].map(n => h.indexOf(n));
+    for (const row of canonicalGroup.rowsData) {
+      let downloadTime = '';
+      try { downloadTime = String(JSON.parse(row[j]).download_time ?? ''); } catch (_err) { /* not JSON */ }
+      const key = messageKey(row[d], row[p], row[c], row[m], downloadTime);
+      if (!messageTimes.has(key)) messageTimes.set(key, row[t]);
+      // Without download_time: only when every export of that message agrees on the time.
+      const short = messageKey(row[d], row[p], row[c], row[m]);
+      if (!messageTimes.has(short)) messageTimes.set(short, row[t]);
+      else if (messageTimes.get(short) !== row[t]) messageTimes.set(short, null);
+    }
+  }
+  const sourcesOut = buildSourcesOutputs(sourcesFiles, messageTimes);
+  if (sourcesOut) {
+    // After the messages files, ahead of the per-platform files.
+    let at = outputs.findIndex(o => o.schema !== CANONICAL_OUTPUT && o.schema !== FOURCAT_OUTPUT);
+    if (at === -1) at = outputs.length;
+    outputs.splice(at, 0,
+      { name: `${SOURCES_OUTPUT}.csv`, schema: SOURCES_OUTPUT, schema_version: null,
+        rows: sourcesOut.sources.rows, sha256: await sha256Hex(sourcesOut.sources.content),
+        content: sourcesOut.sources.content },
+      { name: `${SOURCES_COUNT_OUTPUT}.csv`, schema: SOURCES_COUNT_OUTPUT, schema_version: null,
+        rows: sourcesOut.counts.rows, sha256: await sha256Hex(sourcesOut.counts.content),
+        content: sourcesOut.counts.content });
   }
 
   const isMergedFile = (f) => !leftOut.has(f);
@@ -731,13 +813,19 @@ export function formatReport(report) {
     'Files in this ZIP',
     '-----------------'
   ];
-  for (const o of report.outputs) lines.push(`  ${o.name}: ${o.rows} rows`);
+  for (const o of report.outputs) {
+    lines.push(`  ${o.name}: ${o.rows} rows${o.schema === FOURCAT_OUTPUT ? ' (the file to upload to 4CAT)' : ''}`);
+  }
   lines.push(
     '  merge_manifest.json: the same information as this report, for scripts',
     '',
     'Every merged row is copied unchanged from an export. Two columns are added',
     'at the end: source_file (the CSV the row came from) and source_sha256 (its',
     'checksum, which matches that export\'s manifest).',
+    '',
+    `${FOURCAT_OUTPUT}.csv has the same rows as ${CANONICAL_OUTPUT}.csv without`,
+    `the ${FOURCAT_DROPPED} column, which 4CAT's CSV upload cannot read; the`,
+    'first row may differ. All other cells are unchanged.',
     ''
   );
   if (report.warnings.length) {
@@ -770,7 +858,7 @@ export function formatReport(report) {
     'Opening the files',
     '-----------------',
     'Analyse the merged files in 4CAT, the main toolkit for this project: upload',
-    'all_messages_canonical.csv as a custom (CSV) dataset. How to use 4CAT is',
+    `${FOURCAT_OUTPUT}.csv as a custom (CSV) dataset. How to use 4CAT is`,
     'explained at https://4cat.nl/.',
     '',
     'Do not open or save the files in Microsoft Excel first: it cuts cells longer',
