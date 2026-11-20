@@ -16,8 +16,11 @@ import { escapeCSVField } from '../../utils/csv.js';
 import { sha256Hex } from '../../utils/manifest.js';
 import {
   collectBundles, checkBundle, mergeBundles, pickLatest, selectForMerge, schemaFromFilename,
-  STATUS, SUPERSEDED, CANONICAL_OUTPUT, PROVENANCE_HEADERS
+  STATUS, SUPERSEDED, CANONICAL_OUTPUT, FOURCAT_OUTPUT, PROVENANCE_HEADERS
 } from '../../utils/merge.js';
+import {
+  SOURCES_OUTPUT, SOURCES_COUNT_OUTPUT, SOURCES_HEADERS, domainOf, buildSourcesOutputs, messageKey
+} from '../../utils/merge_sources.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const GOLDEN = join(__dirname, '..', 'data', 'synthetic', 'golden');
@@ -145,7 +148,8 @@ async function run() {
   let rowsBad = 0;
   let expectedCanonical = 0;
   for (const b of checked) for (const f of b.files) if (f.schema.endsWith('_canonical')) expectedCanonical += f.rows.length;
-  for (const f of files.filter(f => f.name.endsWith('.csv'))) {
+  const derived = new Set([`${FOURCAT_OUTPUT}.csv`, `${SOURCES_OUTPUT}.csv`, `${SOURCES_COUNT_OUTPUT}.csv`]);
+  for (const f of files.filter(f => f.name.endsWith('.csv') && !derived.has(f.name))) {
     const { headers, rows } = parseCSV(f.content);
     assert(`${f.name} ends with provenance columns`, headers.slice(-2).join() === PROVENANCE_HEADERS.join());
     for (const r of rows) {
@@ -161,6 +165,74 @@ async function run() {
   assert('every merged row is an unchanged source row', rowsChecked > 0 && rowsBad === 0, `${rowsBad}/${rowsChecked}`);
   for (const o of report.outputs) {
     assert(`output sha recorded for ${o.name}`, o.sha256 === await sha256Hex(byName[o.name].replace(/^﻿/, '')));
+  }
+
+  // --- 4CAT copy: canonical rows without platform_specific_json ------------
+  {
+    const canon = parseCSV(byName[`${CANONICAL_OUTPUT}.csv`].replace(/^\uFEFF/, ''));
+    // --- all_sources_canonical + sources_by_domain ---------------------------
+    const src = parseCSV(byName[`${SOURCES_OUTPUT}.csv`].replace(/^\uFEFF/, ''));
+    assert('sources: shared header', src.headers.join() === SOURCES_HEADERS.join());
+    let expectedSources = 0;
+    for (const b of checked) for (const f of b.files) if (/_sources$/.test(f.schema)) expectedSources += f.rows.length;
+    assert('sources: one row per source row from every platform', src.rows.length === expectedSources,
+      `${src.rows.length} vs ${expectedSources}`);
+    const srcPlatforms = new Set(src.rows.map(r => r[1]));
+    assert('sources: platform filled for files without a platform column',
+      srcPlatforms.has('chatgpt') || srcPlatforms.has('perplexity'), [...srcPlatforms].join());
+    const canonIds = new Set(parseCSV(byName[`${CANONICAL_OUTPUT}.csv`].replace(/^\uFEFF/, ''))
+      .rows.map(r => `${r[1]}\u0000${r[2]}\u0000${r[3]}`));
+    const linkable = src.rows.filter(r => r[3] !== '');
+    const unlinked = linkable.filter(r => !canonIds.has(`${r[1]}\u0000${r[2]}\u0000${r[3]}`));
+    assert('sources: message_id joins to all_messages_canonical', linkable.length > 0 && unlinked.length === 0,
+      JSON.stringify(unlinked.slice(0, 3).map(r => r.slice(1, 4))));
+    const col = Object.fromEntries(SOURCES_HEADERS.map((h, i) => [h, i]));
+    assert('sources: domain derived from url_clean',
+      src.rows.every(r => r[col.domain] === domainOf(r[col.url_clean] || r[col.url])));
+    const canonTable = parseCSV(byName[`${CANONICAL_OUTPUT}.csv`].replace(/^\uFEFF/, ''));
+    const ci = Object.fromEntries(canonTable.headers.map((h, i) => [h, i]));
+    const times = new Map(canonTable.rows.map(r =>
+      [[r[ci.donor_id], r[ci.platform], r[ci.conversation_id], r[ci.message_id]].join('\u0000'), r[ci.created_at_iso]]));
+    const wrongTime = src.rows.filter(r => r[col.created_at_iso] !==
+      (r[col.message_id] ? times.get([r[col.donor_id], r[col.platform], r[col.conversation_id], r[col.message_id]].join('\u0000')) ?? '' : ''));
+    assert('sources: created_at_iso copied from the citing message', wrongTime.length === 0 &&
+      src.rows.some(r => r[col.created_at_iso] !== ''), JSON.stringify(wrongTime.slice(0, 2)));
+    const counts = parseCSV(byName[`${SOURCES_COUNT_OUTPUT}.csv`].replace(/^\uFEFF/, ''));
+    const allRows = counts.rows.filter(r => r[0] === 'all');
+    assert('counts: all-platform citations add up', allRows.reduce((n, r) => n + Number(r[2]), 0) === src.rows.length);
+    assert('counts: per-platform citations add up',
+      counts.rows.filter(r => r[0] !== 'all').reduce((n, r) => n + Number(r[2]), 0) === src.rows.length);
+    assert('domainOf strips www and lowercases', domainOf('https://WWW.Example.org/a?b=1') === 'example.org' &&
+      domainOf('not a url') === '');
+
+    const four = parseCSV(byName[`${FOURCAT_OUTPUT}.csv`].replace(/^\uFEFF/, ''));
+    const drop = canon.headers.indexOf('platform_specific_json');
+    const strip = (r) => r.filter((_v, i) => i !== drop).join('\u0000');
+    assert('4CAT copy is second output', files[1].name === `${FOURCAT_OUTPUT}.csv`);
+    assert('4CAT copy drops only platform_specific_json',
+      JSON.stringify(four.headers) === JSON.stringify(canon.headers.filter(h => h !== 'platform_specific_json')));
+    assert('4CAT copy has every canonical row, cells unchanged',
+      JSON.stringify(four.rows.map(r => r.join('\u0000')).sort()) === JSON.stringify(canon.rows.map(strip).sort()));
+    assert('4CAT copy: first data row has no quote', !four.rows[0].some(v => v.includes('"')));
+    assert('4CAT copy: report names it', byName['MERGE_REPORT.txt'].includes(`${FOURCAT_OUTPUT}.csv: `) &&
+      report.outputs.some(o => o.name === `${FOURCAT_OUTPUT}.csv` && o.rows === canon.rows.length));
+  }
+
+  // --- sources: time of the citing message when a search is exported twice -
+  {
+    const headers = ['donor_id', 'download_time', 'mode', 'conversation_id', 'turn_index', 'url', 'url_clean', 'title'];
+    const file = (dl) => ({ schema: 'google_sources', headers, filename: `google_sources_${dl}.csv`, sha256: dl,
+      rows: [['d1', dl, 'ai_overview', 'tides', '', 'https://example.org/a', 'https://example.org/a', 'A']] });
+    const times = new Map();
+    const key = ['d1', 'google_ai_overview', 'tides', '0'];
+    times.set(messageKey(...key, 'DL1'), 'T1');
+    times.set(messageKey(...key, 'DL2'), 'T2');
+    times.set(messageKey(...key), null);          // the two exports disagree
+    const out = parseCSV(buildSourcesOutputs([file('DL1'), file('DL2'), file('DL3')], times).sources.content);
+    const t = out.headers.indexOf('created_at_iso');
+    assert('sources: same search exported twice gets each export\'s own time',
+      out.rows[0][t] === 'T1' && out.rows[1][t] === 'T2', out.rows.map(r => r[t]).join());
+    assert('sources: no time when exports disagree and none matches', out.rows[2][t] === '');
   }
 
   // --- changed file excluded by default, included on request ---------------

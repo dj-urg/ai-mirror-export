@@ -43,9 +43,17 @@ Walk through this once yourself on your own account — it is the fastest way to
 
 1. Install the extension from [addons.mozilla.org](https://addons.mozilla.org/firefox/addon/local-ai-chat-exporter/) (see `README.md`).
 2. Open a conversation on one of the supported platforms.
-3. Click the extension icon in the toolbar. A popup appears with the page's detected status.
+3. Click the extension icon in the toolbar. A popup appears with the page's detected status. The first time, a consent panel appears instead; read it and tick the box to continue.
+
+   <img src="docs/images/guide/popup-consent-first-run.png" alt="First-run consent panel in the popup, headed Research Participation" width="320" />
 4. Click **Export ZIP**.
+
+   <img src="docs/images/guide/popup-ready-bottom.png" alt="Bottom of the popup: Privacy settings, the Export ZIP button and the Merge exported files link" width="320" />
 5. A single ZIP file is downloaded. The popup then shows a **Review your export** step: open the ZIP and check what is in it before sharing it; **Show in Downloads** reveals the file.
+
+   <img src="docs/images/guide/popup-export-result-success.png" alt="Popup after an export: Export complete, and a Review your export card with a Show in Downloads button" width="320" />
+
+   Participants send you this ZIP **unchanged**. Keep all ZIPs together in one folder in encrypted storage, and do not unzip them or open them in Excel: the merge step (section 5b) uses the checksums in each manifest to confirm the files are original.
 
 **Settings worth knowing about** (visible in the popup):
 
@@ -534,11 +542,18 @@ Every export is one conversation. To work with many conversations at once, yours
    - **✓ Verified**: the files are exactly what the extension exported.
    - **! Changed**: a file no longer matches its recorded checksum, or has no manifest. This usually means it was opened and saved in Excel or another program. These are left out unless you tick **Include changed or unverified files anyway**; the merge report then lists each one.
    - **✕ Older version / Cannot use**: made with an older version of the extension, or not an export at all. Ask the person to export the conversation again with the current version.
+
+   <img src="docs/images/guide/merge-2-checked.png" alt="Merge page with three verified exports from ChatGPT, Claude and Google Gemini, and the platform checkboxes" width="640" />
 4. Untick any platforms you do not need, then click **Merge and download**. One ZIP, `ai-chat-merge_<time>.zip`, lands in your Downloads folder.
+
+   <img src="docs/images/guide/merge-3-done.png" alt="Merge page after merging: a green result card listing each output CSV and its row count" width="640" />
 
 What is in the merged ZIP:
 
 - `all_messages_canonical.csv`: every message from every platform in the shared layout (section 4). Usually the file to start with.
+- `all_messages_canonical_4cat.csv`: the same rows without the `platform_specific_json` column. **This is the file to upload to 4CAT** (section 9).
+- `all_sources_canonical.csv`: every cited source from every platform in one table (`donor_id`, `platform`, `conversation_id`, `message_id`, `created_at_iso`, `url`, `url_clean`, `domain`, `title`, `snippet`). `message_id` matches the message in `all_messages_canonical.csv` that cites the source, so the two files can be joined (empty for Microsoft 365 Copilot, whose export does not say which message cites a source). `domain` is the website, taken from `url_clean` without `www.`. `created_at_iso` is the time of the message that cites the source, copied from `all_messages_canonical.csv` (empty when there is no `message_id`), so in 4CAT you can map timestamp → `created_at_iso` for sources too.
+- `sources_by_domain.csv`: the sources counted per website. One row per platform and domain, plus rows with platform `all` for all platforms together. `citations` is how often the domain was cited, `unique_urls` how many different pages, `conversations` and `participants` how many conversations and people cited it. Copilot (consumer) exports have no sources file, so Copilot never appears here.
 - One CSV per file type, for example `claude_messages.csv` or `chatgpt_sources.csv`, combining that file type from every export.
 - `MERGE_REPORT.txt`: what was merged, what was left out and why, and any warnings (for example, a mix of exports with and without sensitive-data removal).
 - `merge_manifest.json`: the same information for scripts, including the checksum of every input and output file.
@@ -578,9 +593,38 @@ Everything happens inside your browser. The merge page is not allowed to connect
 
 ---
 
-## 9. Next step: further processing
+## 9. Next step: uploading to 4CAT
 
-Once you are comfortable with what a single export contains, further processing — filtering, aggregating, counting, searching, text analysis, network analysis across many exports — is done in **[4CAT](https://4cat.nl/)**. 4CAT accepts these CSVs directly and provides the analytical layer that is intentionally left out of this guide. Treat this document as the preparation: it gets you to the point where the data makes sense, and 4CAT takes over from there.
+Further processing (filtering, aggregating, counting, text and network analysis across many exports) happens in **[4CAT](https://4cat.nl/)**. Upload the merged file, not the single exports.
+
+1. Unzip `ai-chat-merge_<time>.zip` (section 5b) into a new folder. Do not open its CSVs in Excel first: 4CAT needs the file UTF-8 encoded with its header row intact, and saving from Excel can break both.
+2. Log in to your 4CAT instance and open **Create new dataset**.
+3. Set **Data source** to **Import/upload CSV file**.
+4. Next to **File**, click **Choose File** and pick `all_messages_canonical_4cat.csv`. Not `all_messages_canonical.csv`: 4CAT refuses that one with *"Couldn't correctly read the file, try formatting it differently"*, because it cannot read the quotes in the `platform_specific_json` column. The `_4cat` file is the same data without that column.
+5. Set **CSV format** to **Custom/other**. Leave **Strip HTML?** unticked: the text is already plain.
+6. Under *Please confirm which column in the CSV file maps to each required value*, choose:
+
+   | 4CAT field | Choose | Why |
+   |---|---|---|
+   | `id` | `[generate sequential IDs]` | `message_id` is only unique within one conversation (for example `u1` appears in many), so let 4CAT number the rows |
+   | `thread_id` | `conversation_id` | keeps the messages of one conversation together; with `[generate sequential IDs]` every message becomes its own thread |
+   | `author` | `donor_id` | groups messages per participant (use `role` instead to compare user vs assistant) |
+   | `body` | `text` | the message itself |
+   | `timestamp` | `created_at_iso` | the moment the message was sent (UTC). Not `[current date and time]`, which is the upload moment |
+
+   All other columns (`platform`, `role`, `model_identifier`, …) are kept as extra fields you can filter on.
+
+   <img src="docs/images/guide/4cat-create-dataset.png" alt="4CAT Create new dataset form: data source Import/upload CSV file, CSV format Custom/other, column mapping for id, thread_id, author, body and timestamp, Pseudonymise and Dataset name fields, and the Create dataset button" width="640" />
+
+7. **Pseudonymise**: `donor_id` is already a pseudonymous code, so *Leave author information as-is* is fine. Choose the hashing option if your ethics protocol requires a second layer. 4CAT only touches the author column; message texts can still contain personal information.
+8. Under **Dataset name**, enter a clear name, for example `thesis_chatbots_2026-11-12`.
+9. Click **Create dataset**. Progress shows under **Dataset status** on the right, and the finished dataset appears under **Results**.
+10. Open the dataset and compare its row count with the `all_messages_canonical_4cat.csv` line in `MERGE_REPORT.txt`. If rows are missing, the likely cause is system messages with an empty `created_at_iso`: remove those rows in R or Python (not Excel) and upload again. Keep `MERGE_REPORT.txt` with your data for your methods section.
+11. Do further selection inside 4CAT (for example a filter on `role` = `user` for prompts only, or on `platform`), so the uploaded file stays the original.
+
+4CAT is a shared server: start with a small test file before uploading a full study. To practise, generate the fake *Wellness Month* study (18 participants, October 2026; ChatGPT, Claude, Gemini and Google AI Overview) with `python3 dev/synthetic-4cat/gen.py`. It writes a messages file and a sources file to `dev/synthetic-4cat/` (ignored by git), both ready to upload. `dev/synthetic-4cat/CASE.md` explains the case, the column mapping for each file and what there is to find.
+
+Option names differ a little between 4CAT instances and versions; if a field is named differently, map by meaning.
 
 ---
 
